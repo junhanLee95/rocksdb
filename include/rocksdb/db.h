@@ -544,6 +544,14 @@ class DB {
     //      flushes.
     static const std::string kNumRunningFlushes;
 
+    //  "rocksdb.num-scheduled-flushes" - returns the number of currently scheduled
+    //      flushes.
+    static const std::string kNumScheduledFlushes;
+
+    //  "rocksdb.num-unscheduled-flushes" - returns the number of currently pending
+    //      flushes.
+    static const std::string kNumUnscheduledFlushes;
+
     //  "rocksdb.compaction-pending" - returns 1 if at least one compaction is
     //      pending; otherwise, returns 0.
     static const std::string kCompactionPending;
@@ -551,6 +559,14 @@ class DB {
     //  "rocksdb.num-running-compactions" - returns the number of currently
     //      running compactions.
     static const std::string kNumRunningCompactions;
+
+    //  "rocksdb.num-scheduled-compactions" - returns the number of currently scheduled
+    //      compactions.
+    static const std::string kNumScheduledCompactions;
+
+    //  "rocksdb.num-unscheduled-compactions" - returns the number of currently pending
+    //			compactions.
+    static const std::string kNumUnscheduledCompactions;
 
     //  "rocksdb.background-errors" - returns accumulated number of background
     //      errors.
@@ -735,6 +751,10 @@ class DB {
   //  "rocksdb.estimate-pending-compaction-bytes"
   //  "rocksdb.num-running-compactions"
   //  "rocksdb.num-running-flushes"
+  //  "rocksdb.num-scheduled-compactions"
+  //  "rocksdb.num-scheduled-flushes"
+  //  "rocksdb.num-unscheduled-compactions"
+  //  "rocksdb.num-unscheduled-flushes"
   //  "rocksdb.actual-delayed-write-rate"
   //  "rocksdb.is-write-stopped"
   //  "rocksdb.estimate-oldest-key-time"
