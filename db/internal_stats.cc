@@ -250,7 +250,11 @@ static const std::string aggregated_table_properties =
 static const std::string aggregated_table_properties_at_level =
     aggregated_table_properties + "-at-level";
 static const std::string num_running_compactions = "num-running-compactions";
+static const std::string num_scheduled_compactions = "num-scheduled-compactions";
+static const std::string num_unscheduled_compactions = "num-unscheduled-compactions";
 static const std::string num_running_flushes = "num-running-flushes";
+static const std::string num_scheduled_flushes = "num-scheduled-flushed";
+static const std::string num_unscheduled_flushes = "num-unscheduled-flushes";
 static const std::string actual_delayed_write_rate =
     "actual-delayed-write-rate";
 static const std::string is_write_stopped = "is-write-stopped";
@@ -285,6 +289,14 @@ const std::string DB::Properties::kNumRunningCompactions =
     rocksdb_prefix + num_running_compactions;
 const std::string DB::Properties::kNumRunningFlushes =
     rocksdb_prefix + num_running_flushes;
+const std::string DB::Properties::kNumScheduledCompactions =
+    rocksdb_prefix + num_scheduled_compactions;
+const std::string DB::Properties::kNumScheduledFlushes =
+    rocksdb_prefix + num_scheduled_flushes;
+const std::string DB::Properties::kNumUnscheduledCompactions =
+    rocksdb_prefix + num_unscheduled_compactions;
+const std::string DB::Properties::kNumUnscheduledFlushes =
+    rocksdb_prefix + num_unscheduled_flushes;
 const std::string DB::Properties::kBackgroundErrors =
     rocksdb_prefix + background_errors;
 const std::string DB::Properties::kCurSizeActiveMemTable =
@@ -460,6 +472,18 @@ const std::unordered_map<std::string, DBPropertyInfo>
           nullptr}},
         {DB::Properties::kNumRunningCompactions,
          {false, nullptr, &InternalStats::HandleNumRunningCompactions, nullptr,
+          nullptr}},
+        {DB::Properties::kNumScheduledFlushes,
+         {false, nullptr, &InternalStats::HandleNumScheduledFlushes, nullptr,
+          nullptr}},
+        {DB::Properties::kNumScheduledCompactions,
+         {false, nullptr, &InternalStats::HandleNumScheduledCompactions, nullptr,
+          nullptr}},
+        {DB::Properties::kNumUnscheduledFlushes,
+         {false, nullptr, &InternalStats::HandleNumUnscheduledFlushes, nullptr,
+          nullptr}},
+        {DB::Properties::kNumUnscheduledCompactions,
+         {false, nullptr, &InternalStats::HandleNumUnscheduledCompactions, nullptr,
           nullptr}},
         {DB::Properties::kActualDelayedWriteRate,
          {false, nullptr, &InternalStats::HandleActualDelayedWriteRate, nullptr,
@@ -670,6 +694,18 @@ bool InternalStats::HandleNumRunningFlushes(uint64_t* value, DBImpl* db,
   return true;
 }
 
+bool InternalStats::HandleNumScheduledFlushes(uint64_t* value, DBImpl* db,
+                                            Version* /*version*/) {
+  *value = db->bg_flush_scheduled_;
+  return true;
+}
+
+bool InternalStats::HandleNumUnscheduledFlushes(uint64_t* value, DBImpl* db,
+                                            Version* /*version*/) {
+  *value = db->unscheduled_flushes_;
+  return true;
+}
+
 bool InternalStats::HandleCompactionPending(uint64_t* value, DBImpl* /*db*/,
                                             Version* /*version*/) {
   // 1 if the system already determines at least one compaction is needed.
@@ -682,6 +718,18 @@ bool InternalStats::HandleCompactionPending(uint64_t* value, DBImpl* /*db*/,
 bool InternalStats::HandleNumRunningCompactions(uint64_t* value, DBImpl* db,
                                                 Version* /*version*/) {
   *value = db->num_running_compactions_;
+  return true;
+}
+
+bool InternalStats::HandleNumScheduledCompactions(uint64_t* value, DBImpl* db,
+                                                Version* /*version*/) {
+  *value = db->bg_compaction_scheduled_;
+  return true;
+}
+
+bool InternalStats::HandleNumUnscheduledCompactions(uint64_t* value, DBImpl* db,
+                                                Version* /*version*/) {
+  *value = db->unscheduled_compactions_;
   return true;
 }
 

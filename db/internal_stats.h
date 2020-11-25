@@ -512,8 +512,14 @@ class InternalStats {
   bool HandleMemTableFlushPending(uint64_t* value, DBImpl* db,
                                   Version* version);
   bool HandleNumRunningFlushes(uint64_t* value, DBImpl* db, Version* version);
+  bool HandleNumScheduledFlushes(uint64_t* value, DBImpl* db, Version* version);
+  bool HandleNumUnscheduledFlushes(uint64_t* value, DBImpl* db, Version* version);
   bool HandleCompactionPending(uint64_t* value, DBImpl* db, Version* version);
-  bool HandleNumRunningCompactions(uint64_t* value, DBImpl* db,
+	bool HandleNumRunningCompactions(uint64_t* value, DBImpl* db,
+			Version* version);
+	bool HandleNumScheduledCompactions(uint64_t* value, DBImpl* db,
+			Version* version);
+	bool HandleNumUnscheduledCompactions(uint64_t* value, DBImpl* db,
                                    Version* version);
   bool HandleBackgroundErrors(uint64_t* value, DBImpl* db, Version* version);
   bool HandleCurSizeActiveMemTable(uint64_t* value, DBImpl* db,
