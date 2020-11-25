@@ -253,7 +253,7 @@ static const std::string num_running_compactions = "num-running-compactions";
 static const std::string num_scheduled_compactions = "num-scheduled-compactions";
 static const std::string num_unscheduled_compactions = "num-unscheduled-compactions";
 static const std::string num_running_flushes = "num-running-flushes";
-static const std::string num_scheduled_flushes = "num-scheduled-flushed";
+static const std::string num_scheduled_flushes = "num-scheduled-flushes";
 static const std::string num_unscheduled_flushes = "num-unscheduled-flushes";
 static const std::string actual_delayed_write_rate =
     "actual-delayed-write-rate";
