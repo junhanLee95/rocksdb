@@ -762,6 +762,9 @@ DEFINE_bool(use_stderr_info_logger, false,
 
 DEFINE_string(trace_file, "", "Trace workload to a file. ");
 
+DEFINE_bool(compaction_queue_stat, false,
+						"Report compaction queue stats every N seconds. N came from stats_interval_seconds. ");
+
 static enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
   assert(ctype);
 
@@ -1757,20 +1760,58 @@ class Stats {
           next_report_ += FLAGS_stats_interval;
 
         } else {
+					if (FLAGS_compaction_queue_stat) {
+						uint64_t num_running_flushes, num_scheduled_flushes, num_unscheduled_flushes;
+						uint64_t num_running_compactions, num_scheduled_compactions, num_unscheduled_compactions;
 
-          fprintf(stderr,
-                  "%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
-                  "(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
-                  FLAGS_env->TimeToString(now/1000000).c_str(),
-                  id_,
-                  done_ - last_report_done_, done_,
-                  (done_ - last_report_done_) /
-                  (usecs_since_last / 1000000.0),
-                  done_ / ((now - start_) / 1000000.0),
-                  (now - last_report_finish_) / 1000000.0,
-                  (now - start_) / 1000000.0);
+						
+						num_running_flushes = 0;
+						num_scheduled_flushes = 0;
+						num_unscheduled_flushes = 0;
+						num_running_compactions = 0;
+						num_scheduled_compactions = 0;
+						num_unscheduled_compactions = 0;
 
-          if (id_ == 0 && FLAGS_stats_per_interval) {
+						db->GetIntProperty("rocksdb.num-running-flushes", &num_running_flushes);
+						db->GetIntProperty("rocksdb.num-scheduled-flushes", &num_scheduled_flushes);
+						db->GetIntProperty("rocksdb.num-unscheduled-flushes", &num_unscheduled_flushes);
+						db->GetIntProperty("rocksdb.num-running-compactions", &num_running_compactions);
+						db->GetIntProperty("rocksdb.num-scheduled-compactions", &num_scheduled_compactions);
+						db->GetIntProperty("rocksdb.num-unscheduled-compactions", &num_unscheduled_compactions);
+
+						fprintf(stderr,
+								"%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
+								"(%.1f,%.1f) ops/second and (%" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ") (running flushes, scheduled flushes, unscheduled flushes, running compactions, scheduled compactions, unscheduled compactions) in (%.6f,%.6f) seconds\n",
+								FLAGS_env->TimeToString(now/1000000).c_str(),
+								id_,
+								done_ - last_report_done_, done_,
+								(done_ - last_report_done_) /
+								(usecs_since_last / 1000000.0),
+								done_ / ((now - start_) / 1000000.0),
+								num_running_flushes,
+								num_scheduled_flushes,
+								num_unscheduled_flushes,
+								num_running_compactions,
+								num_scheduled_compactions,
+								num_unscheduled_compactions,
+								(now - last_report_finish_) / 1000000.0,
+								(now - start_) / 1000000.0);
+					}
+					else {
+						fprintf(stderr,
+								"%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
+								"(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
+								FLAGS_env->TimeToString(now/1000000).c_str(),
+								id_,
+								done_ - last_report_done_, done_,
+								(done_ - last_report_done_) /
+								(usecs_since_last / 1000000.0),
+								done_ / ((now - start_) / 1000000.0),
+								(now - last_report_finish_) / 1000000.0,
+								(now - start_) / 1000000.0);
+					}
+
+					if (id_ == 0 && FLAGS_stats_per_interval) {
             std::string stats;
 
             if (db_with_cfh && db_with_cfh->num_created.load()) {
