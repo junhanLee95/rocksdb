@@ -1765,6 +1765,13 @@ class Stats {
 					if (FLAGS_compaction_queue_stat) {
 						uint64_t num_running_flushes, num_scheduled_flushes, num_unscheduled_flushes;
 						uint64_t num_running_compactions, num_scheduled_compactions, num_unscheduled_compactions;
+						
+						num_running_flushes = 0;
+						num_scheduled_flushes = 0;
+						num_unscheduled_flushes = 0;
+						num_running_compactions = 0;
+						num_scheduled_compactions = 0;
+						num_unscheduled_compactions = 0;
 
 						db->GetIntProperty("rocksdb.num-running-flushes", &num_running_flushes);
 						db->GetIntProperty("rocksdb.num-scheduled-flushes", &num_scheduled_flushes);
