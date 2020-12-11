@@ -8,11 +8,11 @@ TEST_DIR="$BASE_DIR/$(date "+%Y%m%d%H%M")"
 
 fixed_option="--db=db --key_size=128 --value_size=1024 --statistics"
 
-fixed_prebmrk="fillseq,stats,levelstats"
-fixed_postbmrk="stats,levelstats,sstables"
+#fixed_prebmrk="fillseq,stats,levelstats"
 
-benchmarks="readrandom,stats,levelstats,readrandommergerandom"
-options="--write_buffer_size=268435456 --num=10000000 --threads 1 --reads=10000000 --stats_interval_seconds=2 --batch_size=10 --merge_operator=stringappend --merge_operator=put --merge_operator=uint64add --compaction_queue_stat=true --latency_stat=true"
+#benchmarks="readrandom,stats,levelstats,readrandommergerandom"
+benchmarks="ycsbwklda,stats,levelstats"
+options="--write_buffer_size=268435456 --num=100000000 --threads 1 --reads=100000000 --duration=60 --stats_interval_seconds=2 --batch_size=10 --merge_operator=stringappend --merge_operator=put --merge_operator=uint64add --compaction_queue_stat=true --latency_stat=true"
 
 mkdir -p ${TEST_DIR}
 
