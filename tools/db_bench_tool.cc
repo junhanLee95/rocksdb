@@ -75,6 +75,8 @@
 #include "utilities/merge_operators.h"
 #include "utilities/merge_operators/bytesxor.h"
 #include "utilities/persistent_cache/block_cache_tier.h"
+#include "util/zipf.h"
+#include "util/latest-generator.h"
 
 #ifdef OS_WIN
 #include <io.h>  // open/close
@@ -123,6 +125,9 @@ DEFINE_string(
     "fillseekseq,"
     "randomtransaction,"
     "randomreplacekeys,"
+    "ycsbwklda,"
+    "ycsbwkldb,"
+    "ycsbwkldc,"
     "timeseries",
 
     "Comma-separated list of operations to run in the specified"
@@ -764,6 +769,12 @@ DEFINE_string(trace_file, "", "Trace workload to a file. ");
 
 DEFINE_bool(compaction_queue_stat, false,
 						"Report compaction queue stats every N seconds. N came from stats_interval_seconds. ");
+
+DEFINE_bool(latency_stat, false,
+						"Report latency stats every N seconds. N came from stats_interval_seconds. Enabled if FLAGS_histogram is set.");
+
+DEFINE_bool(YCSB_uniform_distribution, false,
+						"Uniform key distribution for YCSB");
 
 static enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
   assert(ctype);
@@ -1599,8 +1610,9 @@ class Stats {
   uint64_t bytes_;
   uint64_t last_op_finish_;
   uint64_t last_report_finish_;
-  std::unordered_map<OperationType, std::shared_ptr<HistogramImpl>,
+	std::unordered_map<OperationType, std::shared_ptr<HistogramImpl>,
                      std::hash<unsigned char>> hist_;
+  std::shared_ptr<HistogramImpl> interval_hist_;
   std::string message_;
   bool exclude_from_merge_;
   ReporterAgent* reporter_agent_;  // does not own
@@ -1618,6 +1630,7 @@ class Stats {
     next_report_ = FLAGS_stats_interval ? FLAGS_stats_interval : 100;
     last_op_finish_ = start_;
     hist_.clear();
+		interval_hist_ = std::make_shared<HistogramImpl>();
     done_ = 0;
     last_report_done_ = 0;
     bytes_ = 0;
@@ -1718,21 +1731,29 @@ class Stats {
     if (reporter_agent_) {
       reporter_agent_->ReportFinishedOps(num_ops);
     }
-    if (FLAGS_histogram) {
+    if (FLAGS_histogram || (FLAGS_stats_interval && FLAGS_latency_stat)) {
       uint64_t now = FLAGS_env->NowMicros();
       uint64_t micros = now - last_op_finish_;
 
-      if (hist_.find(op_type) == hist_.end())
-      {
-        auto hist_temp = std::make_shared<HistogramImpl>();
-        hist_.insert({op_type, std::move(hist_temp)});
-      }
-      hist_[op_type]->Add(micros);
+			if (FLAGS_histogram) {
+				if (hist_.find(op_type) == hist_.end())
+				{
+					auto hist_temp = std::make_shared<HistogramImpl>();
+					hist_.insert({op_type, std::move(hist_temp)});
+				}
+				hist_[op_type]->Add(micros);
+			}
 
-      if (micros > 20000 && !FLAGS_stats_interval) {
+			// accumulate interval_histogram for stats_interval is on
+			if (FLAGS_stats_interval && FLAGS_latency_stat) {
+				interval_hist_->Add(micros);
+			}
+
+      if (micros > 20000 && FLAGS_histogram && !FLAGS_stats_interval) {
         fprintf(stderr, "long op: %" PRIu64 " micros%30s\r", micros, "");
         fflush(stderr);
       }
+
       last_op_finish_ = now;
     }
 
@@ -1759,7 +1780,38 @@ class Stats {
           // Don't check again for this many operations
           next_report_ += FLAGS_stats_interval;
 
-        } else {
+				} else {
+					char msg_total[1024] ;
+					char msg_lt[100] ; // latency msg
+					char msg_cq[100] ; // compaction queue msg
+					char msg_time[100] ;
+
+					snprintf(msg_total, sizeof(msg_total), 
+							"%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
+							"(%.1f,%.1f) ops/second ",
+							FLAGS_env->TimeToString(now/1000000).c_str(),
+							id_,
+							done_ - last_report_done_, done_,
+							(done_ - last_report_done_) /
+							(usecs_since_last / 1000000.0),
+							done_ / (now - start_) / 1000000.0);
+
+					if (FLAGS_latency_stat) {
+						double lat_avg, lat_90p, lat_99p,  lat_999p, lat_9999p;
+						if (!interval_hist_->Empty()) {
+							lat_avg = interval_hist_->Average();
+							lat_90p = interval_hist_->Percentile(90);
+							lat_99p = interval_hist_->Percentile(99);
+							lat_999p = interval_hist_->Percentile(99.9);
+							lat_9999p = interval_hist_->Percentile(99.99);
+							snprintf(msg_lt, sizeof(msg_lt), "[Avg=%f, 90=%f, 99=%f, 99.9=%f, 99.99=%f] ",
+									lat_avg, lat_90p, lat_99p, lat_999p, lat_9999p);
+							strcat(msg_total, msg_lt);
+						}
+						// reset histogram after logging
+						interval_hist_->Clear();
+					}
+
 					if (FLAGS_compaction_queue_stat) {
 						uint64_t num_running_flushes, num_scheduled_flushes, num_unscheduled_flushes;
 						uint64_t num_running_compactions, num_scheduled_compactions, num_unscheduled_compactions;
@@ -1770,38 +1822,34 @@ class Stats {
 						db->GetIntProperty("rocksdb.num-running-compactions", &num_running_compactions);
 						db->GetIntProperty("rocksdb.num-scheduled-compactions", &num_scheduled_compactions);
 						db->GetIntProperty("rocksdb.num-unscheduled-compactions", &num_unscheduled_compactions);
-
-						fprintf(stderr,
-								"%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
-								"(%.1f,%.1f) ops/second and (%" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ") (running flushes, scheduled flushes, unscheduled flushes, running compactions, scheduled compactions, unscheduled compactions) in (%.6f,%.6f) seconds\n",
-								FLAGS_env->TimeToString(now/1000000).c_str(),
-								id_,
-								done_ - last_report_done_, done_,
-								(done_ - last_report_done_) /
-								(usecs_since_last / 1000000.0),
-								done_ / ((now - start_) / 1000000.0),
+						/*
+							 rf - running flushes
+							 sf - scheduled flushe
+							 uf - unscheduled flushes
+							 rc - runninng compactions
+							 sc - scheduled compactions
+							 uc - unscheduled compactions
+						 */
+						snprintf(msg_cq, sizeof(msg_cq), "(%" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ") [rf, sf, uf, rc, sc, uc] ", 
 								num_running_flushes,
 								num_scheduled_flushes,
 								num_unscheduled_flushes,
 								num_running_compactions,
 								num_scheduled_compactions,
-								num_unscheduled_compactions,
-								(now - last_report_finish_) / 1000000.0,
-								(now - start_) / 1000000.0);
+								num_unscheduled_compactions);
+						strcat(msg_total, msg_cq);
 					}
-					else {
-						fprintf(stderr,
-								"%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
-								"(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
-								FLAGS_env->TimeToString(now/1000000).c_str(),
-								id_,
-								done_ - last_report_done_, done_,
-								(done_ - last_report_done_) /
-								(usecs_since_last / 1000000.0),
-								done_ / ((now - start_) / 1000000.0),
-								(now - last_report_finish_) / 1000000.0,
-								(now - start_) / 1000000.0);
-					}
+
+					// msg time
+					snprintf(msg_time, sizeof(msg_time), "in (%.6f,%6f) seconds\n",
+							(now - last_report_finish_) / 1000000.0,
+							(now - start_) / 1000000.0
+							);
+					strcat(msg_total, msg_time);
+
+					// print stat for FLAGS_stats_interval
+					fprintf(stderr, "%s", msg_total);
+
 
 					if (id_ == 0 && FLAGS_stats_per_interval) {
             std::string stats;
@@ -2804,7 +2852,13 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         method = &Benchmark::Compact;
       } else if (name == "compactall") {
         CompactAll();
-      } else if (name == "crc32c") {
+      } else if (name == "ycsbwklda") {
+				method = &Benchmark::YCSBWorkloadA;
+			} else if (name == "ycsbwkldb") {
+				method = &Benchmark::YCSBWorkloadB;
+			} else if (name == "ycsbwkldc") {
+				method = &Benchmark::YCSBWorkloadC;
+			} else if (name == "crc32c") {
         method = &Benchmark::Crc32c;
       } else if (name == "xxhash") {
         method = &Benchmark::xxHash;
@@ -5727,6 +5781,232 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       thread->stats.FinishedOps(nullptr, db, 1, kSeek);
     }
   }
+
+  /* New : YCSB Workloads A to F */
+
+  // This workload has a mix of 50/50 reads and updates
+  // Read/Update ratio: 50/50
+  // Default data size: 1 KB records
+  // Request distribution: zipfian
+  void YCSBWorkloadA(ThreadState* thread) {
+		ReadOptions options(FLAGS_verify_checksum, true);
+		RandomGenerator gen;
+		init_latestgen(FLAGS_num);
+		init_zipf_generator(0, FLAGS_num);
+
+		std::string value;
+		int64_t found = 0;
+
+		int64_t reads_done = 0;
+		int64_t writes_done = 0;
+		Duration duration(FLAGS_duration, 0);
+
+		std::unique_ptr<const char[]> key_guard;
+		Slice key = AllocateKey(&key_guard);
+
+		if (FLAGS_benchmark_write_rate_limit > 0) {
+			printf(">>>> FLAGS_benchmark_write_rate_limit YCSBA \n");
+			thread->shared->write_rate_limiter.reset(
+					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
+		}
+
+
+		// the number of iterations is the larger of read_ or write_
+		while (!duration.Done(1)) {
+			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+
+			long k;
+			if (FLAGS_YCSB_uniform_distribution){
+				// Generate number from uniform distribution
+				k = thread->rand.Next() % FLAGS_num;
+			} else { // default
+				k = nextValue() % FLAGS_num;
+			}
+			GenerateKeyFromInt(k, FLAGS_num, &key);
+
+			int next_op = thread->rand.Next() % 100;
+			if (next_op < 50) {
+				// read
+				Status s = db_with_cfh->db->Get(options, key, &value);
+				if (!s.ok() && !s.IsNotFound()) {
+					// it is an error but we continue to make reason why
+					// exit(1);
+				} else if(!s.IsNotFound()) {
+					found++;
+					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
+					reads_done++;
+				}
+			}
+			else {
+				// write
+				if (FLAGS_benchmark_write_rate_limit > 0) {
+					thread->shared->write_rate_limiter->Request(
+							value_size_ + key_size_, Env::IO_HIGH,
+							nullptr /* stats*/, RateLimiter::OpType::kWrite);
+					thread->stats.ResetLastOpTime();
+				}
+				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+				if (!s.ok()) {
+					// it is an error but we continue to make reason why
+					// exit(1);
+				}
+				else {
+					writes_done++;
+					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+				}
+			}
+		}
+
+		// print msg to stat
+		char msg[100];
+		snprintf(msg, sizeof(msg), "( reads:%" PRIu64 " writes:%" PRIu64 \
+				" total:%" PRIu64 " found:%" PRIu64 ")",
+				reads_done, writes_done, readwrites_, found);
+		thread->stats.AddMessage(msg);
+	}
+
+
+  // This workload has a mix of 95/5 reads and updates
+  // Read/Update ratio: 95/5
+  // Default data size: 1 KB records
+  // Request distribution: zipfian
+  void YCSBWorkloadB(ThreadState* thread) {
+		ReadOptions options(FLAGS_verify_checksum, true);
+		RandomGenerator gen;
+		init_latestgen(FLAGS_num);
+		init_zipf_generator(0, FLAGS_num);
+
+		std::string value;
+		int64_t found = 0;
+
+		int64_t reads_done = 0;
+		int64_t writes_done = 0;
+		Duration duration(FLAGS_duration, 0);
+
+		std::unique_ptr<const char[]> key_guard;
+		Slice key = AllocateKey(&key_guard);
+
+		if (FLAGS_benchmark_write_rate_limit > 0) {
+			printf(">>>> FLAGS_benchmark_write_rate_limit YCSBB \n");
+			thread->shared->write_rate_limiter.reset(
+					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
+		}
+
+		// the number of iterations is the larger of read_ or write_
+		while (!duration.Done(1)) {
+			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+
+			long k;
+			if (FLAGS_YCSB_uniform_distribution){
+				// Generate number from uniform distribution
+				k = thread->rand.Next() % FLAGS_num;
+			} else { // default
+				k = nextValue() % FLAGS_num;
+			}
+			GenerateKeyFromInt(k, FLAGS_num, &key);
+
+			int next_op = thread->rand.Next() % 100;
+			if (next_op < 95) {
+				// read
+				Status s = db_with_cfh->db->Get(options, key, &value);
+				if (!s.ok() && !s.IsNotFound()) {
+					// it is an error but we continue to make reason why
+					// exit(1);
+				} else if(!s.IsNotFound()) {
+					found++;
+					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
+					reads_done++;
+				}
+			}
+			else {
+				// write
+				if (FLAGS_benchmark_write_rate_limit > 0) {
+					thread->shared->write_rate_limiter->Request(
+							value_size_ + key_size_, Env::IO_HIGH,
+							nullptr /* stats*/, RateLimiter::OpType::kWrite);
+					thread->stats.ResetLastOpTime();
+				}
+				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+				if (!s.ok()) {
+					// it is an error but we continue to make reason why
+					// exit(1);
+				}
+				else {
+					writes_done++;
+					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+				}
+			}
+		}
+
+		// print msg to stat
+		char msg[100];
+		snprintf(msg, sizeof(msg), "( reads:%" PRIu64 " writes:%" PRIu64 \
+				" total:%" PRIu64 " found:%" PRIu64 ")",
+				reads_done, writes_done, readwrites_, found);
+		thread->stats.AddMessage(msg);
+	}
+
+
+  // This workload is read-only workload
+  // Read/Update ratio: 100/0
+  // Default data size: 1 KB records
+  // Request distribution: zipfian
+  void YCSBWorkloadC(ThreadState* thread) {
+		ReadOptions options(FLAGS_verify_checksum, true);
+		RandomGenerator gen;
+		init_latestgen(FLAGS_num);
+		init_zipf_generator(0, FLAGS_num);
+
+		std::string value;
+		int64_t found = 0;
+
+		int64_t reads_done = 0;
+		int64_t writes_done = 0;
+		Duration duration(FLAGS_duration, 0);
+
+		std::unique_ptr<const char[]> key_guard;
+		Slice key = AllocateKey(&key_guard);
+
+		if (FLAGS_benchmark_write_rate_limit > 0) {
+			printf(">>>> FLAGS_benchmark_write_rate_limit YCSBB \n");
+			thread->shared->write_rate_limiter.reset(
+					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
+		}
+
+		// the number of iterations is the larger of read_ or write_
+		while (!duration.Done(1)) {
+			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+
+			long k;
+			if (FLAGS_YCSB_uniform_distribution){
+				// Generate number from uniform distribution
+				k = thread->rand.Next() % FLAGS_num;
+			} else { // default
+				k = nextValue() % FLAGS_num;
+			}
+			GenerateKeyFromInt(k, FLAGS_num, &key);
+
+			// no coin toss
+			// read
+			Status s = db_with_cfh->db->Get(options, key, &value);
+			if (!s.ok() && !s.IsNotFound()) {
+				// it is an error but we continue to make reason why
+				// exit(1);
+			} else if(!s.IsNotFound()) {
+				found++;
+				thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
+				reads_done++;
+			}
+		}
+
+		// print msg to stat
+		char msg[100];
+		snprintf(msg, sizeof(msg), "( reads:%" PRIu64 " writes:%" PRIu64 \
+				" total:%" PRIu64 " found:%" PRIu64 ")",
+				reads_done, writes_done, readwrites_, found);
+		thread->stats.AddMessage(msg);
+	}
+
 
 #ifndef ROCKSDB_LITE
   // This benchmark stress tests Transactions.  For a given --duration (or
