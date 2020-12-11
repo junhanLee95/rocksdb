@@ -1,0 +1,14 @@
+RocksDB:    version 6.1
+Date:       Fri Dec 11 16:53:42 2020
+CPU:        12 * Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz
+CPUCache:   12288 KB
+Received signal 11 (Segmentation fault)
+#0   ./db_bench(+0x57c05) [0x564a14802c05] ??	??:0	
+#1   ./db_bench(+0x57b2c) [0x564a14802b2c] ??	??:0	
+#2   ./db_bench(+0x5a73a) [0x564a1480573a] ??	??:0	
+#3   ./db_bench(+0x5fccc) [0x564a1480accc] ??	??:0	
+#4   ./db_bench(+0x5f2ed) [0x564a1480a2ed] ??	??:0	
+#5   ./db_bench(+0x44b9e) [0x564a147efb9e] ??	??:0	
+#6   ./db_bench(+0x432fa) [0x564a147ee2fa] ??	??:0	
+#7   /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0xe7) [0x7f5d2f5bfbf7] ??	??:0	
+#8   ./db_bench(+0x431fa) [0x564a147ee1fa] ??	??:0	
