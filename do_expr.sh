@@ -12,7 +12,7 @@ fixed_option="--db=db --key_size=128 --value_size=1024 --statistics"
 
 #benchmarks="readrandom,stats,levelstats,readrandommergerandom"
 benchmarks="ycsbwklda,stats,levelstats"
-options="--write_buffer_size=268435456 --num=100000000 --threads 1 --reads=100000000 --duration=60 --stats_interval_seconds=2 --batch_size=10 --merge_operator=stringappend --merge_operator=put --merge_operator=uint64add --compaction_queue_stat=true --latency_stat=true"
+options="--write_buffer_size=134217728 --max_background_jobs=10 --num=100000000 --threads 32 --reads=100000000 --duration=60 --stats_interval_seconds=1 --batch_size=1 --merge_operator=stringappend --merge_operator=put --merge_operator=uint64add --compaction_queue_stat=true --latency_stat=true"
 
 mkdir -p ${TEST_DIR}
 

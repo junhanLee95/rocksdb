@@ -773,6 +773,9 @@ DEFINE_bool(compaction_queue_stat, false,
 DEFINE_bool(latency_stat, false,
 						"Report latency stats every N seconds. N came from stats_interval_seconds. Enabled if FLAGS_histogram is set.");
 
+DEFINE_bool(internal_io_bandwidth_stat, false,
+						"Report internal io bandwidth stats every N seconds. N came from stats_interval_seconds.");
+
 DEFINE_bool(YCSB_uniform_distribution, false,
 						"Uniform key distribution for YCSB");
 
@@ -1726,28 +1729,25 @@ class Stats {
     last_op_finish_ = FLAGS_env->NowMicros();
   }
 
+	void AddIntervalHist(int64_t micros) {
+		interval_hist_->Add(micros);
+	}
+
   void FinishedOps(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops,
                    enum OperationType op_type = kOthers) {
     if (reporter_agent_) {
       reporter_agent_->ReportFinishedOps(num_ops);
     }
-    if (FLAGS_histogram || (FLAGS_stats_interval && FLAGS_latency_stat)) {
+    if (FLAGS_histogram) {
       uint64_t now = FLAGS_env->NowMicros();
       uint64_t micros = now - last_op_finish_;
 
-			if (FLAGS_histogram) {
-				if (hist_.find(op_type) == hist_.end())
-				{
-					auto hist_temp = std::make_shared<HistogramImpl>();
-					hist_.insert({op_type, std::move(hist_temp)});
-				}
-				hist_[op_type]->Add(micros);
+			if (hist_.find(op_type) == hist_.end())
+			{
+				auto hist_temp = std::make_shared<HistogramImpl>();
+				hist_.insert({op_type, std::move(hist_temp)});
 			}
-
-			// accumulate interval_histogram for stats_interval is on
-			if (FLAGS_stats_interval && FLAGS_latency_stat) {
-				interval_hist_->Add(micros);
-			}
+			hist_[op_type]->Add(micros);
 
       if (micros > 20000 && FLAGS_histogram && !FLAGS_stats_interval) {
         fprintf(stderr, "long op: %" PRIu64 " micros%30s\r", micros, "");
@@ -1839,6 +1839,7 @@ class Stats {
 								num_unscheduled_compactions);
 						strcat(msg_total, msg_cq);
 					}
+					
 
 					// msg time
 					snprintf(msg_time, sizeof(msg_time), "in (%.6f,%6f) seconds\n",
@@ -5811,6 +5812,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 		}
 
 
+		uint64_t start, end; // for latency stat
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
 			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
@@ -5827,11 +5829,20 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 50) {
 				// read
+				start = FLAGS_env->NowMicros();
 				Status s = db_with_cfh->db->Get(options, key, &value);
+				end = FLAGS_env->NowMicros();
+
+
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				} else if(!s.IsNotFound()) {
+					// add latency stat
+					// accumulate interval_histogram for stats_interval is on
+					if (FLAGS_stats_interval && FLAGS_latency_stat) {
+						thread->stats.AddIntervalHist(end - start);
+					}
 					found++;
 					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
 					reads_done++;
@@ -5845,12 +5856,19 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 							nullptr /* stats*/, RateLimiter::OpType::kWrite);
 					thread->stats.ResetLastOpTime();
 				}
+				start = FLAGS_env->NowMicros();
 				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+				end = FLAGS_env->NowMicros();
 				if (!s.ok()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				}
 				else {
+					// add latency stat
+					// accumulate interval_histogram for stats_interval is on
+					if (FLAGS_stats_interval && FLAGS_latency_stat) {
+						thread->stats.AddIntervalHist(end - start);
+					}
 					writes_done++;
 					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
 				}
@@ -5892,6 +5910,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
 		}
 
+
+		uint64_t start, end;
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
 			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
@@ -5907,12 +5927,20 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 95) {
+				start = FLAGS_env->NowMicros();
 				// read
 				Status s = db_with_cfh->db->Get(options, key, &value);
+				end = FLAGS_env->NowMicros();
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				} else if(!s.IsNotFound()) {
+					// add latency stat
+					// accumulate interval_histogram for stats_interval is on
+					if (FLAGS_stats_interval && FLAGS_latency_stat) {
+						thread->stats.AddIntervalHist(end - start);
+					}
+
 					found++;
 					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
 					reads_done++;
@@ -5926,12 +5954,22 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 							nullptr /* stats*/, RateLimiter::OpType::kWrite);
 					thread->stats.ResetLastOpTime();
 				}
+
+				start = FLAGS_env->NowMicros();
 				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+				end = FLAGS_env->NowMicros();
 				if (!s.ok()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				}
 				else {
+					// add latency stat
+					// accumulate interval_histogram for stats_interval is on
+					if (FLAGS_stats_interval && FLAGS_latency_stat) {
+						thread->stats.AddIntervalHist(end - start);
+					}
+
+
 					writes_done++;
 					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
 				}
@@ -5973,6 +6011,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
 		}
 
+		uint64_t start, end;
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
 			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
@@ -5987,12 +6026,20 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
 			// no coin toss
+			start = FLAGS_env->NowMicros();
 			// read
 			Status s = db_with_cfh->db->Get(options, key, &value);
+			end = FLAGS_env->NowMicros();
 			if (!s.ok() && !s.IsNotFound()) {
 				// it is an error but we continue to make reason why
 				// exit(1);
 			} else if(!s.IsNotFound()) {
+				// add latency stat
+				// accumulate interval_histogram for stats_interval is on
+				if (FLAGS_stats_interval && FLAGS_latency_stat) {
+					thread->stats.AddIntervalHist(end - start);
+				}
+
 				found++;
 				thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
 				reads_done++;
