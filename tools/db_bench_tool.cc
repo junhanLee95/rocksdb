@@ -5813,7 +5813,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
-			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+			DB* db= SelectDB(thread);
 
 			long k;
 			if (FLAGS_YCSB_uniform_distribution){
@@ -5827,13 +5827,13 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 50) {
 				// read
-				Status s = db_with_cfh->db->Get(options, key, &value);
+				Status s = db->Get(options, key, &value);
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				} else if(!s.IsNotFound()) {
 					found++;
-					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
+					thread->stats.FinishedOps(nullptr, db, 1, kRead);
 					reads_done++;
 				}
 			}
@@ -5845,14 +5845,14 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 							nullptr /* stats*/, RateLimiter::OpType::kWrite);
 					thread->stats.ResetLastOpTime();
 				}
-				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+				Status s = db->Put(write_options_, key, gen.Generate(value_size_));
 				if (!s.ok()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				}
 				else {
 					writes_done++;
-					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+					thread->stats.FinishedOps(nullptr, db, 1, kWrite);
 				}
 			}
 		}
@@ -5894,7 +5894,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
-			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+			DB* db = SelectDB(thread);
 
 			long k;
 			if (FLAGS_YCSB_uniform_distribution){
@@ -5908,13 +5908,13 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 95) {
 				// read
-				Status s = db_with_cfh->db->Get(options, key, &value);
+				Status s = db->Get(options, key, &value);
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				} else if(!s.IsNotFound()) {
 					found++;
-					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
+					thread->stats.FinishedOps(nullptr, db, 1, kRead);
 					reads_done++;
 				}
 			}
@@ -5926,14 +5926,14 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 							nullptr /* stats*/, RateLimiter::OpType::kWrite);
 					thread->stats.ResetLastOpTime();
 				}
-				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+				Status s = db->Put(write_options_, key, gen.Generate(value_size_));
 				if (!s.ok()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				}
 				else {
 					writes_done++;
-					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+					thread->stats.FinishedOps(nullptr, db, 1, kWrite);
 				}
 			}
 		}
@@ -5975,7 +5975,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
-			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+			DB* db = SelectDB(thread);
 
 			long k;
 			if (FLAGS_YCSB_uniform_distribution){
@@ -5988,13 +5988,13 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
 			// no coin toss
 			// read
-			Status s = db_with_cfh->db->Get(options, key, &value);
+			Status s = db->Get(options, key, &value);
 			if (!s.ok() && !s.IsNotFound()) {
 				// it is an error but we continue to make reason why
 				// exit(1);
 			} else if(!s.IsNotFound()) {
 				found++;
-				thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
+				thread->stats.FinishedOps(nullptr, db, 1, kRead);
 				reads_done++;
 			}
 		}
