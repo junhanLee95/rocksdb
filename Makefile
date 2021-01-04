@@ -9,9 +9,13 @@
 BASH_EXISTS := $(shell which bash)
 SHELL := $(shell which bash)
 
+JAVA_INCLUDE = -I${JAVA_HOME}/inclue -I${JAVA_HOME}/inclue/linux
+CEPH_INCLUDE = -I${CEPH_HOME}/src -I${CEPH_HOME}/build/include -I${CEPH_HOME}/build/boost/include
+#CEPH_STATIC_LIBRARIES = ${CEPH_HOME}/build/lib/*.a ${CEPH_HOME}/build/boost/lib/*.a 
+
 CLEAN_FILES = # deliberately empty, so we can append below.
-CFLAGS += ${EXTRA_CFLAGS}
-CXXFLAGS += ${EXTRA_CXXFLAGS}
+CFLAGS += ${EXTRA_CFLAGS} ${JAVA_INCLUDE} ${CEPH_INCLUDE} 
+CXXFLAGS += ${EXTRA_CXXFLAGS} ${JAVA_INCLUDE} ${CEPH_INCLUDE} 
 LDFLAGS += $(EXTRA_LDFLAGS)
 MACHINE ?= $(shell uname -m)
 ARFLAGS = ${EXTRA_ARFLAGS} rs
@@ -142,7 +146,7 @@ ifeq ($(DEBUG_LEVEL),0)
 OPT += -DNDEBUG
 
 ifneq ($(USE_RTTI), 1)
-	CXXFLAGS += -fno-rtti
+	#CXXFLAGS += -fno-rtti
 else
 	CXXFLAGS += -DROCKSDB_USE_RTTI
 endif
@@ -150,7 +154,7 @@ else
 ifneq ($(USE_RTTI), 0)
 	CXXFLAGS += -DROCKSDB_USE_RTTI
 else
-	CXXFLAGS += -fno-rtti
+	#CXXFLAGS += -fno-rtti
 endif
 
 $(warning Warning: Compiling in debug mode. Don't use the resulting binary in production)
@@ -307,7 +311,7 @@ endif
 # This (the first rule) must depend on "all".
 default: all
 
-WARNING_FLAGS = -W -Wextra -Wall -Wsign-compare -Wshadow \
+#WARNING_FLAGS = -W -Wextra -Wall -Wsign-compare -Wshadow \
   -Wunused-parameter
 
 ifeq ($(PLATFORM), OS_OPENBSD)
@@ -315,7 +319,8 @@ ifeq ($(PLATFORM), OS_OPENBSD)
 endif
 
 ifndef DISABLE_WARNING_AS_ERROR
-	WARNING_FLAGS += -Werror
+	#WARNING_FLAGS += -Werror
+	WARNING_FLAGS += -Wno-error
 endif
 
 
@@ -658,6 +663,7 @@ SHARED_ASM_OBJECTS = $(LIB_SOURCES_ASM:.S=.o)
 SHARED_C_LIBOBJECTS = $(patsubst %.o,shared-objects/%.o,$(SHARED_C_OBJECTS))
 SHARED_ASM_LIBOBJECTS = $(patsubst %.o,shared-objects/%.o,$(SHARED_ASM_OBJECTS))
 shared_libobjects = $(patsubst %,shared-objects/%,$(LIB_CC_OBJECTS))
+shared_libobjects += $(LIB_CEPH_CC_OBJECTS)
 else
 shared_libobjects = $(patsubst %,shared-objects/%,$(LIBOBJECTS))
 endif
@@ -1764,6 +1770,7 @@ endif
 
 # A version of each $(LIBOBJECTS) compiled with -fPIC and a fixed set of static compression libraries
 java_static_libobjects = $(patsubst %,jls/%,$(LIB_CC_OBJECTS))
+java_static_libobjects += $(LIB_CEPH_CC_OBJECTS)
 CLEAN_FILES += jls
 java_static_all_libobjects = $(java_static_libobjects)
 
@@ -1798,7 +1805,7 @@ rocksdbjavastatic: $(java_static_all_libobjects)
 	$(CXX) $(CXXFLAGS) -I./java/. $(JAVA_INCLUDE) -shared -fPIC \
 	  -o ./java/target/$(ROCKSDBJNILIB) $(JNI_NATIVE_SOURCES) \
 	  $(java_static_all_libobjects) $(COVERAGEFLAGS) \
-	  $(JAVA_COMPRESSIONS) $(JAVA_STATIC_LDFLAGS)
+	  $(JAVA_COMPRESSIONS) $(CEPH_STATIC_LIBRARIES) $(JAVA_STATIC_LDFLAGS)
 	cd java/target;if [ "$(DEBUG_LEVEL)" == "0" ]; then \
 		strip $(STRIPFLAGS) $(ROCKSDBJNILIB); \
 	fi
@@ -1809,9 +1816,10 @@ rocksdbjavastatic: $(java_static_all_libobjects)
 	cd java/src/main/java;jar -cf ../../../target/$(ROCKSDB_SOURCES_JAR) org
 
 rocksdbjavastaticrelease: rocksdbjavastatic
-	cd java/crossbuild && vagrant destroy -f && vagrant up linux32 && vagrant halt linux32 && vagrant up linux64 && vagrant halt linux64
+	# cd java/crossbuild && vagrant destroy -f && vagrant up linux32 && vagrant halt linux32 && vagrant up linux64 && vagrant halt linux64
 	cd java;jar -cf target/$(ROCKSDB_JAR_ALL) HISTORY*.md
-	cd java/target;jar -uf $(ROCKSDB_JAR_ALL) librocksdbjni-*.so librocksdbjni-*.jnilib
+	# cd java/target;jar -uf $(ROCKSDB_JAR_ALL) librocksdbjni-*.so librocksdbjni-*.jnilib
+	cd java/target;jar -uf $(ROCKSDB_JAR_ALL) librocksdbjni-*.so 
 	cd java/target/classes;jar -uf ../$(ROCKSDB_JAR_ALL) org/rocksdb/*.class org/rocksdb/util/*.class
 
 rocksdbjavastaticreleasedocker: rocksdbjavastatic rocksdbjavastaticdockerx86 rocksdbjavastaticdockerx86_64
@@ -1867,6 +1875,7 @@ JAVA_ASM_LIBOBJECTS = $(patsubst %.S.o,jl/%.S.o,$(JAVA_ASM_OBJECTS))
 endif
 
 java_libobjects = $(patsubst %,jl/%,$(LIB_CC_OBJECTS))
+java_libobjects += $(LIB_CEPH_CC_OBJECTS)
 CLEAN_FILES += jl
 java_all_libobjects = $(java_libobjects)
 
