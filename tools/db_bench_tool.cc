@@ -1115,6 +1115,8 @@ DEFINE_uint64(stats_history_buffer_size,
               rocksdb::Options().stats_history_buffer_size,
               "Max number of stats snapshots to keep in memory");
 
+DEFINE_bool(bluestore_prefix_key_random, false, "randomly generate prefix key for bluestore");
+
 enum RepFactory {
   kSkipList,
   kPrefixHash,
@@ -2044,6 +2046,7 @@ class Benchmark {
   int key_size_;
   int prefix_size_;
   int64_t keys_per_prefix_;
+  bool bluestore_prefix_key_random_;
   int64_t entries_per_batch_;
   int64_t writes_before_delete_range_;
   int64_t writes_per_range_tombstone_;
@@ -2381,7 +2384,8 @@ class Benchmark {
         value_size_(FLAGS_value_size),
         key_size_(FLAGS_key_size),
         prefix_size_(FLAGS_prefix_size),
-        keys_per_prefix_(FLAGS_keys_per_prefix),
+				keys_per_prefix_(FLAGS_keys_per_prefix),
+				bluestore_prefix_key_random_(FLAGS_bluestore_prefix_key_random),
         entries_per_batch_(1),
         reads_(FLAGS_reads < 0 ? FLAGS_num : FLAGS_reads),
         read_random_exp_range_(0.0),
@@ -2511,6 +2515,14 @@ class Benchmark {
       }
       pos += prefix_size_;
     }
+		else if (bluestore_prefix_key_random_) {
+			int prefix_type = rand() % 13;
+			pos[0] = PREFIX_NAMES[prefix_type].at(0); // debug
+			pos[1] = ':'; // debug
+			prefix_type = rand() % 13;
+			pos[2] = PREFIX_NAMES[prefix_type].at(0); // debug
+			pos += 3;
+		}
 
     int bytes_to_fill = std::min(key_size_ - static_cast<int>(pos - start), 8);
     if (port::kLittleEndian) {

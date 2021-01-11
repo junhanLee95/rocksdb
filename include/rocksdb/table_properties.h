@@ -138,8 +138,32 @@ class TablePropertiesCollectorFactory {
 
 // TableProperties contains a bunch of read-only properties of its associated
 // table.
+struct PrefixKeyTableProperties {
+ public:
+	std::string prefix_key_str = "";
+  // total raw key size
+  uint64_t raw_key_size = 0;
+  // total raw value size
+  uint64_t raw_value_size = 0;
+  // the number of entries in this table
+  uint64_t num_entries = 0;
+  // the number of deletions in the table
+  uint64_t num_deletions = 0;
+  // the number of merge operands in the table
+  uint64_t num_merge_operands = 0;
+  // the number of range deletions in this table
+  uint64_t num_range_deletions = 0;
+	// new
+	std::string largest_key_str;
+	std::string smallest_key_str;
+};
+
+
+// TableProperties contains a bunch of read-only properties of its associated
+// table.
 struct TableProperties {
  public:
+	struct PrefixKeyTableProperties prefix_key_props[PREFIX_KEY_COUNT];
   // the total size of all data blocks.
   uint64_t data_size = 0;
   // the size of index block.

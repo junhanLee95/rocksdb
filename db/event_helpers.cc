@@ -100,6 +100,22 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
               << "num_entries" << table_properties.num_entries
               << "filter_policy_name" << table_properties.filter_policy_name;
 
+			// prefix key properties
+			for (unsigned int i=0; i<11; i++) {
+				const PrefixKeyTableProperties ptp = table_properties.prefix_key_props[i];
+
+				jwriter << "| prefix_key_type" << ptp.prefix_key_str << "raw_key_size" << ptp.raw_key_size << "raw_average_key_size"
+					<< SafeDivide(ptp.raw_key_size,
+							ptp.num_entries)
+					<< "raw_value_size" << ptp.raw_value_size
+					<< "raw_average_value_size"
+					<< SafeDivide(ptp.raw_value_size,
+							ptp.num_entries)
+					<< "num_entries" << ptp.num_entries
+					<< "largest" << ptp.largest_key_str
+					<< "smallest" << ptp.smallest_key_str;
+			}
+
       // user collected properties
       for (const auto& prop : table_properties.readable_properties) {
         jwriter << prop.first << prop.second;
