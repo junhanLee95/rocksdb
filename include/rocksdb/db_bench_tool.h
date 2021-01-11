@@ -5,5 +5,5 @@
 #pragma once
 
 namespace rocksdb {
-int db_bench_tool(int argc, char** argv, rocksdb::Env* bluefs_env);
+int db_bench_tool(int argc, char** argv);
 }  // namespace rocksdb

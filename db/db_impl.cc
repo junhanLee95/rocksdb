@@ -250,10 +250,12 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
   // is called by client and this seqnum is advanced.
   preserve_deletes_seqnum_.store(0);
  
+  std::string home_dir("/home/ceph/rocksdb_trace/");
+  std::string trace_fn = home_dir + dbname;
   TraceOptions trace_options_;
   std::unique_ptr<TraceWriter> trace_writer;
   Status s = NewFileTraceWriter( Env::Default(), EnvOptions(), \
-				 "/home/ceph/temp", &trace_writer);
+				 trace_fn.c_str(), &trace_writer);
   if (!s.ok()) {
     fprintf(stderr, "[DHDEBUG] Encountered an error starting a trace, %d\n",s.code());
     exit(1);
