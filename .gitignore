@@ -3,8 +3,11 @@ make_config.mk
 db/LOCK
 db/LOG
 db/CURRENT
+db/IDENTITY
 db/MANIFEST*
 db/OPTIONS*
+db/*.log
+db/*.sst
 build_db.sh
 do_expr_thread.sh
 mytrace

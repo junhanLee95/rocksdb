@@ -31,9 +31,83 @@
 #include "rocksdb/cleanable.h"
 
 namespace rocksdb {
+	enum PrefixKeyType : unsigned int {
+		PREFIX_SUPER = 0,
+		PREFIX_STAT,
+		PREFIX_COLL,
+		PREFIX_OBJ,
+		PREFIX_OMAP,
+		PREFIX_PGMETA_OMAP,
+		PREFIX_DEFFERED,
+		PREFIX_ALLOC,
+		PREFIX_ALLOC_BITMAP,
+		PREFIX_SHARED_BLOB,
+		PREFIX_UNKNOWN, // not defined but for debugging
+		PREFIX_KEY_COUNT
+	};
+	static std::string PREFIX_NAME_SUPER = "S";
+	static std::string PREFIX_NAME_STAT = "T";
+	static std::string PREFIX_NAME_COLL = "C";
+	static std::string PREFIX_NAME_OBJ = "O";
+	static std::string PREFIX_NAME_OMAP = "M";
+	static std::string PREFIX_NAME_PGMETA_OMAP = "P";
+	static std::string PREFIX_NAME_DEFFERED = "L";
+	static std::string PREFIX_NAME_ALLOC = "B";
+	static std::string PREFIX_NAME_ALLOC_BITMAP = "b";
+	static std::string PREFIX_NAME_SHARED_BLOB = "X";
+	static std::string PREFIX_NAME_UNKNOWN = "U";
+
+	static std::string PREFIX_NAMES[PREFIX_KEY_COUNT] = {
+		PREFIX_NAME_SUPER,
+		PREFIX_NAME_STAT,
+		PREFIX_NAME_COLL,
+		PREFIX_NAME_OBJ,
+		PREFIX_NAME_OMAP,
+		PREFIX_NAME_PGMETA_OMAP,
+		PREFIX_NAME_DEFFERED,
+		PREFIX_NAME_ALLOC,
+		PREFIX_NAME_ALLOC_BITMAP,
+		PREFIX_NAME_SHARED_BLOB,
+		PREFIX_NAME_UNKNOWN
+	};
 
 class Slice {
  public:
+
+	 PrefixKeyType ExtractPrefixKeyType(void) const{
+		 if (this->starts_with(Slice(PREFIX_NAME_SUPER))) {
+			 return PREFIX_SUPER;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_STAT))) {
+			 return PREFIX_STAT;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_COLL))) {
+			 return PREFIX_COLL;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_OBJ))) {
+			 return PREFIX_OBJ;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_OMAP))) {
+			 return PREFIX_OMAP;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_PGMETA_OMAP))) {
+			 return PREFIX_PGMETA_OMAP;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_DEFFERED))) {
+			 return PREFIX_DEFFERED;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_ALLOC))) {
+			 return PREFIX_ALLOC;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_ALLOC_BITMAP))) {
+			 return PREFIX_ALLOC_BITMAP;
+		 }
+		 if (this->starts_with(Slice(PREFIX_NAME_SHARED_BLOB))) {
+			 return PREFIX_SHARED_BLOB;
+		 }
+		 return PREFIX_UNKNOWN;
+	 }
+
   // Create an empty slice.
   Slice() : data_(""), size_(0) {}
 
