@@ -5692,7 +5692,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   }
 };
 
-int db_bench_tool(int argc, char** argv) {
+int db_bench_tool(int argc, char** argv, rocksdb::Env* bluefs_env) {
   rocksdb::port::InstallStackTraceHandler();
   static bool initialized = false;
   if (!initialized) {
@@ -5792,6 +5792,10 @@ int db_bench_tool(int argc, char** argv) {
     // When both are set then FLAGS_stats_interval determines the frequency
     // at which the timer is checked for FLAGS_stats_interval_seconds
     FLAGS_stats_interval = 1000;
+  }
+
+  if (bluefs_env) {
+    FLAGS_env = bluefs_env;
   }
 
   rocksdb::Benchmark benchmark;

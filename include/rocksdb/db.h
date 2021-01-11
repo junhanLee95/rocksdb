@@ -190,7 +190,7 @@ class DB {
                                    const std::string& name,
                                    std::vector<std::string>* column_families);
 
-  DB() { }
+  DB() {};
   virtual ~DB();
 
   // Create a column_family and return the handle of column family
