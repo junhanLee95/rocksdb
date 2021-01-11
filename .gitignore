@@ -1,5 +1,15 @@
 make_config.mk
 
+db/LOCK
+db/LOG
+db/CURRENT
+db/MANIFEST*
+db/OPTIONS*
+build_db.sh
+do_expr_thread.sh
+mytrace
+cscope.files
+
 *.a
 *.arc
 *.d
