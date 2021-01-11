@@ -252,6 +252,21 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
   // we won't drop any deletion markers until SetPreserveDeletesSequenceNumber()
   // is called by client and this seqnum is advanced.
   preserve_deletes_seqnum_.store(0);
+ 
+  TraceOptions trace_options_;
+  std::unique_ptr<TraceWriter> trace_writer;
+  Status s = NewFileTraceWriter( Env::Default(), EnvOptions(), \
+				 "/home/ceph/temp", &trace_writer);
+  if (!s.ok()) {
+    fprintf(stderr, "[DHDEBUG] Encountered an error starting a trace, %d\n",s.code());
+    exit(1);
+  }
+
+  s = StartTrace(trace_options_, std::move(trace_writer));
+  if (!s.ok()) {
+    fprintf(stderr, "[DHDEBUG] Encountered an error linking a trace, %d\n",s.code());
+    exit(1);
+  } 
 }
 
 Status DBImpl::Resume() {
@@ -587,6 +602,10 @@ Status DBImpl::CloseImpl() { return CloseHelper(); }
 
 DBImpl::~DBImpl() {
   if (!closed_) {
+    Status s = EndTrace();
+    if (!s.ok()) {
+      fprintf(stderr, "[DHDEBUG] Encountered an error ending a trace, %d\n",s.code());
+    } 
     closed_ = true;
     CloseHelper();
   }
