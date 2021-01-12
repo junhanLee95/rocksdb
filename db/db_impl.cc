@@ -253,20 +253,34 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
   // is called by client and this seqnum is advanced.
   preserve_deletes_seqnum_.store(0);
  
-  std::string home_dir("/home/ceph/rocksdb_trace/");
-  std::string trace_fn = home_dir + dbname;
+  std::string home_dir("/var/lib/ceph/osd/trace/");
   TraceOptions trace_options_;
   std::unique_ptr<TraceWriter> trace_writer;
+
+  for ( int i = 0; i < 30 ; i++ ) {
+    trace_fn = home_dir + dbname + std::to_string(i);
+    if (access(trace_fn.c_str(), F_OK) < 0) {
+      fprintf(stdout,"[INFO] Trace file name: %s\n", trace_fn.c_str());
+      break;
+    }
+    if (i == 29) {
+      fprintf(stderr, "[ERROR] Encountered an error finding a trace file name\n");
+      exit(1);
+    }
+  }
+
   Status s = NewFileTraceWriter( Env::Default(), EnvOptions(), \
-				 trace_fn.c_str(), &trace_writer);
+				 trace_fn, &trace_writer);
   if (!s.ok()) {
-    fprintf(stderr, "[DHDEBUG] Encountered an error starting a trace, %d\n",s.code());
+    fprintf(stderr, "[ERROR] Encountered an error starting a trace, %s\n", 
+		s.ToString().c_str());
     exit(1);
   }
 
   s = StartTrace(trace_options_, std::move(trace_writer));
   if (!s.ok()) {
-    fprintf(stderr, "[DHDEBUG] Encountered an error linking a trace, %d\n",s.code());
+    fprintf(stderr, "[ERROR] Encountered an error linking a trace, %s\n",
+		s.ToString().c_str());
     exit(1);
   } 
 }
@@ -605,8 +619,9 @@ Status DBImpl::CloseImpl() { return CloseHelper(); }
 DBImpl::~DBImpl() {
   if (!closed_) {
     Status s = EndTrace();
+    fprintf(stdout, "[INFO] Tracing end, trace file name: %s\n", trace_fn.c_str());
     if (!s.ok()) {
-      fprintf(stderr, "[DHDEBUG] Encountered an error ending a trace, %d\n",s.code());
+      fprintf(stderr, "[DEBUG] Encountered an error ending a trace, %s\n",s.ToString().c_str());
     } 
     closed_ = true;
     CloseHelper();
