@@ -256,6 +256,7 @@ class PosixEnv : public Env {
     Status s;
     int fd = -1;
     int flags = (reopen) ? (O_CREAT | O_APPEND) : (O_CREAT | O_TRUNC);
+    
     // Direct IO mode with O_DIRECT flag or F_NOCAHCE (MAC OSX)
     if (options.use_direct_writes && !options.use_mmap_writes) {
       // Note: we should avoid O_APPEND here due to ta the following bug:
@@ -288,6 +289,7 @@ class PosixEnv : public Env {
     } while (fd < 0 && errno == EINTR);
 
     if (fd < 0) {
+      perror("open"); fflush(stderr);
       s = IOError("While open a file for appending", fname, errno);
       return s;
     }

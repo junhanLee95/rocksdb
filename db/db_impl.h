@@ -73,6 +73,8 @@ struct MemTableInfo;
 
 class DBImpl : public DB {
  public:
+  std::string trace_fn;
+
   DBImpl(const DBOptions& options, const std::string& dbname,
          const bool seq_per_batch = false, const bool batch_per_txn = true);
   virtual ~DBImpl();
