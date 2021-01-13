@@ -2516,10 +2516,10 @@ class Benchmark {
       pos += prefix_size_;
     }
 		else if (bluestore_prefix_key_random_) {
-			int prefix_type = rand() % 13;
+			int prefix_type = rand() % PREFIX_KEY_COUNT;
 			pos[0] = PREFIX_NAMES[prefix_type].at(0); // debug
 			pos[1] = ':'; // debug
-			prefix_type = rand() % 13;
+			prefix_type = rand() % PREFIX_KEY_COUNT;
 			pos[2] = PREFIX_NAMES[prefix_type].at(0); // debug
 			pos += 3;
 		}
