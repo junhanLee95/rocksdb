@@ -16,12 +16,15 @@
 
 #include "fs/bluefs.h"
 
+static bluefs *globalfsp = nullptr;
+
 void bluefs::validate_path(
   CephContext *cct, 
   bool bluefs)
 {
   BlueStore bluestore(cct, path);
   string type;
+
   int r = bluestore.read_meta("type", &type);
   if (r < 0) {
     cerr << "failed to load os-type: " << cpp_strerror(r) << std::endl;
@@ -163,10 +166,13 @@ BlueFS *bluefs::open_bluefs(
   CephContext *cct,
   const vector<string>& devs)
 {
-  validate_path(cct, true);
+  //validate_path(cct, true);
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-5\n"); fflush(stdout);
   BlueFS *fs = new BlueFS(cct);
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-6\n"); fflush(stdout);
 
   add_devices(fs, cct, devs);
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-7\n"); fflush(stdout);
 
   int r = fs->mount();
   if (r < 0) {
@@ -174,6 +180,7 @@ BlueFS *bluefs::open_bluefs(
 	 << std::endl;
     exit(EXIT_FAILURE);
   }
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-8\n");
   return fs;
 }
 
@@ -209,23 +216,27 @@ void bluefs::mount(
   void)
 {
   vector<string> devs;
-  string action;
+  //string action;
 
-  action="bluefs-db-bench";
-
+  //action="bluefs-db-bench";
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-1\n");
   vector<const char*> args;
   args.push_back("--no-log-to-stderr");
   args.push_back("--err-to-stderr");
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
 			 CODE_ENVIRONMENT_UTILITY,
 			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-2\n");
 
   common_init_finish(cct.get());
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-3\n");
 
   inferring_bluefs_devices(devs);
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-4\n");
 
-  log_dump(cct.get(), devs);
+  //log_dump(cct.get(), devs);
   bluefsp = open_bluefs(cct.get(), devs); 
+  fprintf(stdout,"[DHINFO] HIHIHIHIHIH1-8\n");
   env = new BlueRocksEnv(bluefsp);
 }
 
@@ -240,3 +251,29 @@ void bluefs::umount(
 rocksdb::Env *bluefs::get_env() {
   return env;
 }
+
+void StartBluefs() {
+  if (!globalfsp) {
+    fprintf(stdout,"[DHINFO] Create & Mount Bluefs\n");
+    globalfsp = new bluefs("/var/lib/ceph/osd/ceph-4");
+    globalfsp->mount();
+  }
+}
+
+rocksdb::Env *GetBluefsEnv() {
+  if (!globalfsp) 
+    fprintf(stdout,"[DHERROR] NONONNONON\n");
+
+  fprintf(stdout,"[DHINFO] HIHIHIHIHI2\n");
+  return globalfsp->get_env();
+}
+
+void EndBluefs() {
+  return;
+  if (globalfsp) {
+    fprintf(stdout,"[DHINFO] Umount & Delete Bluefs\n");
+    globalfsp->umount();
+    globalfsp = nullptr;
+  }
+}
+

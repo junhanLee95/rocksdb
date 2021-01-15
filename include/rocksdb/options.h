@@ -28,6 +28,8 @@
 #undef max
 #endif
 
+class bluefs;
+
 namespace rocksdb {
 
 class Cache;
@@ -786,6 +788,8 @@ struct DBOptions {
   DBOptions();
   // Create DBOptions from Options
   explicit DBOptions(const Options& options);
+
+  ~DBOptions();
 
   void Dump(Logger* log) const;
 

@@ -34,6 +34,8 @@
 #include "table/block_based_table_factory.h"
 #include "util/compression.h"
 
+#include "fs/bluefs.h"
+
 namespace rocksdb {
 
 AdvancedColumnFamilyOptions::AdvancedColumnFamilyOptions() {
@@ -104,9 +106,18 @@ ColumnFamilyOptions::ColumnFamilyOptions()
 ColumnFamilyOptions::ColumnFamilyOptions(const Options& options)
     : ColumnFamilyOptions(*static_cast<const ColumnFamilyOptions*>(&options)) {}
 
-DBOptions::DBOptions() {}
+DBOptions::DBOptions() {
+  StartBluefs();
+  fprintf(stdout,"[DHINFO] HIHIHIHIHI2\n");
+  env = GetBluefsEnv();
+  fprintf(stdout,"[DHINFO] HIHIHIHIHI3\n");
+}
 DBOptions::DBOptions(const Options& options)
     : DBOptions(*static_cast<const DBOptions*>(&options)) {}
+
+DBOptions::~DBOptions() {
+  EndBluefs();
+}
 
 void DBOptions::Dump(Logger* log) const {
     ImmutableDBOptions(*this).Dump(log);

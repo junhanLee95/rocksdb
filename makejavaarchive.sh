@@ -11,7 +11,8 @@ export JAVA_HOME="/usr/lib/jvm/java-openjdk/"
 
 if [ ! -f "java/test-libs/assertj-core-1.7.1.jar" ]; then
 	wget https://repo1.maven.org/maven2/org/assertj/assertj-core/1.7.1/assertj-core-1.7.1.jar
-	mv assertj-core-1.7.1.jar java/test-libs
+	mkdir -p java/test-libs
+	mv assertj-core-1.7.1.jar java/test-libs/
 	echo "[COMPILE PROCESS] Download the additional files"
 fi
 

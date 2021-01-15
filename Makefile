@@ -12,10 +12,11 @@ SHELL := $(shell which bash)
 JAVA_INCLUDE = -I${JAVA_HOME}/inclue -I${JAVA_HOME}/inclue/linux
 CEPH_INCLUDE = -I${CEPH_HOME}/src -I${CEPH_HOME}/build/include -I${CEPH_HOME}/build/boost/include
 CEPH_LIBRARY = ${CEPH_HOME}/build/lib/libos.a ${CEPH_HOME}/build/lib/libcommon.a ${CEPH_HOME}/build/lib/libglobal.a \
-	       ${CEPH_HOME}/build/lib/libglobal-static.a \
-	       ${CEPH_HOME}/build/boost/lib/libboost_*.a \
-		-ldl -lcrypto -lssl -lnss3 -lnspr4 -lblkid -laio -ludev -lresolv -lleveldb 
-CEPH_LIBOBJECTS = ${CEPH_HOME}/build/src/common/CMakeFiles/common-common-objs.dir/ceph_crypto.cc.o \
+	       ${CEPH_HOME}/build/lib/libglobal-static.a ${CEPH_HOME}/build/boost/lib/libboost_*.a \
+               -lboost_iostreams -lz -ldl -lcrypto -lssl -lnss3 -lnspr4 -lblkid -laio -ludev -lresolv -lleveldb 
+CEPH_LIBOBJECTS = ${CEPH_HOME}/build/src/common/CMakeFiles/common-common-objs.dir/*.cc.o \
+		  ${CEPH_HOME}/build/src/common/CMakeFiles/common_buffer_obj.dir/buffer.cc.o \
+		  ${CEPH_HOME}/build/src/msg/CMakeFiles/common-msg-objs.dir/Message.cc.o \
 		  ${CEPH_HOME}/build/src/common/CMakeFiles/common_prioritycache_obj.dir/PriorityCache.cc.o \
 		  ${CEPH_HOME}/build/src/perfglue/CMakeFiles/heap_profiler.dir/heap_profiler.cc.o \
 		  ${CEPH_HOME}/build/src/common/CMakeFiles/crc32.dir/*.o \
@@ -1820,7 +1821,7 @@ rocksdbjavastatic: $(java_static_all_libobjects)
 	$(CXX) $(CXXFLAGS) -I./java/. $(JAVA_INCLUDE) -shared -fPIC \
 	  -o ./java/target/$(ROCKSDBJNILIB) $(JNI_NATIVE_SOURCES) \
 	  $(java_static_all_libobjects) $(COVERAGEFLAGS) $(CEPH_LIBOBJECTS)\
-	  $(JAVA_COMPRESSIONS) $(CEPH_STATIC_LIBRARIES) $(JAVA_STATIC_LDFLAGS)
+	  $(JAVA_COMPRESSIONS) $(CEPH_LIBRARY) $(JAVA_STATIC_LDFLAGS) 
 	cd java/target;if [ "$(DEBUG_LEVEL)" == "0" ]; then \
 		strip $(STRIPFLAGS) $(ROCKSDBJNILIB); \
 	fi

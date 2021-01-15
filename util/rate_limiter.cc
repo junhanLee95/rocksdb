@@ -264,6 +264,10 @@ void GenericRateLimiter::Refill() {
 
 int64_t GenericRateLimiter::CalculateRefillBytesPerPeriod(
     int64_t rate_bytes_per_sec) {
+  if (rate_bytes_per_sec == 0) {
+    fprintf(stdout,"[DHERROR] Is it zero??? %d\n", rate_bytes_per_sec);
+    rate_bytes_per_sec = 1048576;
+  }
   if (port::kMaxInt64 / rate_bytes_per_sec < refill_period_us_) {
     // Avoid unexpected result in the overflow case. The result now is still
     // inaccurate but is a number that is large enough.

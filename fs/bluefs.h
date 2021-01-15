@@ -35,3 +35,8 @@ class bluefs {
   void log_dump(CephContext *cct, const vector<string>& devs);
   void inferring_bluefs_devices(vector<string>& devs); 
 };
+
+
+void StartBluefs(); 
+rocksdb::Env *GetBluefsEnv();
+void EndBluefs();

@@ -23,8 +23,6 @@
 #include "rocksdb/types.h"
 #include "rocksjni/portal.h"
 
-#include "fs/bluefs.h"
-
 #ifdef min
 #undef min
 #endif
@@ -41,9 +39,6 @@ jlong rocksdb_open_helper(
   }
 
   auto* opt = reinterpret_cast<rocksdb::Options*>(jopt_handle);
-  bluefs *fsp = new bluefs(db_path);
-  opt->env = fsp->get_env();
-
   rocksdb::DB* db = nullptr;
   rocksdb::Status s = open_fn(*opt, db_path, &db);
 
