@@ -5,6 +5,8 @@ db/LOG
 db/CURRENT
 db/MANIFEST*
 db/OPTIONS*
+db/*.sst
+db/*.log
 build_db.sh
 do_expr_thread.sh
 mytrace
