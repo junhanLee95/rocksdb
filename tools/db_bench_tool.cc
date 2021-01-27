@@ -125,6 +125,7 @@ DEFINE_string(
     "fillseekseq,"
     "randomtransaction,"
     "randomreplacekeys,"
+    "ycsbwkldl,"
     "ycsbwklda,"
     "ycsbwkldb,"
     "ycsbwkldc,"
@@ -2863,7 +2864,9 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         method = &Benchmark::Compact;
       } else if (name == "compactall") {
         CompactAll();
-      } else if (name == "ycsbwklda") {
+      } else if (name == "ycsbwkldl") {
+				method = &Benchmark::YCSBWorkloadL;
+			} else if (name == "ycsbwklda") {
 				method = &Benchmark::YCSBWorkloadA;
 			} else if (name == "ycsbwkldb") {
 				method = &Benchmark::YCSBWorkloadB;
@@ -5793,13 +5796,83 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     }
   }
 
-  /* New : YCSB Workloads A to F */
+  /* New : YCSB Workloads A to F, plus L for Load */
+
+  // This workload is 100% insert only
+  // Read/Insert ratio: 0/100
+  // Default data size: 1 KB records
+  // Request distribution: zipfian
+  void YCSBWorkloadL(ThreadState* thread) {
+		ReadOptions options(FLAGS_verify_checksum, true);
+		RandomGenerator gen;
+		init_latestgen(FLAGS_num);
+		init_zipf_generator(0, FLAGS_num);
+
+		std::string value;
+		int64_t found = 0;
+
+		int64_t reads_done = 0;
+		int64_t writes_done = 0;
+		Duration duration(FLAGS_duration, 0);
+
+		std::unique_ptr<const char[]> key_guard;
+		Slice key = AllocateKey(&key_guard);
+
+		if (FLAGS_benchmark_write_rate_limit > 0) {
+			printf(">>>> FLAGS_benchmark_write_rate_limit YCSBL \n");
+			thread->shared->write_rate_limiter.reset(
+					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
+		}
+
+
+		// the number of iterations is the larger of read_ or write_
+		while (!duration.Done(1)) {
+			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+
+			long k;
+			if (FLAGS_YCSB_uniform_distribution){
+				// Generate number from uniform distribution
+				k = thread->rand.Next() % FLAGS_num;
+			} else { // default
+				k = nextValue() % FLAGS_num;
+			}
+			GenerateKeyFromInt(k, FLAGS_num, &key);
+
+				
+
+			// step 2. found and update value
+			if (FLAGS_benchmark_write_rate_limit > 0) {
+				thread->shared->write_rate_limiter->Request(
+						value_size_ + key_size_, Env::IO_HIGH,
+						nullptr /* stats*/, RateLimiter::OpType::kWrite);
+				thread->stats.ResetLastOpTime();
+			}
+			Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+			if (!s.ok()) {
+				// it is an error but we continue to make reason why
+				// exit(1);
+			}
+			else {
+				writes_done++;
+				thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+			}
+		}
+
+		// print msg to stat
+		char msg[100];
+		snprintf(msg, sizeof(msg), "( reads:%" PRIu64 " writes:%" PRIu64 \
+				" total:%" PRIu64 " found:%" PRIu64 ")",
+				reads_done, writes_done, readwrites_, found);
+		thread->stats.AddMessage(msg);
+	}
+
 
   // This workload has a mix of 50/50 reads and updates
   // Read/Update ratio: 50/50
   // Default data size: 1 KB records
   // Request distribution: zipfian
   void YCSBWorkloadA(ThreadState* thread) {
+		Status s;
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
 		init_latestgen(FLAGS_num);
@@ -5821,7 +5894,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
 		}
 
-
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
 			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
@@ -5838,7 +5910,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 50) {
 				// read
-				Status s = db_with_cfh->db->Get(options, key, &value);
+				s = db_with_cfh->db->Get(options, key, &value);
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
@@ -5849,21 +5921,33 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				}
 			}
 			else {
-				// write
-				if (FLAGS_benchmark_write_rate_limit > 0) {
-					thread->shared->write_rate_limiter->Request(
-							value_size_ + key_size_, Env::IO_HIGH,
-							nullptr /* stats*/, RateLimiter::OpType::kWrite);
-					thread->stats.ResetLastOpTime();
-				}
-				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
-				if (!s.ok()) {
+				// update
+				// step 1. check whether key exists
+				s = db_with_cfh->db->Get(options, key, &value);
+
+				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				}
-				else {
-					writes_done++;
-					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+				else if(!s.IsNotFound()) {
+					// step 2. found and update value
+					if (FLAGS_benchmark_write_rate_limit > 0) {
+						thread->shared->write_rate_limiter->Request(
+								value_size_ + key_size_, Env::IO_HIGH,
+								nullptr /* stats*/, RateLimiter::OpType::kWrite);
+						thread->stats.ResetLastOpTime();
+					}
+					s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+					if (!s.ok()) {
+						// it is an error but we continue to make reason why
+						// exit(1);
+					}
+					else {
+						writes_done++;
+						thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+					}
+				} else {
+					// NOT FOUND
 				}
 			}
 		}
@@ -5882,6 +5966,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   // Default data size: 1 KB records
   // Request distribution: zipfian
   void YCSBWorkloadB(ThreadState* thread) {
+		Status s;
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
 		init_latestgen(FLAGS_num);
@@ -5919,7 +6004,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 95) {
 				// read
-				Status s = db_with_cfh->db->Get(options, key, &value);
+				s = db_with_cfh->db->Get(options, key, &value);
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
@@ -5930,21 +6015,33 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				}
 			}
 			else {
-				// write
-				if (FLAGS_benchmark_write_rate_limit > 0) {
-					thread->shared->write_rate_limiter->Request(
-							value_size_ + key_size_, Env::IO_HIGH,
-							nullptr /* stats*/, RateLimiter::OpType::kWrite);
-					thread->stats.ResetLastOpTime();
-				}
-				Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
-				if (!s.ok()) {
+				// update
+				// step 1. check whether key exists
+				s = db_with_cfh->db->Get(options, key, &value);
+
+				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				}
-				else {
-					writes_done++;
-					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+				else if(!s.IsNotFound()) {
+					// step 2. found and update value
+					if (FLAGS_benchmark_write_rate_limit > 0) {
+						thread->shared->write_rate_limiter->Request(
+								value_size_ + key_size_, Env::IO_HIGH,
+								nullptr /* stats*/, RateLimiter::OpType::kWrite);
+						thread->stats.ResetLastOpTime();
+					}
+					s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+					if (!s.ok()) {
+						// it is an error but we continue to make reason why
+						// exit(1);
+					}
+					else {
+						writes_done++;
+						thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+					}
+				} else {
+					// NOT FOUND
 				}
 			}
 		}
