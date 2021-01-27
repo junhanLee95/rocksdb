@@ -6,8 +6,8 @@ db/CURRENT
 db/IDENTITY
 db/MANIFEST*
 db/OPTIONS*
-db/*.log
 db/*.sst
+db/*.log
 build_db.sh
 do_expr_thread.sh
 mytrace
