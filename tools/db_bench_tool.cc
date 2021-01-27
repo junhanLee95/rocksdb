@@ -6088,7 +6088,10 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   }
 };
 
-int db_bench_tool(int argc, char** argv) {
+int db_bench_tool(int argc, char** argv, rocksdb::Env* env) {
+  if(env){
+    FLAGS_env = env;
+  }
   rocksdb::port::InstallStackTraceHandler();
   static bool initialized = false;
   if (!initialized) {
