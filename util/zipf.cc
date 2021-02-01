@@ -80,6 +80,13 @@ long nextValue() {
 	return nextLong(items);
 }
 
+long nextLatestValue() {
+  long max = lastVal;
+  long next = max - nextLong(max);
+  setLastValue(next);
+  return next;
+}
+
 void setLastValue(long val){
 	lastVal = val;
 }
