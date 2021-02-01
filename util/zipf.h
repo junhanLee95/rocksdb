@@ -14,4 +14,5 @@ double zeta(long st, long n, double initialsum);
 double zetastatic(long st, long n, double initialsum);
 long nextLong(long itemcount);
 long nextValue();
+long nextLatestValue();
 void setLastValue(long val);
