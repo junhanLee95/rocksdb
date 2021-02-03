@@ -197,7 +197,7 @@ JAVA_CGLIB_JAR = $(JAVA_TEST_LIBDIR)/cglib-2.2.2.jar
 JAVA_ASSERTJ_JAR = $(JAVA_TEST_LIBDIR)/assertj-core-1.7.1.jar
 JAVA_TESTCLASSPATH = $(JAVA_JUNIT_JAR):$(JAVA_HAMCR_JAR):$(JAVA_MOCKITO_JAR):$(JAVA_CGLIB_JAR):$(JAVA_ASSERTJ_JAR)
 
-MVN_LOCAL = ~/.m2/repository
+MVN_LOCAL = /home/ceph/.m2/repository
 
 # Set the default JAVA_ARGS to "" for DEBUG_LEVEL=0
 JAVA_ARGS? =
@@ -211,7 +211,7 @@ ifneq ($(DEBUG_LEVEL),0)
 endif
 
 SEARCH_REPO_URL?=http://search.maven.org/remotecontent?filepath=
-CENTRAL_REPO_URL?=http://central.maven.org/maven2/
+CENTRAL_REPO_URL?=http://repo1.maven.org/maven2/
 
 clean:
 	$(AM_V_at)rm -rf include/*
