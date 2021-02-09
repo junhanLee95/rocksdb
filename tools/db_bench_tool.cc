@@ -129,6 +129,9 @@ DEFINE_string(
     "ycsbwklda,"
     "ycsbwkldb,"
     "ycsbwkldc,"
+    "ycsbwkldd,"
+    "ycsbwklde,"
+    "ycsbwkldf,"
     "timeseries",
 
     "Comma-separated list of operations to run in the specified"
