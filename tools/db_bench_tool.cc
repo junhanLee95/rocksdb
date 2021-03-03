@@ -32,6 +32,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <queue>
 
 #include "db/db_impl.h"
 #include "db/malloc_stats.h"
@@ -132,6 +133,8 @@ DEFINE_string(
     "ycsbwkldd,"
     "ycsbwklde,"
     "ycsbwkldf,"
+    "longpeakl,"
+    "longpeaka,"
     "timeseries",
 
     "Comma-separated list of operations to run in the specified"
@@ -779,6 +782,15 @@ DEFINE_bool(latency_stat, false,
 
 DEFINE_bool(YCSB_uniform_distribution, false,
 						"Uniform key distribution for YCSB");
+
+DEFINE_bool(YCSB_prefix_group_distribution, false,
+						"Semi-sorted key distribution for YCSB");
+DEFINE_uint64(YCSB_prefix_group_count, 3,
+						"Semi-sorted key distribution for YCSB");
+
+
+DEFINE_bool(YCSB_background_stat, false,
+						"Report stats every 1 seconds in background. Note that number of threads should be incremented for status thraed");
 
 static enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
   assert(ctype);
@@ -1730,14 +1742,14 @@ class Stats {
     last_op_finish_ = FLAGS_env->NowMicros();
   }
 
-  void FinishedOps(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops,
-                   enum OperationType op_type = kOthers) {
+  long FinishedOpsQUEUES(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops, uint64_t op_start_time, enum OperationType op_type = kOthers) { // num_ops is 1
+    long cur_ops_interval = 0;
     if (reporter_agent_) {
       reporter_agent_->ReportFinishedOps(num_ops);
     }
     if (FLAGS_histogram || (FLAGS_stats_interval && FLAGS_latency_stat)) {
       uint64_t now = FLAGS_env->NowMicros();
-      uint64_t micros = now - last_op_finish_;
+      uint64_t micros = now - op_start_time;
 
 			if (FLAGS_histogram) {
 				if (hist_.find(op_type) == hist_.end())
@@ -1762,6 +1774,7 @@ class Stats {
     }
 
     done_ += num_ops;
+
     if (done_ >= next_report_) {
       if (!FLAGS_stats_interval) {
         if      (next_report_ < 1000)   next_report_ += 100;
@@ -1785,10 +1798,10 @@ class Stats {
           next_report_ += FLAGS_stats_interval;
 
 				} else {
-					char msg_total[1024] ;
-					char msg_lt[100] ; // latency msg
-					char msg_cq[100] ; // compaction queue msg
-					char msg_time[100] ;
+          char msg_total[1024] ;
+          char msg_lt[100] ; // latency msg
+          char msg_cq[100] ; // compaction queue msg
+          char msg_time[100] ;
 
 					snprintf(msg_total, sizeof(msg_total), 
 							"%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
@@ -1853,6 +1866,186 @@ class Stats {
 
 					// print stat for FLAGS_stats_interval
 					fprintf(stderr, "%s", msg_total);
+
+
+					if (id_ == 0 && FLAGS_stats_per_interval) {
+            std::string stats;
+
+            if (db_with_cfh && db_with_cfh->num_created.load()) {
+              for (size_t i = 0; i < db_with_cfh->num_created.load(); ++i) {
+                if (db->GetProperty(db_with_cfh->cfh[i], "rocksdb.cfstats",
+                                    &stats))
+                  fprintf(stderr, "%s\n", stats.c_str());
+                if (FLAGS_show_table_properties) {
+                  for (int level = 0; level < FLAGS_num_levels; ++level) {
+                    if (db->GetProperty(
+                            db_with_cfh->cfh[i],
+                            "rocksdb.aggregated-table-properties-at-level" +
+                                ToString(level),
+                            &stats)) {
+                      if (stats.find("# entries=0") == std::string::npos) {
+                        fprintf(stderr, "Level[%d]: %s\n", level,
+                                stats.c_str());
+                      }
+                    }
+                  }
+                }
+              }
+            } else if (db) {
+              if (db->GetProperty("rocksdb.stats", &stats)) {
+                fprintf(stderr, "%s\n", stats.c_str());
+              }
+              if (FLAGS_show_table_properties) {
+                for (int level = 0; level < FLAGS_num_levels; ++level) {
+                  if (db->GetProperty(
+                          "rocksdb.aggregated-table-properties-at-level" +
+                              ToString(level),
+                          &stats)) {
+                    if (stats.find("# entries=0") == std::string::npos) {
+                      fprintf(stderr, "Level[%d]: %s\n", level, stats.c_str());
+                    }
+                  }
+                }
+              }
+            }
+          }
+          next_report_ += FLAGS_stats_interval;
+          last_report_finish_ = now;
+          last_report_done_ = done_;
+        }
+      }
+      if (id_ == 0 && FLAGS_thread_status_per_interval) {
+        PrintThreadStatus();
+      }
+      fflush(stderr);
+    }
+
+    return cur_ops_interval;
+  }
+
+  void FinishedOps(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops,
+                   enum OperationType op_type = kOthers) {
+    if (reporter_agent_) {
+      reporter_agent_->ReportFinishedOps(num_ops);
+    }
+    if (FLAGS_histogram || (FLAGS_stats_interval && FLAGS_latency_stat)) {
+      uint64_t now = FLAGS_env->NowMicros();
+      uint64_t micros = now - last_op_finish_;
+
+			if (FLAGS_histogram) {
+				if (hist_.find(op_type) == hist_.end())
+				{
+					auto hist_temp = std::make_shared<HistogramImpl>();
+					hist_.insert({op_type, std::move(hist_temp)});
+				}
+				hist_[op_type]->Add(micros);
+			}
+
+			// accumulate interval_histogram for stats_interval is on
+			if (FLAGS_stats_interval && FLAGS_latency_stat) {
+				interval_hist_->Add(micros);
+			}
+
+      if (micros > 20000 && FLAGS_histogram && !FLAGS_stats_interval) {
+        fprintf(stderr, "long op: %" PRIu64 " micros%30s\r", micros, "");
+        fflush(stderr);
+      }
+
+      last_op_finish_ = now;
+    }
+
+    done_ += num_ops;
+    if (done_ >= next_report_) {
+      if (!FLAGS_stats_interval) {
+        if      (next_report_ < 1000)   next_report_ += 100;
+        else if (next_report_ < 5000)   next_report_ += 500;
+        else if (next_report_ < 10000)  next_report_ += 1000;
+        else if (next_report_ < 50000)  next_report_ += 5000;
+        else if (next_report_ < 100000) next_report_ += 10000;
+        else if (next_report_ < 500000) next_report_ += 50000;
+        else                            next_report_ += 100000;
+        fprintf(stderr, "... finished %" PRIu64 " ops%30s\r", done_, "");
+      } else {
+        uint64_t now = FLAGS_env->NowMicros();
+        int64_t usecs_since_last = now - last_report_finish_;
+
+        // Determine whether to print status where interval is either
+        // each N operations or each N seconds.
+
+        if (FLAGS_stats_interval_seconds &&
+            usecs_since_last < (FLAGS_stats_interval_seconds * 1000000)) {
+          // Don't check again for this many operations
+          next_report_ += FLAGS_stats_interval;
+
+				} else {
+            char msg_total[1024] ;
+            char msg_lt[100] ; // latency msg
+            char msg_cq[100] ; // compaction queue msg
+            char msg_time[100] ;
+
+            snprintf(msg_total, sizeof(msg_total), 
+                "%s ... thread %d: (%" PRIu64 ",%" PRIu64 ") ops and "
+                "(%.1f,%.1f) ops/second ",
+                FLAGS_env->TimeToString(now/1000000).c_str(),
+                id_,
+                done_ - last_report_done_, done_,
+                (done_ - last_report_done_) /
+                (usecs_since_last / 1000000.0),
+                done_ / (now - start_) / 1000000.0);
+
+            if (FLAGS_latency_stat) {
+              double lat_avg, lat_90p, lat_99p,  lat_999p, lat_9999p;
+              if (!interval_hist_->Empty()) {
+                lat_avg = interval_hist_->Average();
+                lat_90p = interval_hist_->Percentile(90);
+                lat_99p = interval_hist_->Percentile(99);
+                lat_999p = interval_hist_->Percentile(99.9);
+                lat_9999p = interval_hist_->Percentile(99.99);
+                snprintf(msg_lt, sizeof(msg_lt), "[Avg=%f, 90=%f, 99=%f, 99.9=%f, 99.99=%f] ",
+                    lat_avg, lat_90p, lat_99p, lat_999p, lat_9999p);
+                strcat(msg_total, msg_lt);
+              }
+              // reset histogram after logging
+              interval_hist_->Clear();
+            }
+
+            if (FLAGS_compaction_queue_stat) {
+              uint64_t num_running_flushes, num_scheduled_flushes, num_unscheduled_flushes;
+              uint64_t num_running_compactions, num_scheduled_compactions, num_unscheduled_compactions;
+
+              db->GetIntProperty("rocksdb.num-running-flushes", &num_running_flushes);
+              db->GetIntProperty("rocksdb.num-scheduled-flushes", &num_scheduled_flushes);
+              db->GetIntProperty("rocksdb.num-unscheduled-flushes", &num_unscheduled_flushes);
+              db->GetIntProperty("rocksdb.num-running-compactions", &num_running_compactions);
+              db->GetIntProperty("rocksdb.num-scheduled-compactions", &num_scheduled_compactions);
+              db->GetIntProperty("rocksdb.num-unscheduled-compactions", &num_unscheduled_compactions);
+              /*
+                 rf - running flushes
+                 sf - scheduled flushe
+                 uf - unscheduled flushes
+                 rc - runninng compactions
+                 sc - scheduled compactions
+                 uc - unscheduled compactions
+                 */
+              snprintf(msg_cq, sizeof(msg_cq), "(%" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ") [rf, sf, uf, rc, sc, uc] ", 
+                  num_running_flushes,
+                  num_scheduled_flushes,
+                  num_unscheduled_flushes,
+                  num_running_compactions,
+                  num_scheduled_compactions,
+                  num_unscheduled_compactions);
+              strcat(msg_total, msg_cq);
+            }
+
+            // msg time
+            snprintf(msg_time, sizeof(msg_time), "in (%.6f,%6f) seconds\n",
+                (now - last_report_finish_) / 1000000.0,
+                (now - start_) / 1000000.0
+                );
+            strcat(msg_total, msg_time);
+
+            // print stat for FLAGS_stats_interval
+            fprintf(stderr, "%s", msg_total);
 
 
 					if (id_ == 0 && FLAGS_stats_per_interval) {
@@ -2061,6 +2254,9 @@ struct SharedState {
   long num_initialized;
   long num_done;
   bool start;
+
+  std::queue<std::pair<int, std::chrono::microseconds>> op_queues[5][8];
+  long cur_ops_interval;
 
   SharedState() : cv(&mu), perf_level(FLAGS_perf_level) { }
 };
@@ -2611,6 +2807,39 @@ class Benchmark {
     }
   }
 
+  void GeneratePrefixZipfKeyFromInt(int64_t num_keys, Slice* key, char prefix) {
+    uint64_t v = nextValue() % FLAGS_num;
+
+    if (!keys_.empty()) {
+      assert(FLAGS_use_existing_keys);
+      assert(keys_.size() == static_cast<size_t>(num_keys));
+      assert(v < static_cast<uint64_t>(num_keys));
+      *key = keys_[v];
+      return;
+    }
+    char* start = const_cast<char*>(key->data());
+    char* pos = start;
+
+
+    memcpy(pos, static_cast<void*>(&prefix), 1);
+    pos++;
+    pos[1] = '0';
+    pos++;
+
+    int bytes_to_fill = std::min(key_size_ - static_cast<int>(pos - start), 8);
+    if (port::kLittleEndian) {
+      for (int i = 0; i < bytes_to_fill; ++i) {
+        pos[i] = (v >> ((bytes_to_fill - i - 1) << 3)) & 0xFF;
+      }
+    } else {
+      memcpy(pos, static_cast<void*>(&v), bytes_to_fill);
+    }
+    pos += bytes_to_fill;
+    if (key_size_ > pos - start) {
+      memset(pos, '0', key_size_ - (pos - start));
+    }
+  }
+
   std::string GetPathForMultiple(std::string base_name, size_t id) {
     if (!base_name.empty()) {
 #ifndef OS_WIN
@@ -2870,6 +3099,10 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				method = &Benchmark::YCSBWorkloadE;
 			} else if (name == "ycsbwkldf") {
 				method = &Benchmark::YCSBWorkloadF;
+			} else if (name == "longpeakl") {
+				method = &Benchmark::LongPeakL;
+			} else if (name == "longpeaka") {
+				method = &Benchmark::LongPeakA;
 			} else if (name == "crc32c") {
         method = &Benchmark::Crc32c;
       } else if (name == "xxhash") {
@@ -5826,6 +6059,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
 			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+     
 
 			long k;
 			if (FLAGS_YCSB_uniform_distribution){
@@ -6357,6 +6591,211 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				reads_done, writes_done, readwrites_, found);
 		thread->stats.AddMessage(msg);
 	}
+
+
+  // This workload is inherited from SILK ATC'19
+  // IMPORTANT: Need 13 threads for this to work
+  // Thread 0 -- 7 are the worker threads who take stuff from queues
+  // Thread 8 -- 12 are the workload generator threads
+  void LongPeakL(ThreadState* thread) {
+    printf("Starting LongPeak test\n");
+
+    ReadOptions options(FLAGS_verify_checksum, true);
+    RandomGenerator gen;
+    Duration duration(FLAGS_duration, readwrites_);
+    std::string value;
+    long vals_generated = 0;
+    long writes_done = 0;
+    long reads_done = 0;
+    int cur_queue = 0;
+    int workerthread = 1;
+    bool pausedcompaction = false;
+    long prev_bandwidth_compaction_MBPS = 0;
+
+    int steady_workload_time = 0;
+
+    while (!duration.Done(1)) {
+      DB* db = SelectDB(thread);
+      
+      if (thread->tid > 7 && thread->tid < 13) {
+        // load generator
+        int val_size = FLAGS_value_size;
+        std::chrono::microseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >
+          (std::chrono::system_clock::now().time_since_epoch());
+
+        std::pair<int, std::chrono::microseconds> val_timestamp_tuple(val_size, ms);
+        thread->shared->op_queues[thread->tid - 8][workerthread].push(val_timestamp_tuple);
+        workerthread = (workerthread + 1) % 8;
+
+        vals_generated++;
+
+        // 20kops/sec population
+        std::this_thread::sleep_for(std::chrono::microseconds(250));
+
+      }
+      else {
+        // worker thread
+        if (!thread->shared->op_queues[cur_queue][thread->tid].empty()) {
+          std::pair<int, std::chrono::microseconds> pair_val_time = thread->shared->op_queues[cur_queue][thread->tid ].front();
+          thread->shared->op_queues[cur_queue][thread->tid].pop();
+          std::chrono::microseconds out_of_queue_time = std::chrono::duration_cast<std::chrono::microseconds>
+            (std::chrono::system_clock::now().time_since_epoch());
+
+          std::unique_ptr<const char[]> key_guard;
+          Slice key = AllocateKey(&key_guard);
+
+          long k;
+          if (FLAGS_YCSB_uniform_distribution){
+            // Generate number from uniform distribution
+            k = thread->rand.Next() % FLAGS_num;
+            GenerateKeyFromInt(k, FLAGS_num, &key);
+          } else if(FLAGS_YCSB_prefix_group_distribution){
+
+            int64_t num_prefix = FLAGS_YCSB_prefix_group_count;
+            int64_t prefix = rand() % num_prefix;
+            char pChar;
+            if(num_prefix == 3){
+              if(prefix==0){
+                pChar = 'M';
+              } else if(prefix==1){
+                pChar = 'P';
+              } else {
+                pChar = 'L';
+              }
+            } else if(num_prefix == 10) {
+              if(prefix==0){
+                pChar = 'S';
+              } else if(prefix==1){
+                pChar = 'T';
+              } else if(prefix==2){
+                pChar = 'C';
+              } else  if(prefix==3){
+                pChar = 'O';
+              } else if(prefix==4){
+                pChar = 'M';
+              } else if(prefix==5){
+                pChar = 'P';
+              } else if(prefix==6) {
+                pChar = 'L';
+              }  else if(prefix==7) {
+                pChar = 'B';
+              }  else if(prefix==8) {
+                pChar = 'b';
+              }else {
+                pChar = 'X';
+              }
+            }
+
+
+            GeneratePrefixZipfKeyFromInt(FLAGS_num, &key, pChar);
+          } else { // default
+            k = nextValue() % FLAGS_num;
+            GenerateKeyFromInt(k, FLAGS_num, &key);
+          }
+
+          Status s = db->Put(write_options_, key, gen.Generate(pair_val_time.first));
+          if (!s.ok()) {
+            fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+            exit(1);
+          }
+          writes_done++;
+          long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kWrite);
+          if (curops != 0 && thread->tid == 1) {
+            thread->shared->cur_ops_interval = curops;
+          }
+
+          cur_queue = (cur_queue + 1) % 5;
+        }
+      }
+    }
+  }
+
+  // This workload is inherited from SILK ATC'19
+  // IMPORTANT: Need 13 threads for this to work
+  // Thread 0 -- 7 are the worker threads who take stuff from queues
+  // Thread 8 -- 12 are the workload generator threads
+  void LongPeakA(ThreadState* thread) {
+    printf("Starting LongPeak test\n");
+
+    ReadOptions options(FLAGS_verify_checksum, true);
+    RandomGenerator gen;
+    Duration duration(FLAGS_duration, readwrites_);
+    std::string value;
+    long vals_generated = 0;
+    long writes_done = 0;
+    long reads_done = 0;
+    int cur_queue = 0;
+    int workerthread = 1;
+    bool pausedcompaction = false;
+    long prev_bandwidth_compaction_MBPS = 0;
+
+    int steady_workload_time = 0;
+
+    while (!duration.Done(1)) {
+      DB* db = SelectDB(thread);
+      
+      // thread 0 is status thread. 
+      if (thread->tid > 7 && thread->tid < 13) {
+        // load generator
+        int val_size = FLAGS_value_size;
+        std::chrono::microseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >
+          (std::chrono::system_clock::now().time_since_epoch());
+
+        std::pair<int, std::chrono::microseconds> val_timestamp_tuple(val_size, ms);
+        thread->shared->op_queues[thread->tid - 8][workerthread].push(val_timestamp_tuple);
+        workerthread = (workerthread + 1) % 8;
+
+        vals_generated++;
+
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+
+      } else {
+        // worker thread
+        if (!thread->shared->op_queues[cur_queue][thread->tid].empty()) {
+          std::pair<int, std::chrono::microseconds> pair_val_time = thread->shared->op_queues[cur_queue][thread->tid ].front();
+          thread->shared->op_queues[cur_queue][thread->tid].pop();
+          std::chrono::microseconds out_of_queue_time = std::chrono::duration_cast<std::chrono::microseconds>
+            (std::chrono::system_clock::now().time_since_epoch());
+
+          std::unique_ptr<const char[]> key_guard;
+          Slice key = AllocateKey(&key_guard);
+
+          long k;
+          if (FLAGS_YCSB_uniform_distribution){
+            // Generate number from uniform distribution
+            k = thread->rand.Next() % FLAGS_num;
+          } else { // default
+            k = nextValue() % FLAGS_num;
+          }
+          GenerateKeyFromInt(k, FLAGS_num, &key);
+
+          int op_prob = thread->rand.Next() % 100;
+
+          if (op_prob < 50) {
+            Status s = db->Put(write_options_, key, gen.Generate(pair_val_time.first));
+            if (!s.ok()) {
+              fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+              exit(1);
+            }
+            writes_done++;
+            long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kWrite);
+            if (curops != 0 && thread->tid == 1) {
+              thread->shared->cur_ops_interval = curops;
+            }
+          } else {
+            Status s = db->Get(options, key, &value);
+            reads_done++;
+            long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kRead);
+            if (curops != 0 && thread->tid == 1) {
+              thread->shared->cur_ops_interval = curops;
+            }
+          }
+          cur_queue = (cur_queue + 1) % 5;
+        }
+      }
+    }
+  }
+
 
 #ifndef ROCKSDB_LITE
   // This benchmark stress tests Transactions.  For a given --duration (or
