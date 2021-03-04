@@ -2820,11 +2820,9 @@ class Benchmark {
     char* start = const_cast<char*>(key->data());
     char* pos = start;
 
-
-    memcpy(pos, static_cast<void*>(&prefix), 1);
-    pos++;
-    pos[1] = '0';
-    pos++;
+    // Bluestore key format : "prefix + 0 + key"
+    *pos++ = prefix;
+    *pos++ = '0';
 
     int bytes_to_fill = std::min(key_size_ - static_cast<int>(pos - start), 8);
     if (port::kLittleEndian) {
