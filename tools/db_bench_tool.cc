@@ -77,7 +77,6 @@
 #include "utilities/merge_operators/bytesxor.h"
 #include "utilities/persistent_cache/block_cache_tier.h"
 #include "util/zipf.h"
-#include "util/latest-generator.h"
 
 #ifdef OS_WIN
 #include <io.h>  // open/close
@@ -787,6 +786,8 @@ DEFINE_bool(YCSB_prefix_group_distribution, false,
 						"Semi-sorted key distribution for YCSB");
 DEFINE_uint64(YCSB_prefix_group_count, 3,
 						"Semi-sorted key distribution for YCSB");
+DEFINE_bool(YCSB_insert_ordered, false,
+						"insert is ordered for YCSB");
 
 
 DEFINE_bool(YCSB_background_stat, false,
@@ -2332,6 +2333,11 @@ class Benchmark {
   int64_t max_num_range_tombstones_;
   WriteOptions write_options_;
   Options open_options_;  // keep options around to properly destroy db later
+  // variables for longpeak test
+  std::vector<ZipfGenerator> zipf_generators;
+  ZipfGenerator zipf_generator;
+  std::vector<int> prefix_id_seq;
+  int op_id = 0;
 #ifndef ROCKSDB_LITE
   TraceOptions trace_options_;
 #endif
@@ -2807,8 +2813,7 @@ class Benchmark {
     }
   }
 
-  void GeneratePrefixZipfKeyFromInt(int64_t num_keys, Slice* key, char prefix) {
-    uint64_t v = nextValue() % FLAGS_num;
+  void GeneratePrefixZipfKeyFromInt(uint64_t v, int64_t num_keys, Slice* key, char prefix) {
 
     if (!keys_.empty()) {
       assert(FLAGS_use_existing_keys);
@@ -2817,6 +2822,7 @@ class Benchmark {
       *key = keys_[v];
       return;
     }
+
     char* start = const_cast<char*>(key->data());
     char* pos = start;
 
@@ -2836,6 +2842,8 @@ class Benchmark {
     if (key_size_ > pos - start) {
       memset(pos, '0', key_size_ - (pos - start));
     }
+
+    printf("key : %s\n", key->data());
   }
 
   std::string GetPathForMultiple(std::string base_name, size_t id) {
@@ -3175,6 +3183,33 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         }
         Open(&open_options_);  // use open_options for the last accessed
       }
+
+      // create key generator (zipf) for semi-sorted key space
+      if (name == "longpeakl" || name == "longpeaka") {
+        if (FLAGS_YCSB_prefix_group_distribution) {
+          assert(FLAGS_YCSB_prefix_group_count > 0);
+          int nums_per_group[FLAGS_YCSB_prefix_group_count];
+
+          for(int i = 0; i < FLAGS_YCSB_prefix_group_count; i++) {
+            zipf_generators.push_back(ZipfGenerator());
+          }
+
+          for(int i = 0; i < FLAGS_num; i++) {
+            int prefix_id = rand() % FLAGS_YCSB_prefix_group_count;
+            prefix_id_seq.push_back(prefix_id);
+            nums_per_group[prefix_id] ++;
+          }
+
+          for (int i = 0; i < FLAGS_YCSB_prefix_group_count; i++) {
+            zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i);
+          }
+        } else if (!FLAGS_YCSB_uniform_distribution) {
+          zipf_generator.init_zipf_generator(0, FLAGS_num);
+        } // for uniform distribution, there is nothing to do
+
+        op_id = 0;
+      }
+
 
       if (method != nullptr) {
         fprintf(stdout, "DB path: [%s]\n", FLAGS_db.c_str());
@@ -6034,8 +6069,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   void YCSBWorkloadL(ThreadState* thread) {
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		init_latestgen(FLAGS_num);
-		init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
 		std::string value;
 		int64_t found = 0;
@@ -6064,7 +6098,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
 			} else { // default
-				k = nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() % FLAGS_num;
 			}
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
@@ -6105,8 +6139,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 		Status s;
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		init_latestgen(FLAGS_num);
-		init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
 		std::string value;
 		int64_t found = 0;
@@ -6133,7 +6166,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
 			} else { // default
-				k = nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() % FLAGS_num;
 			}
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
@@ -6199,8 +6232,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 		Status s;
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		init_latestgen(FLAGS_num);
-		init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
 		std::string value;
 		int64_t found = 0;
@@ -6227,7 +6259,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
 			} else { // default
-				k = nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() % FLAGS_num;
 			}
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
@@ -6292,8 +6324,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   void YCSBWorkloadC(ThreadState* thread) {
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		init_latestgen(FLAGS_num);
-		init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
 		std::string value;
 		int64_t found = 0;
@@ -6320,7 +6351,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
 			} else { // default
-				k = nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() % FLAGS_num;
 			}
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
@@ -6352,8 +6383,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   void YCSBWorkloadD(ThreadState* thread) {
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		init_latestgen(FLAGS_num);
-		init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
 		std::string value;
 		int64_t found = 0;
@@ -6374,7 +6404,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
 			} else { // default
-				k = nextLatestValue() % FLAGS_num;
+				k = zipf_generator.nextLatestValue() % FLAGS_num;
 			}
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
@@ -6425,8 +6455,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   void YCSBWorkloadE(ThreadState* thread) {
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		init_latestgen(FLAGS_num);
-		init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
 		std::string value;
 		int64_t found = 0;
@@ -6449,7 +6478,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
 			} else { // default
-				k = nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() % FLAGS_num;
 			}
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
@@ -6502,8 +6531,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   void YCSBWorkloadF(ThreadState* thread) {
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		init_latestgen(FLAGS_num);
-		init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
 		std::string value;
 		int64_t found = 0;
@@ -6525,7 +6553,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
 			} else { // default
-				k = nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() % FLAGS_num;
 			}
 			GenerateKeyFromInt(k, FLAGS_num, &key);
 
@@ -6596,7 +6624,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   // Thread 0 -- 7 are the worker threads who take stuff from queues
   // Thread 8 -- 12 are the workload generator threads
   void LongPeakL(ThreadState* thread) {
-    printf("Starting LongPeak test\n");
+    printf("Starting LongPeak L test\n");
 
     ReadOptions options(FLAGS_verify_checksum, true);
     RandomGenerator gen;
@@ -6611,6 +6639,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     long prev_bandwidth_compaction_MBPS = 0;
 
     int steady_workload_time = 0;
+
 
     while (!duration.Done(1)) {
       DB* db = SelectDB(thread);
@@ -6629,7 +6658,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
         // 20kops/sec population
         std::this_thread::sleep_for(std::chrono::microseconds(250));
-
       }
       else {
         // worker thread
@@ -6643,51 +6671,22 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           Slice key = AllocateKey(&key_guard);
 
           long k;
-          if (FLAGS_YCSB_uniform_distribution){
+          if (FLAGS_YCSB_uniform_distribution) {
             // Generate number from uniform distribution
             k = thread->rand.Next() % FLAGS_num;
             GenerateKeyFromInt(k, FLAGS_num, &key);
           } else if(FLAGS_YCSB_prefix_group_distribution){
-
-            int64_t num_prefix = FLAGS_YCSB_prefix_group_count;
-            int64_t prefix = rand() % num_prefix;
-            char pChar;
-            if(num_prefix == 3){
-              if(prefix==0){
-                pChar = 'M';
-              } else if(prefix==1){
-                pChar = 'P';
-              } else {
-                pChar = 'L';
-              }
-            } else if(num_prefix == 10) {
-              if(prefix==0){
-                pChar = 'S';
-              } else if(prefix==1){
-                pChar = 'T';
-              } else if(prefix==2){
-                pChar = 'C';
-              } else  if(prefix==3){
-                pChar = 'O';
-              } else if(prefix==4){
-                pChar = 'M';
-              } else if(prefix==5){
-                pChar = 'P';
-              } else if(prefix==6) {
-                pChar = 'L';
-              }  else if(prefix==7) {
-                pChar = 'B';
-              }  else if(prefix==8) {
-                pChar = 'b';
-              }else {
-                pChar = 'X';
-              }
+            int prefix_id = prefix_id_seq[op_id];
+            if(FLAGS_YCSB_insert_ordered) {
+              k = op_id % zipf_generators[prefix_id].getItems();
+              op_id++;
+              printf("op_id : %d\n", op_id);
+            } else{
+              k = zipf_generators[prefix_id].nextValue() % zipf_generators[prefix_id].getItems(); 
             }
-
-
-            GeneratePrefixZipfKeyFromInt(FLAGS_num, &key, pChar);
+            GeneratePrefixZipfKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
           } else { // default
-            k = nextValue() % FLAGS_num;
+            k = zipf_generator.nextValue() % FLAGS_num;
             GenerateKeyFromInt(k, FLAGS_num, &key);
           }
 
@@ -6713,7 +6712,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   // Thread 0 -- 7 are the worker threads who take stuff from queues
   // Thread 8 -- 12 are the workload generator threads
   void LongPeakA(ThreadState* thread) {
-    printf("Starting LongPeak test\n");
+    printf("Starting LongPeak A test\n");
 
     ReadOptions options(FLAGS_verify_checksum, true);
     RandomGenerator gen;
@@ -6763,7 +6762,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             // Generate number from uniform distribution
             k = thread->rand.Next() % FLAGS_num;
           } else { // default
-            k = nextValue() % FLAGS_num;
+            k = zipf_generator.nextValue() % FLAGS_num;
           }
           GenerateKeyFromInt(k, FLAGS_num, &key);
 
