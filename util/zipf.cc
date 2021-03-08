@@ -9,6 +9,21 @@
 // 	 * 
 // 	 * @param min The smallest integer to generate in the sequence.
 // 	 * @param max The largest integer to generate in the sequence.
+void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered) {
+	items = max-min+1;
+	base = min;
+	zipfianconstant = 0.99;
+	theta = zipfianconstant;
+	zeta2theta = zeta(0, 2, 0);
+	alpha = 1.0/(1.0-theta);
+	zetan = zetastatic(0, max-min+1, 0);
+	countforzeta = items;
+	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
+  prefix = c;
+  insertordered = ordered;
+
+}
+
 
 void ZipfGenerator::init_zipf_generator(long min, long max, char c) {
 	items = max-min+1;
@@ -21,8 +36,8 @@ void ZipfGenerator::init_zipf_generator(long min, long max, char c) {
 	countforzeta = items;
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
   prefix = c;
+  insertordered = false;
 
-	nextValue();
 }
 
 void ZipfGenerator::init_zipf_generator(long min, long max) {
@@ -35,8 +50,8 @@ void ZipfGenerator::init_zipf_generator(long min, long max) {
 	zetan = zetastatic(0, max-min+1, 0);
 	countforzeta = items;
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
+  insertordered = false;
 
-	nextValue();
 }
 
 char ZipfGenerator::getPrefix(void) {
@@ -62,6 +77,12 @@ double ZipfGenerator::zetastatic(long st, long n, double initialsum){
 }
 
 long ZipfGenerator::nextLong(long itemcount){
+  if(insertordered){
+    long ret = (lastVal + 1) % itemcount;
+    setLastValue(ret);
+    return ret;
+  }
+
 	//from "Quickly Generating Billion-Record Synthetic Databases", Jim Gray et al, SIGMOD 1994
 	if (itemcount!=countforzeta){
 		if (itemcount>countforzeta){

@@ -2337,7 +2337,7 @@ class Benchmark {
   std::vector<ZipfGenerator> zipf_generators;
   ZipfGenerator zipf_generator;
   std::vector<int> prefix_id_seq;
-  int op_id = 0;
+  int64_t op_id = 0;
 #ifndef ROCKSDB_LITE
   TraceOptions trace_options_;
 #endif
@@ -2830,20 +2830,31 @@ class Benchmark {
     *pos++ = prefix;
     *pos++ = '0';
 
-    int bytes_to_fill = std::min(key_size_ - static_cast<int>(pos - start), 8);
-    if (port::kLittleEndian) {
-      for (int i = 0; i < bytes_to_fill; ++i) {
-        pos[i] = (v >> ((bytes_to_fill - i - 1) << 3)) & 0xFF;
-      }
-    } else {
-      memcpy(pos, static_cast<void*>(&v), bytes_to_fill);
-    }
-    pos += bytes_to_fill;
-    if (key_size_ > pos - start) {
-      memset(pos, '0', key_size_ - (pos - start));
-    }
+    // we are about to fill 8-digit number as key string, which represents value less than 100M (10^8)
+    // therefore, we recommend you to put key_size as 10 when you execute longpeak test
+    assert(key_size_ == 10);
+    int bytes_to_fill = 8;
+    char v_str[bytes_to_fill];
+    int vlen;
 
+    sprintf(v_str, "%d", v);
+    vlen = strlen(v_str);
+
+    // zero fill
+    for(int i=0; i<bytes_to_fill-vlen; i++){
+      *pos++ = '0';
+    }
+    // fill with v
+    for(int i=0; i<vlen; i++){
+      *pos++ = v_str[i];
+    }
+    *pos++ = 0;
+
+    printf("v : %d\n", v);
     printf("key : %s\n", key->data());
+    for(int i=0; i<key_size_; i++){
+      printf("k[%d] : %d\n", i, *(start+i));
+    }
   }
 
   std::string GetPathForMultiple(std::string base_name, size_t id) {
@@ -3191,17 +3202,25 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           int nums_per_group[FLAGS_YCSB_prefix_group_count];
 
           for(int i = 0; i < FLAGS_YCSB_prefix_group_count; i++) {
+            nums_per_group[i] = 0;;
             zipf_generators.push_back(ZipfGenerator());
           }
+
+          printf("random key generation in progress ...\n");
+          // initializes random number generator
+          time_t t;
+          srand((unsigned) time(&t));
 
           for(int i = 0; i < FLAGS_num; i++) {
             int prefix_id = rand() % FLAGS_YCSB_prefix_group_count;
             prefix_id_seq.push_back(prefix_id);
             nums_per_group[prefix_id] ++;
           }
+          printf("random key generation is done ...\n");
 
           for (int i = 0; i < FLAGS_YCSB_prefix_group_count; i++) {
-            zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i);
+            printf("size of group %c : %d\n", 'A'+i, nums_per_group[i]);
+            zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i, FLAGS_YCSB_insert_ordered);
           }
         } else if (!FLAGS_YCSB_uniform_distribution) {
           zipf_generator.init_zipf_generator(0, FLAGS_num);
@@ -6641,7 +6660,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     int steady_workload_time = 0;
 
 
-    while (!duration.Done(1)) {
+    //while (!duration.Done(1)) {
+    while (op_id < readwrites_) {
       DB* db = SelectDB(thread);
       
       if (thread->tid > 7 && thread->tid < 13) {
@@ -6677,13 +6697,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             GenerateKeyFromInt(k, FLAGS_num, &key);
           } else if(FLAGS_YCSB_prefix_group_distribution){
             int prefix_id = prefix_id_seq[op_id];
-            if(FLAGS_YCSB_insert_ordered) {
-              k = op_id % zipf_generators[prefix_id].getItems();
-              op_id++;
-              printf("op_id : %d\n", op_id);
-            } else{
-              k = zipf_generators[prefix_id].nextValue() % zipf_generators[prefix_id].getItems(); 
-            }
+            op_id++;
+            k = zipf_generators[prefix_id].nextValue() % zipf_generators[prefix_id].getItems(); 
             GeneratePrefixZipfKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
           } else { // default
             k = zipf_generator.nextValue() % FLAGS_num;
