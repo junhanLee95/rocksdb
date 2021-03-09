@@ -2814,6 +2814,30 @@ class Benchmark {
     }
   }
 
+  // from YCSB, http://en.wikipedia.org/wiki/Fowler_Noll_Vo_hash
+  // for hash ordered key generation of db_bench
+  uint64_t fnvhash64(uint64_t val) {
+  
+    uint64_t hashval;
+    const uint64_t offset_basis = 0xcbf29ce484222325;
+    const uint64_t prime = 1099511628211;
+
+    uint64_t octet;
+    uint64_t v = val;
+
+    hashval = offset_basis;
+
+    for (int i=0; i<8; i++) {
+      octet = static_cast<uint64_t>(v & 0xff);
+      v = static_cast<uint64_t>(v >> 8);
+
+      hashval = static_cast<uint64_t>(hashval ^ octet);
+      hashval = static_cast<uint64_t>(hashval * prime);
+    }
+
+    return hashval >= 0 ? hashval : -hashval;
+  }
+
   void GeneratePrefixZipfKeyFromInt(uint64_t v, int64_t num_keys, Slice* key, char prefix) {
 
     if (!keys_.empty()) {
@@ -2824,38 +2848,30 @@ class Benchmark {
       return;
     }
 
+    assert(key_size_ == 22);
     char* start = const_cast<char*>(key->data());
-    char* pos = start;
-
+    char v_str[21];
     // Bluestore key format : "prefix + 0 + key"
-    *pos++ = prefix;
-    *pos++ = '0';
+    start[0] = prefix;
+    start[1] = '0';
 
     // we are about to fill 8-digit number as key string, which represents value less than 100M (10^8)
     // therefore, we recommend you to put key_size as 10 when you execute longpeak test
-    assert(key_size_ == 10);
-    int bytes_to_fill = 8;
-    char v_str[bytes_to_fill];
-    int vlen;
+    sprintf(v_str, "%lu", v);
+    int vlen = strlen(v_str);
+    int zerofill = 20 - vlen;
 
-    sprintf(v_str, "%d", v);
-    vlen = strlen(v_str);
-
-    // zero fill
-    for(int i=0; i<bytes_to_fill-vlen; i++){
-      *pos++ = '0';
+    // zeropadding
+    for(int i=0; i<zerofill; i++) {
+      start[2 + i] = '0';
     }
+    
     // fill with v
     for(int i=0; i<vlen; i++){
-      *pos++ = v_str[i];
+      start[2 + zerofill + i] = v_str[i];
     }
-    *pos++ = 0;
+    start[key_size_] = 0;
 
-    printf("v : %d\n", v);
-    printf("key : %s\n", key->data());
-    for(int i=0; i<key_size_; i++){
-      printf("k[%d] : %d\n", i, *(start+i));
-    }
   }
 
   std::string GetPathForMultiple(std::string base_name, size_t id) {
@@ -6691,7 +6707,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           std::unique_ptr<const char[]> key_guard;
           Slice key = AllocateKey(&key_guard);
 
-          long k;
+          uint64_t k;
           if (FLAGS_YCSB_uniform_distribution) {
             // Generate number from uniform distribution
             k = thread->rand.Next() % FLAGS_num;
@@ -6704,6 +6720,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
               k = fnvhash64(k);
             }
             GeneratePrefixZipfKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
+            printf("generated key : %s\n", key.data());
           } else { // default
             k = zipf_generator.nextValue() % FLAGS_num;
             if(!FLAGS_YCSB_insert_ordered) {
