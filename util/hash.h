@@ -44,6 +44,21 @@ inline uint64_t NPHash64(const char* data, size_t n, uint32_t seed) {
                      static_cast<unsigned int>(seed));
 }
 
+// from YCSB, http://en.wikipedia.org/wiki/Fowler_Noll_Vo_hash
+// for hash ordered key generation of db_bench
+inline long fnvhash64(long val) {
+  long hashval = 0xCBF29CE484222325L;
+
+  for (int i=0; i<8; i++) {
+    long octet = val & 0x00ff;
+    val = val >> 8;
+
+    hashval = hashval ^ octet;
+    hashval = hashval * 1099511628211L;
+  }
+  return hashval >= 0 ? hashval : -hashval;
+}
+
 // std::hash compatible interface.
 struct SliceHasher {
   uint32_t operator()(const Slice& s) const { return GetSliceHash(s); }

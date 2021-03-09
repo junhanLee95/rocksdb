@@ -77,6 +77,7 @@
 #include "utilities/merge_operators/bytesxor.h"
 #include "utilities/persistent_cache/block_cache_tier.h"
 #include "util/zipf.h"
+#include "util/hash.h"
 
 #ifdef OS_WIN
 #include <io.h>  // open/close
@@ -787,7 +788,7 @@ DEFINE_bool(YCSB_prefix_group_distribution, false,
 DEFINE_uint64(YCSB_prefix_group_count, 3,
 						"Semi-sorted key distribution for YCSB");
 DEFINE_bool(YCSB_insert_ordered, false,
-						"insert is ordered for YCSB");
+						"insert is ordered for YCSB. if not, insert is hashed");
 
 
 DEFINE_bool(YCSB_background_stat, false,
@@ -6699,9 +6700,15 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             int prefix_id = prefix_id_seq[op_id];
             op_id++;
             k = zipf_generators[prefix_id].nextValue() % zipf_generators[prefix_id].getItems(); 
+            if(!FLAGS_YCSB_insert_ordered) {
+              k = fnvhash64(k);
+            }
             GeneratePrefixZipfKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
           } else { // default
             k = zipf_generator.nextValue() % FLAGS_num;
+            if(!FLAGS_YCSB_insert_ordered) {
+              k = fnvhash64(k);
+            }
             GenerateKeyFromInt(k, FLAGS_num, &key);
           }
 
