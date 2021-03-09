@@ -781,12 +781,11 @@ DEFINE_bool(latency_stat, false,
 						"Report latency stats every N seconds. N came from stats_interval_seconds. Enabled if FLAGS_histogram is set.");
 
 DEFINE_bool(YCSB_uniform_distribution, false,
-						"Uniform key distribution for YCSB");
-
-DEFINE_bool(YCSB_prefix_group_distribution, false,
-						"Semi-sorted key distribution for YCSB");
-DEFINE_uint64(YCSB_prefix_group_count, 3,
-						"Semi-sorted key distribution for YCSB");
+						"Uniform key distribution for YCSB. If false, zipf");
+DEFINE_bool(YCSB_semi_sorted_distribution, false,
+						"Semi-sorted key distribution for YCSB. If false, prefix key is not privided");
+DEFINE_uint64(YCSB_semi_sorted_group_count, 3,
+						"Semi-sorted key distribution for YCSB. Ceph uses 10 prefix key, and its semi_sorted_group_count is 10");
 DEFINE_bool(YCSB_insert_ordered, false,
 						"insert is ordered for YCSB. if not, insert is hashed");
 
@@ -2838,7 +2837,7 @@ class Benchmark {
     return hashval >= 0 ? hashval : -hashval;
   }
 
-  void GeneratePrefixZipfKeyFromInt(uint64_t v, int64_t num_keys, Slice* key, char prefix) {
+  void GenerateSemiSortedKeyFromInt(uint64_t v, int64_t num_keys, Slice* key, char prefix) {
 
     if (!keys_.empty()) {
       assert(FLAGS_use_existing_keys);
@@ -3214,11 +3213,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
       // create key generator (zipf) for semi-sorted key space
       if (name == "longpeakl" || name == "longpeaka") {
-        if (FLAGS_YCSB_prefix_group_distribution) {
-          assert(FLAGS_YCSB_prefix_group_count > 0);
-          int nums_per_group[FLAGS_YCSB_prefix_group_count];
+        if (FLAGS_YCSB_semi_sorted_distribution) {
+          assert(FLAGS_YCSB_semi_sorted_group_count > 0);
+          int nums_per_group[FLAGS_YCSB_semi_sorted_group_count];
 
-          for(int i = 0; i < FLAGS_YCSB_prefix_group_count; i++) {
+          for(int i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
             nums_per_group[i] = 0;;
             zipf_generators.push_back(ZipfGenerator());
           }
@@ -3229,13 +3228,13 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           srand((unsigned) time(&t));
 
           for(int i = 0; i < FLAGS_num; i++) {
-            int prefix_id = rand() % FLAGS_YCSB_prefix_group_count;
+            int prefix_id = rand() % FLAGS_YCSB_semi_sorted_group_count;
             prefix_id_seq.push_back(prefix_id);
             nums_per_group[prefix_id] ++;
           }
           printf("random key generation is done ...\n");
 
-          for (int i = 0; i < FLAGS_YCSB_prefix_group_count; i++) {
+          for (int i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
             printf("size of group %c : %d\n", 'A'+i, nums_per_group[i]);
             zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i, FLAGS_YCSB_insert_ordered);
           }
@@ -6712,14 +6711,14 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             // Generate number from uniform distribution
             k = thread->rand.Next() % FLAGS_num;
             GenerateKeyFromInt(k, FLAGS_num, &key);
-          } else if(FLAGS_YCSB_prefix_group_distribution){
+          } else if (FLAGS_YCSB_semi_sorted_distribution) {
             int prefix_id = prefix_id_seq[op_id];
             op_id++;
             k = zipf_generators[prefix_id].nextValue() % zipf_generators[prefix_id].getItems(); 
             if(!FLAGS_YCSB_insert_ordered) {
               k = fnvhash64(k);
             }
-            GeneratePrefixZipfKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
+            GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
             printf("generated key : %s\n", key.data());
           } else { // default
             k = zipf_generator.nextValue() % FLAGS_num;
