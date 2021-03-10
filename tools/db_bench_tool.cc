@@ -6772,14 +6772,14 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           } else if (FLAGS_YCSB_semi_sorted_distribution) {
             int prefix_id = prefix_id_seq[op_id];
             op_id++;
-            k = zipf_generators[prefix_id].nextValue() % zipf_generators[prefix_id].getItems(); 
+            k = zipf_generators[prefix_id].nextValue() ; 
             if(!FLAGS_YCSB_insert_ordered) {
               k = fnvhash64(k);
             }
             GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
             printf("generated key : %s\n", key.data());
           } else { // default
-            k = zipf_generator.nextValue() % FLAGS_num;
+            k = zipf_generator.nextValue() ;
             if(!FLAGS_YCSB_insert_ordered) {
               k = fnvhash64(k);
             }
@@ -6824,10 +6824,9 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
     int steady_workload_time = 0;
 
-    while (!duration.Done(1)) {
+    while (op_id < readwrites_) {
       DB* db = SelectDB(thread);
       
-      // thread 0 is status thread. 
       if (thread->tid > 7 && thread->tid < 13) {
         // load generator
         int val_size = FLAGS_value_size;
@@ -6840,9 +6839,10 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
         vals_generated++;
 
-        std::this_thread::sleep_for(std::chrono::microseconds(200));
-
-      } else {
+        // 20kops/sec population
+        std::this_thread::sleep_for(std::chrono::microseconds(250));
+      }
+      else {
         // worker thread
         if (!thread->shared->op_queues[cur_queue][thread->tid].empty()) {
           std::pair<int, std::chrono::microseconds> pair_val_time = thread->shared->op_queues[cur_queue][thread->tid ].front();
@@ -6853,15 +6853,27 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           std::unique_ptr<const char[]> key_guard;
           Slice key = AllocateKey(&key_guard);
 
-          long k;
-          if (FLAGS_YCSB_uniform_distribution){
+          uint64_t k;
+          if (FLAGS_YCSB_uniform_distribution) {
             // Generate number from uniform distribution
             k = thread->rand.Next() % FLAGS_num;
+            GenerateKeyFromInt(k, FLAGS_num, &key);
+          } else if (FLAGS_YCSB_semi_sorted_distribution) {
+            int prefix_id = prefix_id_seq[op_id];
+            op_id++;
+            k = zipf_generators[prefix_id].nextValue() ; 
+            if(!FLAGS_YCSB_insert_ordered) {
+              k = fnvhash64(k);
+            }
+            GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
+            printf("generated key : %s\n", key.data());
           } else { // default
-            k = zipf_generator.nextValue() % FLAGS_num;
+            k = zipf_generator.nextValue() ;
+            if(!FLAGS_YCSB_insert_ordered) {
+              k = fnvhash64(k);
+            }
+            GenerateKeyFromInt(k, FLAGS_num, &key);
           }
-          GenerateKeyFromInt(k, FLAGS_num, &key);
-
           int op_prob = thread->rand.Next() % 100;
 
           if (op_prob < 50) {
@@ -6872,17 +6884,12 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             }
             writes_done++;
             long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kWrite);
-            if (curops != 0 && thread->tid == 1) {
-              thread->shared->cur_ops_interval = curops;
-            }
           } else {
             Status s = db->Get(options, key, &value);
             reads_done++;
             long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kRead);
-            if (curops != 0 && thread->tid == 1) {
-              thread->shared->cur_ops_interval = curops;
-            }
           }
+
           cur_queue = (cur_queue + 1) % 5;
         }
       }

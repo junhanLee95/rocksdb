@@ -1,8 +1,8 @@
 #pragma once
 class ZipfGenerator {
   public:
-    void init_zipf_generator(long min, long max, char c, bool ordered, long recordcount);
-    void init_zipf_generator(long min, long max, char c, bool ordered);
+    void init_zipf_generator(long min, long max, char c, bool counter, long recordcount);
+    void init_zipf_generator(long min, long max, char c, bool counter);
     void init_zipf_generator(long min, long max, char c);
     void init_zipf_generator(long min, long max);
     long nextValue();
@@ -26,6 +26,6 @@ class ZipfGenerator {
     long countforzeta; //initialized in init_zipf_generator
     char prefix; //initialized in init_zipf_generator
     long lastVal; //initialized in setLastValue
-    bool insertordered; //initialized in init_zipf_generator
+    bool countergenerator; //initialized in init_zipf_generator
     long recordcount; //initialized in init_zipf_generator
 };

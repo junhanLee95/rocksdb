@@ -10,7 +10,7 @@
 // 	 * 
 // 	 * @param min The smallest integer to generate in the sequence.
 // 	 * @param max The largest integer to generate in the sequence.
-void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered, long rcount) {
+void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool counter, long rcount) {
 	items = max-min+1;
 	base = min;
 	zipfianconstant = 0.99;
@@ -21,11 +21,11 @@ void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered
 	countforzeta = items;
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
   prefix = c;
-  insertordered = ordered;
+  countergenerator = counter;
   recordcount = rcount;
 }
 
-void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered) {
+void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool counter) {
 	items = max-min+1;
 	base = min;
 	zipfianconstant = 0.99;
@@ -36,7 +36,7 @@ void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered
 	countforzeta = items;
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
   prefix = c;
-  insertordered = ordered;
+  countergenerator = counter;
   recordcount = LONG_MAX;
 }
 
@@ -52,7 +52,7 @@ void ZipfGenerator::init_zipf_generator(long min, long max, char c) {
 	countforzeta = items;
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
   prefix = c;
-  insertordered = false;
+  countergenerator = false;
   recordcount = LONG_MAX;
 
 }
@@ -67,7 +67,7 @@ void ZipfGenerator::init_zipf_generator(long min, long max) {
 	zetan = zetastatic(0, max-min+1, 0);
 	countforzeta = items;
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
-  insertordered = false;
+  countergenerator = false;
   recordcount = items;
 
 }
@@ -95,8 +95,8 @@ double ZipfGenerator::zetastatic(long st, long n, double initialsum){
 }
 
 long ZipfGenerator::nextLong(long itemcount){
-  if(insertordered){
-    long ret = (lastVal + 1) % itemcount;
+  if(countergenerator){
+    long ret = lastVal % recordcount + 1;
     setLastValue(ret);
     return ret;
   }
@@ -127,9 +127,14 @@ long ZipfGenerator::nextLong(long itemcount){
 
 long ZipfGenerator::nextValue() {
   long nextVal;
-  do{
+  if(countergenerator){
     nextVal = nextLong(items);
-  } while(nextVal >= recordcount);
+  } else{
+    do{
+      nextVal = nextLong(items);
+    } while(nextVal >= recordcount); 
+  }
+  printf("nextVal : %ld\n", nextVal);
 	return nextVal;
 }
 
