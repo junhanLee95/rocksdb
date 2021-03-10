@@ -3292,9 +3292,12 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
           printf("random key generation is done ...\n");
 
+          bool is_counter_generator;
+          is_counter_generator = (name == "longpeakl");
+
           for (int i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
             printf("size of group %c : %d\n", 'A'+i, nums_per_group[i]);
-            zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i, FLAGS_YCSB_insert_ordered, records_per_group[i]);
+            zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i, is_counter_generator, records_per_group[i]);
           }
         } else if (!FLAGS_YCSB_uniform_distribution) {
           zipf_generator.init_zipf_generator(0, FLAGS_num);
@@ -6865,7 +6868,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
               k = fnvhash64(k);
             }
             GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
-            printf("generated key : %s\n", key.data());
           } else { // default
             k = zipf_generator.nextValue() ;
             if(!FLAGS_YCSB_insert_ordered) {
