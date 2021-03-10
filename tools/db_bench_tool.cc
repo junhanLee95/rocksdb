@@ -33,6 +33,9 @@
 #include <thread>
 #include <unordered_map>
 #include <queue>
+#include <functional>
+#include <iterator>
+#include <algorithm>
 
 #include "db/db_impl.h"
 #include "db/malloc_stats.h"
@@ -786,6 +789,10 @@ DEFINE_bool(YCSB_semi_sorted_distribution, false,
 						"Semi-sorted key distribution for YCSB. If false, prefix key is not privided");
 DEFINE_uint64(YCSB_semi_sorted_group_count, 3,
 						"Semi-sorted key distribution for YCSB. Ceph uses 10 prefix key, and its semi_sorted_group_count is 10");
+DEFINE_string(YCSB_operation_count_per_group, "1000:1000:1000",
+						"Operation count for each semi sorted group.");
+DEFINE_string(YCSB_record_count_per_group, "1000:1000:1000",
+						"Record count for each semi sorted group.");
 DEFINE_bool(YCSB_insert_ordered, false,
 						"insert is ordered for YCSB. if not, insert is hashed");
 
@@ -3215,28 +3222,79 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       if (name == "longpeakl" || name == "longpeaka") {
         if (FLAGS_YCSB_semi_sorted_distribution) {
           assert(FLAGS_YCSB_semi_sorted_group_count > 0);
+          int total_op;
           int nums_per_group[FLAGS_YCSB_semi_sorted_group_count];
+          int records_per_group[FLAGS_YCSB_semi_sorted_group_count];
+
+          total_op = 0;
 
           for(int i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
-            nums_per_group[i] = 0;;
+            nums_per_group[i] = 0;
+            records_per_group[i] = 0;
             zipf_generators.push_back(ZipfGenerator());
           }
 
           printf("random key generation in progress ...\n");
           // initializes random number generator
+          // for semi-sorted-distribution, we do not use FLAG_num anymore.
+          // Instead of that, we use YCSB_operation_count_per_group to create key sequence.
+          int op_group_count = 0;
+          for(int i=0; i< FLAGS_YCSB_operation_count_per_group.length(); i++) {
+            if(FLAGS_YCSB_operation_count_per_group[i] == ':'){
+              op_group_count++;
+            } else{
+              nums_per_group[op_group_count] *= 10;
+              nums_per_group[op_group_count] += FLAGS_YCSB_operation_count_per_group[i] - '0';
+            }
+          }
+          op_group_count ++;
+
+          int record_group_count = 0;
+          for(int i=0; i< FLAGS_YCSB_record_count_per_group.length(); i++) {
+            if(FLAGS_YCSB_record_count_per_group[i] == ':'){
+              record_group_count++;
+            } else{
+              records_per_group[record_group_count] *= 10;
+              records_per_group[record_group_count] += FLAGS_YCSB_record_count_per_group[i] - '0';
+            }
+          }
+          record_group_count++;
+          
+          // copy nums to tokens
+          for(int i=0; i<FLAGS_YCSB_semi_sorted_group_count; i++) {
+            total_op += nums_per_group[i];
+          }
+
+          printf("semi_sorted_group_count : %d\n", op_group_count);
+          printf("total_op : %d\n", total_op);
+          for(int i=0; i< FLAGS_YCSB_semi_sorted_group_count;i++) {
+            printf("nums_per_group[%d] : %d\n", i, nums_per_group[i]);
+            printf("records_per_group[%d] : %d\n", i, records_per_group[i]);
+          }
+
+          // db_bench input argument check
+          assert(op_group_count == FLAGS_YCSB_semi_sorted_group_count);
+          assert(record_group_count == FLAGS_YCSB_semi_sorted_group_count);
+          assert(total_op == FLAGS_num);
+
           time_t t;
           srand((unsigned) time(&t));
 
-          for(int i = 0; i < FLAGS_num; i++) {
-            int prefix_id = rand() % FLAGS_YCSB_semi_sorted_group_count;
-            prefix_id_seq.push_back(prefix_id);
-            nums_per_group[prefix_id] ++;
+          // shuffle prefix id seq with given operation count
+          std::random_device rd;
+          std::mt19937 generator(rd());
+          for(int i = 0; i < op_group_count; i++) {
+            for(int j = 0; j < nums_per_group[i]; j++) {
+              prefix_id_seq.push_back(i);
+            }
           }
+          std::shuffle(prefix_id_seq.begin(), prefix_id_seq.end(), generator);
+
           printf("random key generation is done ...\n");
 
           for (int i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
             printf("size of group %c : %d\n", 'A'+i, nums_per_group[i]);
-            zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i, FLAGS_YCSB_insert_ordered);
+            zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i, FLAGS_YCSB_insert_ordered, records_per_group[i]);
           }
         } else if (!FLAGS_YCSB_uniform_distribution) {
           zipf_generator.init_zipf_generator(0, FLAGS_num);

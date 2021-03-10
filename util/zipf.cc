@@ -3,12 +3,28 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
+#include <climits>
 
 // 	*
 // 	 * Create a zipfian generator for items between min and max (inclusive) for the specified zipfian constant, using the precomputed value of zeta.
 // 	 * 
 // 	 * @param min The smallest integer to generate in the sequence.
 // 	 * @param max The largest integer to generate in the sequence.
+void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered, long rcount) {
+	items = max-min+1;
+	base = min;
+	zipfianconstant = 0.99;
+	theta = zipfianconstant;
+	zeta2theta = zeta(0, 2, 0);
+	alpha = 1.0/(1.0-theta);
+	zetan = zetastatic(0, max-min+1, 0);
+	countforzeta = items;
+	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
+  prefix = c;
+  insertordered = ordered;
+  recordcount = rcount;
+}
+
 void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered) {
 	items = max-min+1;
 	base = min;
@@ -21,7 +37,7 @@ void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool ordered
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
   prefix = c;
   insertordered = ordered;
-
+  recordcount = LONG_MAX;
 }
 
 
@@ -37,6 +53,7 @@ void ZipfGenerator::init_zipf_generator(long min, long max, char c) {
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
   prefix = c;
   insertordered = false;
+  recordcount = LONG_MAX;
 
 }
 
@@ -51,6 +68,7 @@ void ZipfGenerator::init_zipf_generator(long min, long max) {
 	countforzeta = items;
 	eta=(1 - pow(2.0/items,1-theta) )/(1-zeta2theta/zetan);
   insertordered = false;
+  recordcount = items;
 
 }
 
@@ -108,7 +126,11 @@ long ZipfGenerator::nextLong(long itemcount){
 }
 
 long ZipfGenerator::nextValue() {
-	return nextLong(items);
+  long nextVal;
+  do{
+    nextVal = nextLong(items);
+  } while(nextVal >= recordcount);
+	return nextVal;
 }
 
 long ZipfGenerator::nextLatestValue() {
