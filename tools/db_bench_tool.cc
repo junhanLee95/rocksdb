@@ -6777,7 +6777,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
               k = fnvhash64(k);
             }
             GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
-            printf("generated key : %s\n", key.data());
           } else { // default
             k = zipf_generator.nextValue() ;
             if(!FLAGS_YCSB_insert_ordered) {

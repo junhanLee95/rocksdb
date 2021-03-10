@@ -134,7 +134,6 @@ long ZipfGenerator::nextValue() {
       nextVal = nextLong(items);
     } while(nextVal >= recordcount); 
   }
-  printf("nextVal : %ld\n", nextVal);
 	return nextVal;
 }
 
