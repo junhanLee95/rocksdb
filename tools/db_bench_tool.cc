@@ -2343,8 +2343,13 @@ class Benchmark {
   // variables for longpeak test
   std::vector<ZipfGenerator> zipf_generators;
   ZipfGenerator zipf_generator;
-  std::vector<int> prefix_id_seq;
-  int64_t op_id = 0;
+  // For randomly generated key k,
+  // if prefix_bound_l[i] <= k < prefix_bound_h[i] is satisfied
+  // we choose prefix as 'i'
+  std::vector<int64_t> prefix_bound_l;
+  std::vector<int64_t> prefix_bound_h;
+  InstrumentedMutex key_mutex_;
+  int64_t op_done = 0;
 #ifndef ROCKSDB_LITE
   TraceOptions trace_options_;
 #endif
@@ -3222,54 +3227,63 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       if (name == "longpeakl" || name == "longpeaka") {
         if (FLAGS_YCSB_semi_sorted_distribution) {
           assert(FLAGS_YCSB_semi_sorted_group_count > 0);
-          int total_op;
-          int nums_per_group[FLAGS_YCSB_semi_sorted_group_count];
-          int records_per_group[FLAGS_YCSB_semi_sorted_group_count];
+          uint64_t total_op;
+          std::vector<uint64_t>  nums_per_group;
+          std::vector<uint64_t> records_per_group;
 
           total_op = 0;
 
-          for(int i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
-            nums_per_group[i] = 0;
-            records_per_group[i] = 0;
+          for(uint64_t i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
             zipf_generators.push_back(ZipfGenerator());
           }
 
-          printf("random key generation in progress ...\n");
-          // initializes random number generator
           // for semi-sorted-distribution, we do not use FLAG_num anymore.
           // Instead of that, we use YCSB_operation_count_per_group to create key sequence.
           int op_group_count = 0;
-          for(int i=0; i< FLAGS_YCSB_operation_count_per_group.length(); i++) {
+          uint64_t tmp_count;
+          tmp_count = 0;
+          for(uint64_t i=0; i< FLAGS_YCSB_operation_count_per_group.length(); i++) {
             if(FLAGS_YCSB_operation_count_per_group[i] == ':'){
-              op_group_count++;
+              nums_per_group.push_back(tmp_count);
+              tmp_count = 0;
             } else{
-              nums_per_group[op_group_count] *= 10;
-              nums_per_group[op_group_count] += FLAGS_YCSB_operation_count_per_group[i] - '0';
+              tmp_count *= 10;
+              tmp_count += FLAGS_YCSB_operation_count_per_group[i] - '0';
             }
           }
-          op_group_count ++;
+          nums_per_group.push_back(tmp_count);
+          op_group_count = nums_per_group.size();
 
           int record_group_count = 0;
-          for(int i=0; i< FLAGS_YCSB_record_count_per_group.length(); i++) {
+          tmp_count = 0;
+          for(uint64_t i=0; i< FLAGS_YCSB_record_count_per_group.length(); i++) {
             if(FLAGS_YCSB_record_count_per_group[i] == ':'){
-              record_group_count++;
+              records_per_group.push_back(tmp_count);
+              tmp_count = 0;
             } else{
-              records_per_group[record_group_count] *= 10;
-              records_per_group[record_group_count] += FLAGS_YCSB_record_count_per_group[i] - '0';
+              tmp_count *= 10;
+              tmp_count += FLAGS_YCSB_record_count_per_group[i] - '0';
             }
           }
-          record_group_count++;
+          records_per_group.push_back(tmp_count);
+          record_group_count = records_per_group.size();
           
           // copy nums to tokens
-          for(int i=0; i<FLAGS_YCSB_semi_sorted_group_count; i++) {
+          // assign prefix bounds
+          int64_t bound = 0;
+          for(uint64_t i=0; i<FLAGS_YCSB_semi_sorted_group_count; i++) {
             total_op += nums_per_group[i];
+            prefix_bound_l.push_back(bound);
+            bound += nums_per_group[i];
+            prefix_bound_h.push_back(bound);
           }
+          assert(total_op == bound);
 
           printf("semi_sorted_group_count : %d\n", op_group_count);
-          printf("total_op : %d\n", total_op);
-          for(int i=0; i< FLAGS_YCSB_semi_sorted_group_count;i++) {
-            printf("nums_per_group[%d] : %d\n", i, nums_per_group[i]);
-            printf("records_per_group[%d] : %d\n", i, records_per_group[i]);
+          printf("total_op : %ld\n", total_op);
+          for(int64_t i=0; i< FLAGS_YCSB_semi_sorted_group_count;i++) {
+            printf("nums_per_group[%d] : %ld\n", i, nums_per_group[i]);
+            printf("records_per_group[%d] : %ld\n", i, records_per_group[i]);
           }
 
           // db_bench input argument check
@@ -3277,33 +3291,17 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           assert(record_group_count == FLAGS_YCSB_semi_sorted_group_count);
           assert(total_op == FLAGS_num);
 
-          time_t t;
-          srand((unsigned) time(&t));
-
-          // shuffle prefix id seq with given operation count
-          std::random_device rd;
-          std::mt19937 generator(rd());
-          for(int i = 0; i < op_group_count; i++) {
-            for(int j = 0; j < nums_per_group[i]; j++) {
-              prefix_id_seq.push_back(i);
-            }
-          }
-          std::shuffle(prefix_id_seq.begin(), prefix_id_seq.end(), generator);
-
-          printf("random key generation is done ...\n");
-
           bool is_counter_generator;
           is_counter_generator = (name == "longpeakl");
 
-          for (int i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
-            printf("size of group %c : %d\n", 'A'+i, nums_per_group[i]);
+          for (uint64_t i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
+            printf("size of group %c : %ld\n", 'A'+(int)i, nums_per_group[i]);
             zipf_generators[i].init_zipf_generator(0, nums_per_group[i], 'A'+i, is_counter_generator, records_per_group[i]);
           }
         } else if (!FLAGS_YCSB_uniform_distribution) {
           zipf_generator.init_zipf_generator(0, FLAGS_num);
         } // for uniform distribution, there is nothing to do
 
-        op_id = 0;
       }
 
 
@@ -6736,11 +6734,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
     int steady_workload_time = 0;
 
-
-    //while (!duration.Done(1)) {
-    while (op_id < readwrites_) {
-      DB* db = SelectDB(thread);
-      
+    while (op_done < readwrites_) {
       if (thread->tid > 7 && thread->tid < 13) {
         // load generator
         int val_size = FLAGS_value_size;
@@ -6768,18 +6762,43 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           Slice key = AllocateKey(&key_guard);
 
           uint64_t k;
+          int prefix_id = 0;
+          int64_t rand_key;
           if (FLAGS_YCSB_uniform_distribution) {
             // Generate number from uniform distribution
             k = thread->rand.Next() % FLAGS_num;
             GenerateKeyFromInt(k, FLAGS_num, &key);
           } else if (FLAGS_YCSB_semi_sorted_distribution) {
-            int prefix_id = prefix_id_seq[op_id];
-            op_id++;
+            if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
+              continue;
+            // choose prefix_id
+            if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+              rand_key = thread->rand.Next() % prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1];
+              while (prefix_bound_l[prefix_id] > rand_key ||
+                    rand_key >= prefix_bound_h[prefix_id]) {
+                prefix_id = (prefix_id + 1) % FLAGS_YCSB_semi_sorted_group_count;
+              }
+              // update bounds
+              for(int64_t i = prefix_id; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
+                if(i != prefix_id){
+                  prefix_bound_l[i] --;
+                }
+                prefix_bound_h[i] --;
+              }
+              /*
+              for(int64_t i=0; i<FLAGS_YCSB_semi_sorted_group_count; i++){
+                printf("%ld[%ld, %ld)\t", i, prefix_bound_l[i], prefix_bound_h[i]);
+              }
+              printf("\n");
+              */
+            }
+
             k = zipf_generators[prefix_id].nextValue() ; 
             if(!FLAGS_YCSB_insert_ordered) {
               k = fnvhash64(k);
             }
             GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
+            //printf("Generated Key : %s\n", key.data());
           } else { // default
             k = zipf_generator.nextValue() ;
             if(!FLAGS_YCSB_insert_ordered) {
@@ -6787,19 +6806,25 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             }
             GenerateKeyFromInt(k, FLAGS_num, &key);
           }
+          size_t id = (size_t)prefix_id;
+          DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(id);
 
-          Status s = db->Put(write_options_, key, gen.Generate(pair_val_time.first));
+          Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(pair_val_time.first));
           if (!s.ok()) {
             fprintf(stderr, "put error: %s\n", s.ToString().c_str());
             exit(1);
           }
           writes_done++;
-          long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kWrite);
+          op_done++;
+          long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1, pair_val_time.second.count(), kWrite);
           if (curops != 0 && thread->tid == 1) {
             thread->shared->cur_ops_interval = curops;
           }
 
           cur_queue = (cur_queue + 1) % 5;
+        } else {
+          //printf("no op req!\n");
+          std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
       }
     }
@@ -6826,9 +6851,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
     int steady_workload_time = 0;
 
-    while (op_id < readwrites_) {
-      DB* db = SelectDB(thread);
-      
+    while (op_done < readwrites_) {
       if (thread->tid > 7 && thread->tid < 13) {
         // load generator
         int val_size = FLAGS_value_size;
@@ -6856,13 +6879,30 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           Slice key = AllocateKey(&key_guard);
 
           uint64_t k;
+          int prefix_id = 0;
+          int64_t rand_key;
           if (FLAGS_YCSB_uniform_distribution) {
             // Generate number from uniform distribution
             k = thread->rand.Next() % FLAGS_num;
             GenerateKeyFromInt(k, FLAGS_num, &key);
           } else if (FLAGS_YCSB_semi_sorted_distribution) {
-            int prefix_id = prefix_id_seq[op_id];
-            op_id++;
+            if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
+              continue;
+            // choose prefix_id
+            if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+              rand_key = thread->rand.Next() % prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1];
+              while (prefix_bound_l[prefix_id] > rand_key ||
+                    rand_key >= prefix_bound_h[prefix_id]) {
+                prefix_id = (prefix_id + 1) % FLAGS_YCSB_semi_sorted_group_count;
+              }
+              // update bounds
+              for(int64_t i = prefix_id + 1; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
+                if(i != prefix_id){
+                  prefix_bound_l[i] --;
+                }
+                prefix_bound_h[i] --;
+              }
+            }
             k = zipf_generators[prefix_id].nextValue() ; 
             if(!FLAGS_YCSB_insert_ordered) {
               k = fnvhash64(k);
@@ -6875,23 +6915,31 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             }
             GenerateKeyFromInt(k, FLAGS_num, &key);
           }
+
+          size_t id = (size_t)prefix_id;
+          DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(id);
+
           int op_prob = thread->rand.Next() % 100;
 
           if (op_prob < 50) {
-            Status s = db->Put(write_options_, key, gen.Generate(pair_val_time.first));
+            Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(pair_val_time.first));
             if (!s.ok()) {
               fprintf(stderr, "put error: %s\n", s.ToString().c_str());
               exit(1);
             }
             writes_done++;
-            long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kWrite);
+            op_done++;
+            long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1, pair_val_time.second.count(), kWrite);
           } else {
-            Status s = db->Get(options, key, &value);
+            Status s = db_with_cfh->db->Get(options, key, &value);
             reads_done++;
-            long curops = thread->stats.FinishedOpsQUEUES(nullptr, db, 1, pair_val_time.second.count(), kRead);
+            op_done++;
+            long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1, pair_val_time.second.count(), kRead);
           }
 
           cur_queue = (cur_queue + 1) % 5;
+        } else {
+          std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
       }
     }
