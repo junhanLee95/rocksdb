@@ -3224,7 +3224,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       }
 
       // create key generator (zipf) for semi-sorted key space
-      if (name == "longpeakl" || name == "longpeaka") {
+      if (name == "longpeakl" || name == "longpeaka" || name == "ycsbwkldl" || name == "ycsbwklda") {
         if (FLAGS_YCSB_semi_sorted_distribution) {
           assert(FLAGS_YCSB_semi_sorted_group_count > 0);
           uint64_t total_op;
@@ -6175,36 +6175,60 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 		std::unique_ptr<const char[]> key_guard;
 		Slice key = AllocateKey(&key_guard);
 
-		if (FLAGS_benchmark_write_rate_limit > 0) {
-			printf(">>>> FLAGS_benchmark_write_rate_limit YCSBL \n");
-			thread->shared->write_rate_limiter.reset(
-					NewGenericRateLimiter(FLAGS_benchmark_write_rate_limit));
-		}
-
 
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
-			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
-     
-
-			long k;
-			if (FLAGS_YCSB_uniform_distribution){
+			uint64_t k;
+			int prefix_id = 0;
+			int64_t rand_key;
+			if (FLAGS_YCSB_uniform_distribution) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
+				GenerateKeyFromInt(k, FLAGS_num, &key);
+			} else if (FLAGS_YCSB_semi_sorted_distribution) {
+				// choose prefix_id
+				if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+					InstrumentedMutexLock l(&key_mutex_);
+					if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
+						break;
+					rand_key = thread->rand.Next() % prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1];
+					while (prefix_bound_l[prefix_id] > rand_key ||
+							rand_key >= prefix_bound_h[prefix_id]) {
+						prefix_id = (prefix_id + 1) % FLAGS_YCSB_semi_sorted_group_count;
+					}
+					// update bounds
+					for(int64_t i = prefix_id; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
+						if(i != prefix_id){
+							prefix_bound_l[i] --;
+						}
+						prefix_bound_h[i] --;
+					}
+					/*
+					   for(int64_t i=0; i<FLAGS_YCSB_semi_sorted_group_count; i++){
+					   printf("%ld[%ld, %ld)\t", i, prefix_bound_l[i], prefix_bound_h[i]);
+					   }
+					   printf("\n");
+					   */
+				}
+
+				k = zipf_generators[prefix_id].nextValue() ; 
+				if(!FLAGS_YCSB_insert_ordered) {
+					k = fnvhash64(k);
+				}
+				GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
+				//printf("Generated Key : %s\n", key.data());
 			} else { // default
-				k = zipf_generator.nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() ;
+				if(!FLAGS_YCSB_insert_ordered) {
+					k = fnvhash64(k);
+				}
+				GenerateKeyFromInt(k, FLAGS_num, &key);
 			}
-			GenerateKeyFromInt(k, FLAGS_num, &key);
-
-				
-
-			// step 2. found and update value
-			if (FLAGS_benchmark_write_rate_limit > 0) {
-				thread->shared->write_rate_limiter->Request(
-						value_size_ + key_size_, Env::IO_HIGH,
-						nullptr /* stats*/, RateLimiter::OpType::kWrite);
-				thread->stats.ResetLastOpTime();
-			}
+			size_t id = (size_t)prefix_id;
+			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(id);
+			std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
+				(std::chrono::system_clock::now().time_since_epoch());
+                        
 			Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
 			if (!s.ok()) {
 				// it is an error but we continue to make reason why
@@ -6212,8 +6236,9 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			}
 			else {
 				writes_done++;
-				thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+				long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1, start.count(), kWrite);
 			}
+                        writes_done++;
 		}
 
 		// print msg to stat
@@ -6253,27 +6278,68 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
-			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
-
-			long k;
-			if (FLAGS_YCSB_uniform_distribution){
+			uint64_t k;
+			int prefix_id = 0;
+			int64_t rand_key;
+			if (FLAGS_YCSB_uniform_distribution) {
 				// Generate number from uniform distribution
 				k = thread->rand.Next() % FLAGS_num;
+				GenerateKeyFromInt(k, FLAGS_num, &key);
+			} else if (FLAGS_YCSB_semi_sorted_distribution) {
+				
+				// choose prefix_id
+				if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+					InstrumentedMutexLock l(&key_mutex_);
+					if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
+						break;
+					rand_key = thread->rand.Next() % prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1];
+					while (prefix_bound_l[prefix_id] > rand_key ||
+							rand_key >= prefix_bound_h[prefix_id]) {
+						prefix_id = (prefix_id + 1) % FLAGS_YCSB_semi_sorted_group_count;
+					}
+					// update bounds
+					for(int64_t i = prefix_id; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
+						if(i != prefix_id){
+							prefix_bound_l[i] --;
+						}
+						prefix_bound_h[i] --;
+					}
+					/*
+					   for(int64_t i=0; i<FLAGS_YCSB_semi_sorted_group_count; i++){
+					   printf("%ld[%ld, %ld)\t", i, prefix_bound_l[i], prefix_bound_h[i]);
+					   }
+					   printf("\n");
+					   */
+				}
+
+				k = zipf_generators[prefix_id].nextValue() ; 
+				if(!FLAGS_YCSB_insert_ordered) {
+					k = fnvhash64(k);
+				}
+				GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
+				//printf("Generated Key : %s\n", key.data());
 			} else { // default
-				k = zipf_generator.nextValue() % FLAGS_num;
+				k = zipf_generator.nextValue() ;
+				if(!FLAGS_YCSB_insert_ordered) {
+					k = fnvhash64(k);
+				}
+				GenerateKeyFromInt(k, FLAGS_num, &key);
 			}
-			GenerateKeyFromInt(k, FLAGS_num, &key);
+			size_t id = (size_t)prefix_id;
+			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(id);
 
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 50) {
 				// read
+				std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
+				(std::chrono::system_clock::now().time_since_epoch());
 				s = db_with_cfh->db->Get(options, key, &value);
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
 				} else if(!s.IsNotFound()) {
 					found++;
-					thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kRead);
+					long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1, start.count(), kRead);
 					reads_done++;
 				}
 			}
@@ -6294,6 +6360,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 								nullptr /* stats*/, RateLimiter::OpType::kWrite);
 						thread->stats.ResetLastOpTime();
 					}
+					std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
+						(std::chrono::system_clock::now().time_since_epoch());
 					s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
 					if (!s.ok()) {
 						// it is an error but we continue to make reason why
@@ -6301,7 +6369,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					}
 					else {
 						writes_done++;
-						thread->stats.FinishedOps(nullptr, db_with_cfh->db, 1, kWrite);
+						long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1,  start.count(), kWrite);
 					}
 				} else {
 					// NOT FOUND
@@ -6769,10 +6837,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             k = thread->rand.Next() % FLAGS_num;
             GenerateKeyFromInt(k, FLAGS_num, &key);
           } else if (FLAGS_YCSB_semi_sorted_distribution) {
-            if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
-              continue;
-            // choose prefix_id
-            if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+                        // choose prefix_id
+	    if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+	      InstrumentedMutexLock l(&key_mutex_);
+              if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
+                break;
               rand_key = thread->rand.Next() % prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1];
               while (prefix_bound_l[prefix_id] > rand_key ||
                     rand_key >= prefix_bound_h[prefix_id]) {
@@ -6886,10 +6955,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
             k = thread->rand.Next() % FLAGS_num;
             GenerateKeyFromInt(k, FLAGS_num, &key);
           } else if (FLAGS_YCSB_semi_sorted_distribution) {
-            if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
-              continue;
             // choose prefix_id
             if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+	      InstrumentedMutexLock l(&key_mutex_);
+              if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
+                break;
               rand_key = thread->rand.Next() % prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1];
               while (prefix_bound_l[prefix_id] > rand_key ||
                     rand_key >= prefix_bound_h[prefix_id]) {
