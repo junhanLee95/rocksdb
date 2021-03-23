@@ -3292,7 +3292,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           assert(total_op == FLAGS_num);
 
           bool is_counter_generator;
-          is_counter_generator = (name == "longpeakl");
+          is_counter_generator = (name.compare("longpeakl") == 0) || (name.compare("ycsbwkldl") == 0);
+          printf("is_counter? : %s\n", is_counter_generator? "true":"false");
 
           for (uint64_t i = 0; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
             printf("size of group %c : %ld\n", 'A'+(int)i, nums_per_group[i]);
@@ -6215,6 +6216,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				}
 
 				k = zipf_generators[prefix_id].nextValue() ; 
+        //printf("id : %ld\t k : %ld\n", prefix_id, k);
 				if(!FLAGS_YCSB_insert_ordered) {
 					k = fnvhash64(k);
 				}
@@ -6329,6 +6331,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				}
 
 				k = zipf_generators[prefix_id].nextValue() ; 
+        //printf("id : %ld\t k : %ld\n", prefix_id, k);
 				if(!FLAGS_YCSB_insert_ordered) {
 					k = fnvhash64(k);
 				}
