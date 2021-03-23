@@ -6165,19 +6165,22 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 		RandomGenerator gen;
 		zipf_generator.init_zipf_generator(0, FLAGS_num);
 
-		std::string value;
+    std::string value;
 		int64_t found = 0;
 
+    int64_t bytes = 0;
 		int64_t reads_done = 0;
 		int64_t writes_done = 0;
 		Duration duration(FLAGS_duration, num_);
 
 		std::unique_ptr<const char[]> key_guard;
 		Slice key = AllocateKey(&key_guard);
+    Slice val;
 
 
 		// the number of iterations is the larger of read_ or write_
-		while (!duration.Done(1)) {
+    while (!duration.Done(1)) {
+      DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
 			uint64_t k;
 			int prefix_id = 0;
 			int64_t rand_key;
@@ -6224,23 +6227,32 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				}
 				GenerateKeyFromInt(k, FLAGS_num, &key);
 			}
+
+      //printf("Generated Key : %s\n", key.data());
 			size_t id = (size_t)prefix_id;
-			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(id);
 			std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
 				(std::chrono::system_clock::now().time_since_epoch());
+
+      Status s;
+      if (FLAGS_num_column_families > 1) {
+        s = db_with_cfh->db->Put(write_options_, db_with_cfh->GetCfh(id), key,
+            gen.Generate(value_size_));
+      } else {
+        s = db_with_cfh->db->Put(write_options_, db_with_cfh->db->DefaultColumnFamily(), key, gen.Generate(value_size_));
+      }
+      bytes += key.size() + value.size();
                         
-			Status s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
 			if (!s.ok()) {
 				// it is an error but we continue to make reason why
 				// exit(1);
 			}
 			else {
-				writes_done++;
-				long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1, start.count(), kWrite);
-			}
-                        writes_done++;
+				long curops = thread->stats.FinishedOpsQUEUES(db_with_cfh, db_with_cfh->db, 1, start.count(), kWrite);
+        writes_done++;
+      }
 		}
 
+    thread->stats.AddBytes(bytes);
 		// print msg to stat
 		char msg[100];
 		snprintf(msg, sizeof(msg), "( reads:%" PRIu64 " writes:%" PRIu64 \
@@ -6258,17 +6270,20 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 		Status s;
 		ReadOptions options(FLAGS_verify_checksum, true);
 		RandomGenerator gen;
-		zipf_generator.init_zipf_generator(0, FLAGS_num);
+		zipf_generator.init_zipf_generator(0, readwrites_);
 
 		std::string value;
 		int64_t found = 0;
 
+    int64_t bytes = 0;
 		int64_t reads_done = 0;
 		int64_t writes_done = 0;
-		Duration duration(FLAGS_duration, num_);
+		int64_t gets_done = 0;
+		Duration duration(FLAGS_duration, readwrites_);
 
 		std::unique_ptr<const char[]> key_guard;
 		Slice key = AllocateKey(&key_guard);
+    Slice val;
 
 		if (FLAGS_benchmark_write_rate_limit > 0) {
 			printf(">>>> FLAGS_benchmark_write_rate_limit YCSBA \n");
@@ -6278,7 +6293,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
 		// the number of iterations is the larger of read_ or write_
 		while (!duration.Done(1)) {
-			uint64_t k;
+      DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+      uint64_t k;
 			int prefix_id = 0;
 			int64_t rand_key;
 			if (FLAGS_YCSB_uniform_distribution) {
@@ -6317,40 +6333,54 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					k = fnvhash64(k);
 				}
 				GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
-				//printf("Generated Key : %s\n", key.data());
 			} else { // default
 				k = zipf_generator.nextValue() ;
 				if(!FLAGS_YCSB_insert_ordered) {
 					k = fnvhash64(k);
 				}
 				GenerateKeyFromInt(k, FLAGS_num, &key);
-			}
+      }
+      //printf("Generated Key : %s\n", key.data());
 			size_t id = (size_t)prefix_id;
-			DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(id);
 
 			int next_op = thread->rand.Next() % 100;
 			if (next_op < 50) {
 				// read
 				std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
 				(std::chrono::system_clock::now().time_since_epoch());
-				s = db_with_cfh->db->Get(options, key, &value);
+        
+        if (FLAGS_num_column_families > 1) {
+          s = db_with_cfh->db->Get(options, db_with_cfh->GetCfh(id), key,
+              &value);
+        } else {
+          s = db_with_cfh->db->Get(options, db_with_cfh->db->DefaultColumnFamily(), key, &value);
+        }
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
+          printf("get error\n");
 				} else if(!s.IsNotFound()) {
 					found++;
-					long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1, start.count(), kRead);
-					reads_done++;
-				}
+          bytes += key.size() + value.size();
+					long curops = thread->stats.FinishedOpsQUEUES(db_with_cfh, db_with_cfh->db, 1, start.count(), kRead);
+          gets_done++;
+        }
+        reads_done++;
 			}
 			else {
 				// update
 				// step 1. check whether key exists
-				s = db_with_cfh->db->Get(options, key, &value);
+        if (FLAGS_num_column_families > 1) {
+          s = db_with_cfh->db->Get(options, db_with_cfh->GetCfh(id), key,
+              &value);
+        } else {
+          s = db_with_cfh->db->Get(options, db_with_cfh->db->DefaultColumnFamily(), key, &value);
+        }
 
 				if (!s.ok() && !s.IsNotFound()) {
 					// it is an error but we continue to make reason why
 					// exit(1);
+          printf("get error(2)\n");
 				}
 				else if(!s.IsNotFound()) {
 					// step 2. found and update value
@@ -6362,26 +6392,37 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					}
 					std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
 						(std::chrono::system_clock::now().time_since_epoch());
-					s = db_with_cfh->db->Put(write_options_, key, gen.Generate(value_size_));
+          val = gen.Generate(value_size_);
+          if (FLAGS_num_column_families > 1) {
+            s = db_with_cfh->db->Put(write_options_, db_with_cfh->GetCfh(id), key,
+                val);
+          } else {
+            s = db_with_cfh->db->Put(write_options_, key, val);
+          }
+
 					if (!s.ok()) {
 						// it is an error but we continue to make reason why
-						// exit(1);
+            // exit(1);
+            printf("put error(2)\n");
 					}
 					else {
-						writes_done++;
-						long curops = thread->stats.FinishedOpsQUEUES(nullptr, db_with_cfh->db, 1,  start.count(), kWrite);
+            bytes += key.size() + val.size();
+            writes_done++;
+						long curops = thread->stats.FinishedOpsQUEUES(db_with_cfh, db_with_cfh->db, 1,  start.count(), kWrite);
 					}
-				} else {
+        } else {
+          printf("get error(3)\n");
 					// NOT FOUND
-				}
-			}
+        }
+      }
 		}
 
 		// print msg to stat
-		char msg[100];
-		snprintf(msg, sizeof(msg), "( reads:%" PRIu64 " writes:%" PRIu64 \
+		char msg[150];
+		snprintf(msg, sizeof(msg), "( reads:%" PRIu64  " gets:%" PRIu64 " writes:%" PRIu64 \
 				" total:%" PRIu64 " found:%" PRIu64 ")",
-				reads_done, writes_done, readwrites_, found);
+				reads_done, gets_done, writes_done, readwrites_, found);
+    printf("%s\n", msg);
 		thread->stats.AddMessage(msg);
 	}
 
