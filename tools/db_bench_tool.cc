@@ -6214,7 +6214,12 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					   }
 					   printf("\n");
 					   */
-				}
+				} else{
+					InstrumentedMutexLock l(&key_mutex_);
+          op_done ++;
+          if (op_done > FLAGS_num)
+            break;
+        }
 
 				k = zipf_generators[prefix_id].nextValue() ; 
 				if(!FLAGS_YCSB_insert_ordered) {
@@ -6328,7 +6333,12 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					   }
 					   printf("\n");
 					   */
-				}
+				} else{
+					InstrumentedMutexLock l(&key_mutex_);
+          op_done ++;
+          if (op_done > FLAGS_num)
+            break;
+        }
 
 				k = zipf_generators[prefix_id].nextValue() ; 
         //printf("id : %ld\t k : %ld\n", prefix_id, k);
