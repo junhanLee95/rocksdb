@@ -4,6 +4,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <climits>
+#include <mutex>
 
 // 	*
 // 	 * Create a zipfian generator for items between min and max (inclusive) for the specified zipfian constant, using the precomputed value of zeta.
@@ -23,6 +24,7 @@ void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool counter
   prefix = c;
   countergenerator = counter;
   recordcount = rcount;
+  setLastValue(-1); // key is taken through nextValue call and it must be zero at first.
 }
 
 void ZipfGenerator::init_zipf_generator(long min, long max, char c, bool counter) {
@@ -96,7 +98,7 @@ double ZipfGenerator::zetastatic(long st, long n, double initialsum){
 
 long ZipfGenerator::nextLong(long itemcount){
   if(countergenerator){
-    long ret = lastVal % recordcount + 1;
+    long ret = (lastVal + 1) % recordcount;
     setLastValue(ret);
     return ret;
   }
@@ -126,6 +128,7 @@ long ZipfGenerator::nextLong(long itemcount){
 }
 
 long ZipfGenerator::nextValue() {
+  std::lock_guard<std::mutex> lock(mutex_);
   long nextVal;
   if(countergenerator){
     nextVal = nextLong(items);

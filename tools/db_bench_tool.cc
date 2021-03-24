@@ -1474,6 +1474,7 @@ struct DBWithColumnFamilies {
     } else {
       rand_offset = rand_num % num_hot;
     }
+    //printf("rand_offset : %ld\t%d\n", rand_num, rand_offset);
     return cfh[num_created.load(std::memory_order_acquire) - num_hot +
                rand_offset];
   }
@@ -6216,7 +6217,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				}
 
 				k = zipf_generators[prefix_id].nextValue() ; 
-        //printf("id : %ld\t k : %ld\n", prefix_id, k);
 				if(!FLAGS_YCSB_insert_ordered) {
 					k = fnvhash64(k);
 				}
@@ -6230,13 +6230,13 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				GenerateKeyFromInt(k, FLAGS_num, &key);
 			}
 
-      //printf("Generated Key : %s\n", key.data());
 			size_t id = (size_t)prefix_id;
 			std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
 				(std::chrono::system_clock::now().time_since_epoch());
 
       Status s;
       if (FLAGS_num_column_families > 1) {
+        //printf("[P] id : %ld\t key : %s\n", prefix_id, key.data());
         s = db_with_cfh->db->Put(write_options_, db_with_cfh->GetCfh(id), key,
             gen.Generate(value_size_));
       } else {
@@ -6353,6 +6353,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				(std::chrono::system_clock::now().time_since_epoch());
         
         if (FLAGS_num_column_families > 1) {
+          //printf("[G] id : %ld\t key : %s\n", id, key.data());
           s = db_with_cfh->db->Get(options, db_with_cfh->GetCfh(id), key,
               &value);
         } else {
@@ -6374,6 +6375,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				// update
 				// step 1. check whether key exists
         if (FLAGS_num_column_families > 1) {
+          //printf("[UG] id : %ld\t key : %s\n", id, key.data());
           s = db_with_cfh->db->Get(options, db_with_cfh->GetCfh(id), key,
               &value);
         } else {
@@ -6397,6 +6399,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 						(std::chrono::system_clock::now().time_since_epoch());
           val = gen.Generate(value_size_);
           if (FLAGS_num_column_families > 1) {
+            //printf("[UP] id : %ld\t key : %s\n", id, key.data());
             s = db_with_cfh->db->Put(write_options_, db_with_cfh->GetCfh(id), key,
                 val);
           } else {
@@ -6414,7 +6417,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 						long curops = thread->stats.FinishedOpsQUEUES(db_with_cfh, db_with_cfh->db, 1,  start.count(), kWrite);
 					}
         } else {
-          printf("get error(3)\n");
+          printf("get error(3) id : %d\tk : %" PRIu64 "\t key : %s\n", id, k, key.data());
 					// NOT FOUND
         }
       }

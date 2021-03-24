@@ -1,6 +1,15 @@
+#include <mutex>
+
 #pragma once
 class ZipfGenerator {
   public:
+    // copy constructor
+    ZipfGenerator(const ZipfGenerator &zc) {}
+    // constructor
+    ZipfGenerator(void) {}
+    // destructor
+    ~ZipfGenerator(void) {}
+
     void init_zipf_generator(long min, long max, char c, bool counter, long recordcount);
     void init_zipf_generator(long min, long max, char c, bool counter);
     void init_zipf_generator(long min, long max, char c);
@@ -28,4 +37,5 @@ class ZipfGenerator {
     long lastVal; //initialized in setLastValue
     bool countergenerator; //initialized in init_zipf_generator
     long recordcount; //initialized in init_zipf_generator
+    std::mutex mutex_;
 };
