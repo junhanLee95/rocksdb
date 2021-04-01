@@ -36,6 +36,7 @@
 #include <functional>
 #include <iterator>
 #include <algorithm>
+#include <ctime>
 
 #include "db/db_impl.h"
 #include "db/malloc_stats.h"
@@ -793,6 +794,7 @@ DEFINE_string(YCSB_operation_count_per_group, "1000:1000:1000",
 						"Operation count for each semi sorted group.");
 DEFINE_string(YCSB_record_count_per_group, "1000:1000:1000",
 						"Record count for each semi sorted group.");
+
 DEFINE_bool(YCSB_insert_ordered, false,
 						"insert is ordered for YCSB. if not, insert is hashed");
 
@@ -3145,6 +3147,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 				method = &Benchmark::YCSBWorkloadE;
 			} else if (name == "ycsbwkldf") {
 				method = &Benchmark::YCSBWorkloadF;
+			} else if (name == "ycsbwkld_custom") {
+				method = &Benchmark::YCSBWorkloadCustom;
 			} else if (name == "longpeakl") {
 				method = &Benchmark::LongPeakL;
 			} else if (name == "longpeaka") {
@@ -3225,7 +3229,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       }
 
       // create key generator (zipf) for semi-sorted key space
-      if (name == "longpeakl" || name == "longpeaka" || name == "ycsbwkldl" || name == "ycsbwklda") {
+      if (name == "longpeakl" || name == "longpeaka" || name == "ycsbwkldl" || name == "ycsbwklda" || name == "ycsbwkld_custom") {
         if (FLAGS_YCSB_semi_sorted_distribution) {
           assert(FLAGS_YCSB_semi_sorted_group_count > 0);
           uint64_t total_op;
@@ -6156,7 +6160,184 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     }
   }
 
-  /* New : YCSB Workloads A to F, plus L for Load */
+  /* New : YCSB Workloads A to F, plus L for Load, Custom for assigned query ratio. */
+
+  // This workload is generated with query ratio from FLAGS_mix_get_ratio, FLAGS_mix_put_ratio, FLAGS_mix_seek_ratio
+  // Default data size: 1 KB records
+  // Request distribution: zipfian
+  
+  void YCSBWorkloadCustom(ThreadState* thread) {
+		ReadOptions options(FLAGS_verify_checksum, true);
+		RandomGenerator gen;
+		zipf_generator.init_zipf_generator(0, FLAGS_num);
+    
+    const int64_t default_value_max = 1 * 1024 * 1024;
+    int64_t value_max = default_value_max;
+    int64_t scan_len_max = 10;
+    char value_buffer[default_value_max];
+    std::string value;
+		int64_t found = 0;
+		int64_t seek = 0;
+		int64_t read = 0;
+		int64_t seek_found = 0;
+
+    int64_t bytes = 0;
+		int64_t reads_done = 0;
+		int64_t writes_done = 0;
+		Duration duration(FLAGS_duration, num_);
+
+		std::unique_ptr<const char[]> key_guard;
+		Slice key = AllocateKey(&key_guard);
+    Slice val;
+
+    // parse query ratio. ratio stores cdf.
+    QueryDecider query;
+    std::vector<double> ratio{FLAGS_mix_get_ratio, FLAGS_mix_put_ratio,
+      FLAGS_mix_seek_ratio};
+    query.Initiate(ratio);
+
+		// the number of iterations is the larger of read_ or write_
+    while (!duration.Done(1)) {
+      DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
+
+      // decide query
+      int64_t rand_v;
+      std::srand(std::time(0));
+      rand_v = (int)std::rand() % FLAGS_num;
+      int query_type = query.GetType(rand_v);
+
+			uint64_t k;
+			int prefix_id = 0;
+			int64_t rand_key;
+			if (FLAGS_YCSB_uniform_distribution) {
+				// Generate number from uniform distribution
+				k = thread->rand.Next() % FLAGS_num;
+				GenerateKeyFromInt(k, FLAGS_num, &key);
+			} else if (FLAGS_YCSB_semi_sorted_distribution) {
+				// choose prefix_id
+				if (FLAGS_YCSB_semi_sorted_group_count > 1) {
+					InstrumentedMutexLock l(&key_mutex_);
+					if(prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1] <= 0)
+						break;
+					rand_key = thread->rand.Next() % prefix_bound_h[FLAGS_YCSB_semi_sorted_group_count-1];
+					while (prefix_bound_l[prefix_id] > rand_key ||
+							rand_key >= prefix_bound_h[prefix_id]) {
+						prefix_id = (prefix_id + 1) % FLAGS_YCSB_semi_sorted_group_count;
+					}
+					// update bounds
+					for(int64_t i = prefix_id; i < FLAGS_YCSB_semi_sorted_group_count; i++) {
+						if(i != prefix_id){
+							prefix_bound_l[i] --;
+						}
+						prefix_bound_h[i] --;
+					}
+          /*
+          for(int64_t i=0; i<FLAGS_YCSB_semi_sorted_group_count; i++){
+            printf("%ld[%ld, %ld)\t", i, prefix_bound_l[i], prefix_bound_h[i]);
+          }
+          printf("\n");
+          */
+				} else{
+					InstrumentedMutexLock l(&key_mutex_);
+          op_done ++;
+          if (op_done > FLAGS_num)
+            break;
+        }
+
+				k = zipf_generators[prefix_id].nextValue() ; 
+				if(!FLAGS_YCSB_insert_ordered) {
+					k = fnvhash64(k);
+				}
+				GenerateSemiSortedKeyFromInt(k, zipf_generators[prefix_id].getItems(), &key, zipf_generators[prefix_id].getPrefix());
+				//printf("Generated Key : %s\n", key.data());
+			} else { // default
+				k = zipf_generator.nextValue() ;
+				if(!FLAGS_YCSB_insert_ordered) {
+					k = fnvhash64(k);
+				}
+				GenerateKeyFromInt(k, FLAGS_num, &key);
+			}
+
+			size_t id = (size_t)prefix_id;
+			std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
+				(std::chrono::system_clock::now().time_since_epoch());
+
+      Status s;
+
+      if (query_type == 0) {
+        // Get query
+        if (FLAGS_num_column_families > 1) {
+          s = db_with_cfh->db->Get(options, db_with_cfh->GetCfh(id), key,
+              &value);
+        } else {
+          s = db_with_cfh->db->Get(options, db_with_cfh->db->DefaultColumnFamily(), key, &value);
+        }
+
+        if (!s.ok() && !s.IsNotFound()) {
+          // it is an error but we continue to make reason why
+          // exit(1);
+          printf("get error\n");
+        } else if(!s.IsNotFound()) {
+          bytes += key.size() + value.size();
+          long curops = thread->stats.FinishedOpsQUEUES(db_with_cfh, db_with_cfh->db, 1, start.count(), kRead);
+        }
+        reads_done++;
+      } else if (query_type == 1) {
+        // Put query
+        if (FLAGS_num_column_families > 1) {
+          //printf("[P] id : %ld\t key : %s\n", prefix_id, key.data());
+          s = db_with_cfh->db->Put(write_options_, db_with_cfh->GetCfh(id), key,
+              gen.Generate(value_size_));
+        } else {
+          s = db_with_cfh->db->Put(write_options_, db_with_cfh->db->DefaultColumnFamily(), key, gen.Generate(value_size_));
+        }
+        bytes += key.size() + value.size();
+        if (!s.ok()) {
+          // it is an error but we continue to make reason why
+          // exit(1);
+        }
+        else {
+          long curops = thread->stats.FinishedOpsQUEUES(db_with_cfh, db_with_cfh->db, 1, start.count(), kWrite);
+          writes_done++;
+        }
+      } else if (query_type == 2) {
+        // Seek query
+        // Pick a Iterator to use
+        // Seek query
+        if (db_with_cfh->db != nullptr) {
+          Iterator* single_iter = nullptr;
+          single_iter = db_with_cfh->db->NewIterator(options);
+          if (single_iter != nullptr) {
+            single_iter->Seek(key);
+            seek++;
+            read++;
+            if (single_iter->Valid() && single_iter->key().compare(key) == 0) {
+              seek_found++;
+            }
+            int64_t scan_length =    scan_len_max;
+            for (int64_t j = 0; j < scan_length && single_iter->Valid(); j++) {
+              Slice value = single_iter->value();
+              memcpy(value_buffer, value.data(),
+                     std::min(value.size(), sizeof(value_buffer)));
+              bytes += single_iter->key().size() + single_iter->value().size();
+              single_iter->Next();
+              assert(single_iter->status().ok());
+            }
+          }
+          delete single_iter;
+          long curops = thread->stats.FinishedOpsQUEUES(db_with_cfh, db_with_cfh->db, 1, start.count(), kSeek);
+        }
+      }
+    }
+
+    thread->stats.AddBytes(bytes);
+    // print msg to stat
+    char msg[100];
+    snprintf(msg, sizeof(msg), "( reads:%" PRIu64 " writes:%" PRIu64 \
+        " total:%" PRIu64 " found:%" PRIu64 ")",
+        reads_done, writes_done, readwrites_, found);
+    thread->stats.AddMessage(msg);
+	}
 
   // This workload is 100% insert only
   // Read/Insert ratio: 0/100
@@ -6238,6 +6419,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 			size_t id = (size_t)prefix_id;
 			std::chrono::microseconds start = std::chrono::duration_cast< std::chrono::milliseconds >
 				(std::chrono::system_clock::now().time_since_epoch());
+
 
       Status s;
       if (FLAGS_num_column_families > 1) {
