@@ -74,6 +74,8 @@
 #include "rocksdb/status.h"
 #include "rocksdb/table.h"
 #include "rocksdb/write_buffer_manager.h"
+#include "rocksdb/perf_context.h"
+#include "rocksdb/iostats_context.h"
 #include "table/block.h"
 #include "table/block_based_table_factory.h"
 #include "table/merging_iterator.h"
@@ -276,6 +278,10 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
 		s.ToString().c_str());
     exit(1);
   }
+
+  rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableCount);
+  rocksdb::get_perf_context()->Reset();
+  rocksdb::get_iostats_context()->Reset();
 
   s = StartTrace(trace_options_, std::move(trace_writer));
   if (!s.ok()) {
@@ -618,10 +624,21 @@ Status DBImpl::CloseImpl() { return CloseHelper(); }
 
 DBImpl::~DBImpl() {
   if (!closed_) {
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
+    rocksdb::PerfContext* pc = rocksdb::get_perf_context();
+    rocksdb::IOStatsContext* ic = rocksdb::get_iostats_context();
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[INFO] perf stat : %s\n", pc->ToString(true).c_str());
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[INFO] io stat : %s\n", ic->ToString(true).c_str());
+
     Status s = EndTrace();
-    fprintf(stdout, "[INFO] Tracing end, trace file name: %s\n", trace_fn.c_str());
+
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[INFO] Tracing end, trace file name: %s\n", trace_fn.c_str());
     if (!s.ok()) {
-      fprintf(stderr, "[DEBUG] Encountered an error ending a trace, %s\n",s.ToString().c_str());
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[DEBUG] Encountered an error ending a trace, %s\n",s.ToString().c_str());
     } 
     closed_ = true;
     CloseHelper();
