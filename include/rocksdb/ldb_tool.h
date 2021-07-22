@@ -33,7 +33,7 @@ struct LDBOptions {
 class LDBTool {
  public:
   void Run(
-      int argc, char** argv, Options db_options = Options(),
+      int argc, char** argv, rocksdb::Env* bluefs_env, Options db_options = Options(),
       const LDBOptions& ldb_options = LDBOptions(),
       const std::vector<ColumnFamilyDescriptor>* column_families = nullptr);
 };

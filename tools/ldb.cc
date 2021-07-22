@@ -9,7 +9,7 @@
 
 int main(int argc, char** argv) {
   rocksdb::LDBTool tool;
-  tool.Run(argc, argv);
+  tool.Run(argc, argv, NULL);
   return 0;
 }
 #else

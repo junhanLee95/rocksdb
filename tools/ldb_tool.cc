@@ -122,9 +122,11 @@ void LDBCommandRunner::RunCommand(
   exit(ret.IsFailed());
 }
 
-void LDBTool::Run(int argc, char** argv, Options options,
+void LDBTool::Run(int argc, char** argv, rocksdb::Env* bluefs_env, Options options,
                   const LDBOptions& ldb_options,
                   const std::vector<ColumnFamilyDescriptor>* column_families) {
+  if (bluefs_env)
+    options.env = bluefs_env;
   LDBCommandRunner::RunCommand(argc, argv, options, ldb_options,
                                column_families);
 }
