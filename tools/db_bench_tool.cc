@@ -761,6 +761,7 @@ DEFINE_bool(use_stderr_info_logger, false,
             "Write info logs to stderr instead of to LOG file. ");
 
 DEFINE_string(trace_file, "", "Trace workload to a file. ");
+DEFINE_string(trace_file_result, "trace_file_result", "Trace workload to a file. ");
 
 static enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
   assert(ctype);
@@ -2808,6 +2809,12 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         PrintStats("rocksdb.levelstats");
       } else if (name == "sstables") {
         PrintStats("rocksdb.sstables");
+      } else if (name == "mangling") {
+        if (FLAGS_trace_file == "") {
+          fprintf(stderr, "Please set --trace_file to mangling from\n");
+          exit(1);
+        }
+        method = &Benchmark::Mangle;
       } else if (name == "replay") {
         if (num_threads > 1) {
           fprintf(stderr, "Multi-threaded replay is not yet supported\n");
@@ -2854,6 +2861,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         // operations. But db_bench does not support tracing and replaying at
         // the same time, for now. So, start tracing only when it is not a
         // replay.
+        /*
         if (FLAGS_trace_file != "" && name != "replay") {
           std::unique_ptr<TraceWriter> trace_writer;
           Status s = NewFileTraceWriter(FLAGS_env, EnvOptions(),
@@ -2872,6 +2880,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           fprintf(stdout, "Tracing the workload to: [%s]\n",
                   FLAGS_trace_file.c_str());
         }
+        */
 #endif  // ROCKSDB_LITE
 
         if (num_warmup > 0) {
@@ -2901,6 +2910,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     }
 
 #ifndef ROCKSDB_LITE
+/*
     if (name != "replay" && FLAGS_trace_file != "") {
       Status s = db_.db->EndTrace();
       if (!s.ok()) {
@@ -2908,6 +2918,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
                 s.ToString().c_str());
       }
     }
+    */
 #endif  // ROCKSDB_LITE
 
     if (FLAGS_statistics) {
@@ -6055,6 +6066,61 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     }
     fprintf(stdout, "\n%s\n", stats.c_str());
   }
+  void Mangle(ThreadState* thread) {
+    if (db_.db != nullptr) {
+      Mangle(thread, &db_);
+    }
+  }
+
+  void Mangle(ThreadState* /*thread*/, DBWithColumnFamilies* db_with_cfh) {
+    Status s;
+    std::unique_ptr<TraceReader> trace_reader;
+    s = NewFileTraceReader(FLAGS_env, EnvOptions(), FLAGS_trace_file,
+                           &trace_reader);
+    if (!s.ok()) {
+      fprintf(
+          stderr,
+          "Encountered an error creating a TraceReader from the trace file. "
+          "Error: %s\n",
+          s.ToString().c_str());
+      exit(1);
+    }
+
+    Mangler mangler(db_with_cfh->db, db_with_cfh->cfh, std::move(trace_reader));
+
+    //Make ManglerKey
+    s = mangler.mangle();
+
+    //Write Mangle Key to Trace
+    std::unique_ptr<TraceReader> trace_reader2;
+    s = NewFileTraceReader(FLAGS_env, EnvOptions(), FLAGS_trace_file,
+                           &trace_reader2);
+    if (!s.ok()) {
+      fprintf(
+          stderr,
+          "Encountered an error creating a TraceReader from the trace file. "
+          "Error: %s\n",
+          s.ToString().c_str());
+      exit(1);
+    }
+    //Make Write Tracer
+    std::unique_ptr<TraceWriter> trace_writer;
+    s = NewFileTraceWriter(FLAGS_env, EnvOptions(),
+                                        FLAGS_trace_file_result, &trace_writer);
+    if (!s.ok()) {
+      fprintf(stderr, "Encountered an error starting a trace, %s\n",
+                     s.ToString().c_str());
+      exit(1);
+    }
+    s = mangler.mangle_write(std::move(trace_reader2), std::move(trace_writer));
+    if (s.ok()) {
+      fprintf(stdout, "Replay started from trace_file: %s\n",
+              FLAGS_trace_file.c_str());
+    } else {
+      fprintf(stderr, "Starting replay failed. Error: %s\n",
+              s.ToString().c_str());
+    }
+  }
 
   void Replay(ThreadState* thread) {
     if (db_.db != nullptr) {
@@ -6088,10 +6154,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   }
 };
 
-int db_bench_tool(int argc, char** argv, rocksdb::Env* env) {
-  if(env){
-    FLAGS_env = env;
-  }
+int db_bench_tool(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();
   static bool initialized = false;
   if (!initialized) {
