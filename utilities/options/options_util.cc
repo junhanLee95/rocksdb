@@ -11,6 +11,8 @@
 #include "rocksdb/options.h"
 #include "util/filename.h"
 
+#include <iostream>
+
 namespace rocksdb {
 Status LoadOptionsFromFile(const std::string& file_name, Env* env,
                            DBOptions* db_options,
@@ -23,6 +25,7 @@ Status LoadOptionsFromFile(const std::string& file_name, Env* env,
     return s;
   }
   *db_options = *parser.db_opt();
+  db_options->env = env; 
   const std::vector<std::string>& cf_names = *parser.cf_names();
   const std::vector<ColumnFamilyOptions>& cf_opts = *parser.cf_opts();
   cf_descs->clear();

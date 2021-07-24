@@ -34,6 +34,7 @@
 #include "util/filename.h"
 #include "util/stderr_logger.h"
 #include "util/string_util.h"
+#include "utilities/merge_operators.h"
 #include "utilities/ttl/db_ttl_impl.h"
 
 #include <cstdlib>
@@ -330,7 +331,8 @@ LDBCommand::LDBCommand(const std::map<std::string, std::string>& options,
 
 void LDBCommand::OpenDB() {
   if (!create_if_missing_ && try_load_options_) {
-    Status s = LoadLatestOptions(db_path_, Env::Default(), &options_,
+    //Status s = LoadLatestOptions(db_path_, Env::Default(), &options_,
+    Status s = LoadLatestOptions(db_path_, options_.env, &options_,
                                  &column_families_, ignore_unknown_options_);
     if (!s.ok() && !s.IsNotFound()) {
       // Option file exists but load option file error.
@@ -339,17 +341,20 @@ void LDBCommand::OpenDB() {
       db_ = nullptr;
       return;
     }
-    if (options_.env->FileExists(options_.wal_dir).IsNotFound()) {
+    if (options_.wal_dir != "db.wal" && 
+        options_.env->FileExists(options_.wal_dir).IsNotFound()) {
       options_.wal_dir = db_path_;
       fprintf(
           stderr,
           "wal_dir loaded from the option file doesn't exist. Ignore it.\n");
     }
   }
+
   options_ = PrepareOptionsForOpenDB();
   if (!exec_state_.IsNotStarted()) {
     return;
   }
+
   // Open the DB.
   Status st;
   std::vector<ColumnFamilyHandle*> handles_opened;
@@ -445,6 +450,7 @@ ColumnFamilyHandle* LDBCommand::GetCfHandle() {
       return it->second;
     }
   }
+
   return db_->DefaultColumnFamily();
 }
 
@@ -523,6 +529,7 @@ Options LDBCommand::PrepareOptionsForOpenDB() {
                    });
   if (column_families_iter != column_families_.end()) {
     cf_opts = &column_families_iter->options;
+    cf_opts->merge_operator = MergeOperators::CreateBytesXOROperator();
   } else {
     cf_opts = static_cast<ColumnFamilyOptions*>(&options_);
   }

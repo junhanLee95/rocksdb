@@ -125,8 +125,12 @@ void LDBCommandRunner::RunCommand(
 void LDBTool::Run(int argc, char** argv, rocksdb::Env* bluefs_env, Options options,
                   const LDBOptions& ldb_options,
                   const std::vector<ColumnFamilyDescriptor>* column_families) {
-  if (bluefs_env)
+  if (bluefs_env) 
     options.env = bluefs_env;
+  else 
+    options.env = Env::Default(); 
+
+  options.db_log_dir="/var/log/ceph/bluefs-ldb";
   LDBCommandRunner::RunCommand(argc, argv, options, ldb_options,
                                column_families);
 }
