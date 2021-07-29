@@ -6088,7 +6088,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   }
 };
 
-int db_bench_tool(int argc, char** argv) {
+int db_bench_tool(int argc, char** argv, rocksdb::Env* bluefs_env) {
   rocksdb::port::InstallStackTraceHandler();
   static bool initialized = false;
   if (!initialized) {
@@ -6160,6 +6160,10 @@ int db_bench_tool(int argc, char** argv) {
 
   if (!FLAGS_hdfs.empty()) {
     FLAGS_env  = new rocksdb::HdfsEnv(FLAGS_hdfs);
+  }
+
+  if (bluefs_env) {
+    FLAGS_env = bluefs_env;
   }
 
   if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NONE"))
