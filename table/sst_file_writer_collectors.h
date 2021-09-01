@@ -9,7 +9,7 @@
 #include "db/table_properties_collector.h"
 #include "rocksdb/types.h"
 #include "util/string_util.h"
-
+#include <iostream>
 namespace rocksdb {
 
 // Table Properties that are specific to tables created by SstFileWriter.
@@ -44,16 +44,18 @@ class SstFileWriterPropertiesCollector : public IntTblPropCollector {
   }
 
   virtual Status Finish(UserCollectedProperties* properties) override {
+    // NOTE: putting external sst related properties makes the mismatch between manifest file and sst file
+    //       Thus, we do not insert those properties to the sst file
+    (void)properties;
     // File version
-    std::string version_val;
-    PutFixed32(&version_val, static_cast<uint32_t>(version_));
-    properties->insert({ExternalSstFilePropertyNames::kVersion, version_val});
+    //std::string version_val;
+    //PutFixed32(&version_val, static_cast<uint32_t>(version_));
+    //properties->insert({ExternalSstFilePropertyNames::kVersion, version_val});
 
     // Global Sequence number
-    std::string seqno_val;
-    PutFixed64(&seqno_val, static_cast<uint64_t>(global_seqno_));
-    properties->insert({ExternalSstFilePropertyNames::kGlobalSeqno, seqno_val});
-
+    //std::string seqno_val;
+    //PutFixed64(&seqno_val, static_cast<uint64_t>(global_seqno_));
+    //properties->insert({ExternalSstFilePropertyNames::kGlobalSeqno, seqno_val});
     return Status::OK();
   }
 

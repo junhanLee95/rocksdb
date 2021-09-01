@@ -9,9 +9,9 @@
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
-
+#include <iostream>
 #include <inttypes.h>
-
+#include "utilities/merge_operators.h"
 #include "db/db_impl.h"
 #include "db/dbformat.h"
 #include "db/log_reader.h"
@@ -347,6 +347,7 @@ void LDBCommand::OpenDB() {
     }
   }
   options_ = PrepareOptionsForOpenDB();
+  options_.wal_recovery_mode = WALRecoveryMode::kPointInTimeRecovery ;
   if (!exec_state_.IsNotStarted()) {
     return;
   }
@@ -523,6 +524,7 @@ Options LDBCommand::PrepareOptionsForOpenDB() {
                    });
   if (column_families_iter != column_families_.end()) {
     cf_opts = &column_families_iter->options;
+    cf_opts->merge_operator = MergeOperators::CreateBytesXOROperator();
   } else {
     cf_opts = static_cast<ColumnFamilyOptions*>(&options_);
   }
@@ -1883,6 +1885,7 @@ struct StdErrReporter : public log::Reader::Reporter {
   }
 };
 
+/*
 class InMemoryHandler : public WriteBatch::Handler {
  public:
   InMemoryHandler(std::stringstream& row, bool print_values,
@@ -1974,6 +1977,8 @@ class InMemoryHandler : public WriteBatch::Handler {
   bool print_values_;
   bool write_after_commit_;
 };
+
+*/
 
 void DumpWalFile(Options options, std::string wal_file, bool print_header,
                  bool print_values, bool is_write_committed,
@@ -2331,6 +2336,11 @@ void ScanCommand::DoCommand() {
     assert(GetExecuteState().IsFailed());
     return;
   }
+  else{
+    uint64_t manifest_size = 0;
+    std::vector<std::string> files;
+    db_->GetLiveFiles(files, &manifest_size);
+  }
 
   int num_keys_scanned = 0;
   ReadOptions scan_read_opts;
@@ -2406,6 +2416,7 @@ void ScanCommand::DoCommand() {
   if (!it->status().ok()) {  // Check for any errors found during the scan
     exec_state_ = LDBCommandExecuteResult::Failed(it->status().ToString());
   }
+
   delete it;
 }
 

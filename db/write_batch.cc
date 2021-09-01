@@ -56,6 +56,7 @@
 #include "util/duplicate_detector.h"
 #include "util/string_util.h"
 #include "util/util.h"
+#include "rocksdb/utilities/ldb_cmd.h"
 
 namespace rocksdb {
 
@@ -393,6 +394,66 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
     default:
       return Status::Corruption("unknown WriteBatch tag");
   }
+  return Status::OK();
+}
+
+Status WriteBatch::UpdateManglingMap(Handler* handler, std::map<std::string, std::string>& mangling_map) {
+  Slice input(rep_);
+  if (input.size() < WriteBatchInternal::kHeader) {
+    return Status::Corruption("malformed WriteBatch (too small)");
+  }
+
+  input.remove_prefix(WriteBatchInternal::kHeader);
+  Slice key, value, blob, xid;
+  // Sometimes a sub-batch starts with a Noop. We want to exclude such Noops as
+  // the batch boundary symbols otherwise we would mis-count the number of
+  // batches. We do that by checking whether the accumulated batch is empty
+  // before seeing the next Noop.
+  //int found = 0;
+  Status s;
+  char tag = 0;
+  uint32_t column_family = 0;  // default
+  bool last_was_try_again = false;
+  bool handler_continue = true;
+  std::string tmp = "";
+
+  while (((s.ok() && !input.empty()) || UNLIKELY(s.IsTryAgain()))) {
+    handler_continue = handler->Continue();
+    if (!handler_continue) {
+      break;
+    }
+
+    if (LIKELY(!s.IsTryAgain())) {
+      last_was_try_again = false;
+      tag = 0;
+      column_family = 0;  // default
+
+      s = ReadRecordFromWriteBatch(&input, &tag, &column_family, &key, &value,
+                                   &blob, &xid);
+
+      if (!s.ok()) {
+        return s;
+      } else {
+        mangling_map.insert(make_pair(key.ToString(true).c_str(), tmp));
+      }
+
+    } else {
+      assert(s.IsTryAgain());
+      assert(!last_was_try_again); // to detect infinite loop bugs
+      if (UNLIKELY(last_was_try_again)) {
+        return Status::Corruption(
+            "two consecutive TryAgain in WriteBatch handler; this is either a "
+            "software bug or data corruption.");
+      }
+      last_was_try_again = true;
+      s = Status::OK();
+    }
+  }
+
+  if (!s.ok()) {
+    return s;
+  }
+  
   return Status::OK();
 }
 

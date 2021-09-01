@@ -28,6 +28,7 @@
 #include <atomic>
 #include <stack>
 #include <string>
+#include <map>
 #include "rocksdb/status.h"
 #include "rocksdb/write_batch_base.h"
 
@@ -274,6 +275,9 @@ class WriteBatch : public WriteBatchBase {
     virtual bool WriteBeforePrepare() const { return false; }
   };
   Status Iterate(Handler* handler) const;
+
+  // for Mangling process
+  Status UpdateManglingMap(Handler* handler, std::map<std::string, std::string>& mangling_map);
 
   // Retrieve the serialized version of this batch.
   const std::string& Data() const { return rep_; }

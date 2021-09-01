@@ -18,6 +18,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <iostream>
 
 #include "db/dbformat.h"
 
@@ -487,6 +488,13 @@ BlockBasedTableBuilder::~BlockBasedTableBuilder() {
   // Catch errors where caller forgot to call Finish()
   assert(rep_->state == Rep::State::kClosed);
   delete rep_;
+}
+
+Status BlockBasedTableBuilder::ResetTableProperties(const struct TableProperties* tp) {
+  Status s;
+  rep_->creation_time = tp->creation_time;
+  rep_->oldest_key_time = tp->oldest_key_time;
+  return s;
 }
 
 void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
@@ -1027,6 +1035,7 @@ void BlockBasedTableBuilder::WriteFooter(BlockHandle& metaindex_block_handle,
   // nobody will roll back to RocksDB 2.x versions, retire the legacy magic
   // number and always write new table files with new magic number
   bool legacy = (r->table_options.format_version == 0);
+
   // this is guaranteed by BlockBasedTableBuilder's constructor
   assert(r->table_options.checksum == kCRC32c ||
          r->table_options.format_version != 0);

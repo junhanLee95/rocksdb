@@ -10,11 +10,17 @@
 #include "db/log_reader.h"
 
 #include <stdio.h>
+#include <iostream>
 #include "rocksdb/env.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
 #include "util/file_reader_writer.h"
 #include "util/util.h"
+
+#include <iostream>
+#include "db/write_batch_internal.h"
+#include "rocksdb/utilities/ldb_cmd.h"
+#include "rocksdb/write_batch.h"
 
 namespace rocksdb {
 namespace log {
@@ -393,6 +399,33 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result, size_t* drop_size) {
     *result = Slice(header + header_size, length);
     return type;
   }
+}
+
+Status Reader::UpdateManglingMap(std::map<std::string, std::string>& mangling_map) {
+  Status s;
+  std::string scratch;
+  WriteBatch batch;
+  Slice record;
+  std::stringstream row;
+
+  while (this->ReadRecord(&record, &scratch)) {
+    row.str("");
+    if (record.size() < WriteBatchInternal::kHeader) {
+      std::cerr << "[ERR] log record too small : " <<  record.size() << std::endl;
+      return Status::Corruption();
+    } else {
+      WriteBatchInternal::SetContents(&batch, record);
+
+      InMemoryHandler handler(row, true /* print_value */, true /* is_write_committed*/);
+      s = batch.UpdateManglingMap(&handler, mangling_map);
+      if (!s.ok()) {
+        return s;
+      }
+      //batch.Iterate(&handler);
+      row << "\n";
+    }
+  }
+  return Status::OK();
 }
 
 bool FragmentBufferedReader::ReadRecord(Slice* record, std::string* scratch,

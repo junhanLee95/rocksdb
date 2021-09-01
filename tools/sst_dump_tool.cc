@@ -54,7 +54,7 @@ SstFileDumper::SstFileDumper(const Options& options,
       ioptions_(options_),
       moptions_(ColumnFamilyOptions(options_)),
       internal_comparator_(BytewiseComparator()) {
-  fprintf(stdout, "Process %s\n", file_path.c_str());
+//  fprintf(stdout, "Process %s\n", file_path.c_str());
   init_result_ = GetTableReader(file_name_);
 }
 
@@ -359,6 +359,115 @@ Status SstFileDumper::ReadTableProperties(
   *table_properties = table_reader_->GetTableProperties();
   return init_result_;
 }
+
+Status SstFileDumper::UpdateManglingMap(std::map<std::string, std::string>& mangling_map) {
+  if (!table_reader_) {
+    return init_result_;
+  }
+  InternalIterator* iter = table_reader_->NewIterator(
+      ReadOptions(verify_checksum_, false), moptions_.prefix_extractor.get());
+  uint64_t i = 0;
+  std::string tmp = "";
+
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    Slice key = iter->key();
+    ++i;
+    ParsedInternalKey ikey;
+    if (!ParseInternalKey(key, &ikey)) {
+      std::cerr << "Internal Key ["
+                << key.ToString(true /* in hex*/)
+                << "] parse error!\n";
+      continue;
+    }
+
+    mangling_map.insert(make_pair(ikey.user_key.ToString(true).c_str(), tmp));
+  }
+
+  read_num_ += i;
+
+  Status ret = iter->status();
+  delete iter;
+  return ret;
+}
+
+Status SstFileDumper::WriteMangledSSTableFiles(std::map<std::string, std::string>& mangling_map, std::unique_ptr<SstFileWriter>& sst_file_writer, bool apply) {
+  if (!table_reader_) {
+    return init_result_;
+  }
+  InternalIterator* iter = table_reader_->NewIterator(
+      ReadOptions(verify_checksum_, false), moptions_.prefix_extractor.get());
+  uint64_t i = 0;
+  std::string tmp = "";
+
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    Slice key = iter->key();
+    Slice value = iter->value();
+    ++i;
+    ParsedInternalKey ikey;
+    if (!ParseInternalKey(key, &ikey)) {
+      std::cerr << "Internal Key ["
+                << key.ToString(true /* in hex*/)
+                << "] parse error!\n";
+      continue;
+    }
+
+    Slice user_key = ikey.user_key;
+    SequenceNumber sequence = ikey.sequence;
+    ValueType type = ikey.type;
+
+    // insert items using sst_file_writer by looking up mangling_map and type
+    switch (type) {
+      case kTypeValue: {
+        Slice m_key(mangling_map[user_key.ToString(true).c_str()]);
+        std::string z_value;
+        if (apply) {
+          for (size_t j = 0; j < value.size(); j++) {
+            z_value.push_back('0');
+          }
+        } else {
+          z_value = std::string(value.data());
+        }
+        Slice m_value(z_value);
+
+        sst_file_writer->Put(m_key, m_value, sequence);
+        break;
+      }
+      case kTypeDeletion:
+      case kTypeSingleDeletion: {
+        Slice m_key(mangling_map[user_key.ToString(true).c_str()]);
+        sst_file_writer->Delete(m_key, sequence);
+        break;
+      }
+      case kTypeMerge: {
+        Slice m_key(mangling_map[user_key.ToString(true).c_str()]);
+        std::string z_value;
+        if (apply) {
+          for (size_t j = 0; j < value.size(); j++) {
+            z_value.push_back('0');
+          }
+        } else {
+          z_value = std::string(value.data());
+        }
+        Slice m_value(z_value);
+
+        sst_file_writer->Merge(m_key, m_value, sequence);
+        break;
+      }
+      default: {
+        std::cerr << "Unknown Tag : " << type << std::endl;
+        break;
+      }
+    }
+  }
+
+  read_num_ += i;
+
+  Status ret = iter->status();
+  delete iter;
+  return ret;
+}
+
+
 
 namespace {
 

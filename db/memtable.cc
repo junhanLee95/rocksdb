@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <iostream>
 
 #include "db/dbformat.h"
 #include "db/merge_context.h"
@@ -485,7 +486,7 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
   memcpy(p, key.data(), key_size);
   Slice key_slice(p, key_size);
   p += key_size;
-  uint64_t packed = PackSequenceAndType(s, type);
+  uint64_t packed = PackSequenceAndType((uint64_t)s, type);
   EncodeFixed64(p, packed);
   p += 8;
   p = EncodeVarint32(p, val_size);

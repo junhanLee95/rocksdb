@@ -62,6 +62,8 @@ class BlockBasedTableBuilder : public TableBuilder {
   // REQUIRES: Finish(), Abandon() have not been called
   void Add(const Slice& key, const Slice& value) override;
 
+  Status ResetTableProperties(const struct TableProperties* tp);
+
   // Return non-ok iff some error has been detected.
   Status status() const override;
 

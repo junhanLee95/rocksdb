@@ -10,6 +10,7 @@
 #include "table/merging_iterator.h"
 #include <string>
 #include <vector>
+#include <iostream>
 #include "db/dbformat.h"
 #include "db/pinned_iterators_manager.h"
 #include "monitoring/perf_context_imp.h"

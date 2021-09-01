@@ -14,6 +14,8 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <iostream>
+
 #include "monitoring/perf_context_imp.h"
 #include "port/port.h"
 #include "util/coding.h"

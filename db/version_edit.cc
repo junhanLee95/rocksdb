@@ -6,6 +6,7 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#include <iostream>
 
 #include "db/version_edit.h"
 
@@ -703,6 +704,113 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
   jw.EndObject();
 
   return jw.Get();
+}
+
+void VersionEdit::UpdateManglingMap(std::map<std::string, std::string>& mangling_map) {
+  std::string tmp = "";
+
+  if (!new_files_.empty()) {
+    for (size_t i = 0; i < new_files_.size(); i++) {
+      const FileMetaData& f = new_files_[i].second;
+ 
+      mangling_map.insert(make_pair(f.smallest.user_key().ToString(true).c_str(), tmp));
+      mangling_map.insert(make_pair(f.largest.user_key().ToString(true).c_str(), tmp));
+    }
+  }
+}
+
+void VersionEdit::WriteMangledVersionEdit(VersionEdit& ve, std::map<std::string, std::string>& mangling_map) {
+  if (has_comparator_) {
+    ve.SetComparatorName(Slice(comparator_));
+  }
+
+  if (has_log_number_) {
+    ve.SetLogNumber(log_number_);
+  }
+
+  if (has_prev_log_number_) {
+    ve.SetPrevLogNumber(prev_log_number_);
+  }
+
+  if (has_next_file_number_) {
+    ve.SetNextFile(next_file_number_);
+  }
+
+  if (has_last_sequence_) {
+    ve.SetLastSequence(last_sequence_);
+  }
+
+  if (has_max_column_family_) {
+    ve.SetMaxColumnFamily(max_column_family_);
+  }
+
+  if (has_min_log_number_to_keep_) {
+    ve.SetMinLogNumberToKeep(min_log_number_to_keep_);
+  }
+
+  ve.SetColumnFamily(column_family_);
+
+  if (is_column_family_drop_) {
+    ve.DropColumnFamily();
+  }
+
+  if (is_column_family_add_) {
+    ve.AddColumnFamily(column_family_name_);
+  }
+
+  ve.SetColumnFamily(column_family_);
+
+  if (is_in_atomic_group_) {
+    ve.MarkAtomicGroup(remaining_entries_);
+  }
+
+  if (!deleted_files_.empty()) {
+    for (DeletedFileSet::const_iterator iter = deleted_files_.begin();
+         iter != deleted_files_.end();
+         ++iter) {
+      int level = (int)iter->first;
+      uint64_t file = (uint64_t)iter->second;
+      ve.DeleteFile(level, file);  
+    }
+  }
+
+  if (!new_files_.empty()) {
+    for (size_t i = 0; i < new_files_.size(); i++) {
+      int level = new_files_[i].first;
+      const FileMetaData& f = new_files_[i].second;
+      uint64_t file = f.fd.GetNumber();
+      uint32_t file_path_id = f.fd.GetPathId();
+      uint64_t file_size = f.fd.GetFileSize();
+      const SequenceNumber& smallest_seqno = f.fd.smallest_seqno;
+      const SequenceNumber& largest_seqno = f.fd.largest_seqno;
+      bool marked_for_compaction = f.marked_for_compaction;
+ 
+      // mangle smallest and largest keys
+      ParsedInternalKey parsed_smallest;
+      ParsedInternalKey parsed_largest;
+  
+      if (!ParseInternalKey(f.smallest.Encode(), &parsed_smallest)) {
+        std::cerr << "[ERR] parse smallest user key failed : " <<  f.smallest.user_key().ToString(true) << std::endl;
+        continue;
+      }
+      if (!ParseInternalKey(f.largest.Encode(), &parsed_largest)) {
+        std::cerr << "[ERR] parse largest user key failed : " <<  f.largest.user_key().ToString(true) << std::endl;
+        continue;
+      }
+  
+      std::string smallest_user_key = f.smallest.user_key().ToString(true);
+      std::string largest_user_key = f.largest.user_key().ToString(true);
+  
+      Slice m_smallest(mangling_map[smallest_user_key.c_str()]);
+      Slice m_largest(mangling_map[largest_user_key.c_str()]);
+  
+      InternalKey ik_smallest = InternalKey(m_smallest, parsed_smallest.sequence, parsed_smallest.type);
+      InternalKey ik_largest = InternalKey(m_largest, parsed_largest.sequence, parsed_largest.type);
+
+      ve.AddFile(level, file, file_path_id, file_size, ik_smallest, ik_largest,
+                 smallest_seqno, largest_seqno, marked_for_compaction);
+    }
+  }
 }
 
 }  // namespace rocksdb

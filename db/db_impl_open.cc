@@ -12,6 +12,7 @@
 #define __STDC_FORMAT_MACROS
 #endif
 #include <inttypes.h>
+#include <iostream>
 
 #include "db/builder.h"
 #include "db/error_handler.h"

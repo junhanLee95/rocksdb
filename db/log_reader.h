@@ -89,6 +89,8 @@ class Reader {
 
   Reporter* GetReporter() const { return reporter_; }
 
+  Status UpdateManglingMap(std::map<std::string, std::string>&);
+
  protected:
   std::shared_ptr<Logger> info_log_;
   const std::unique_ptr<SequentialFileReader> file_;
@@ -136,6 +138,7 @@ class Reader {
 
   // Return type, or one of the preceding special values
   unsigned int ReadPhysicalRecord(Slice* result, size_t* drop_size);
+  unsigned int ReadPhysicalRecordForMangleProcess(Slice* result, size_t* drop_size);
 
   // Read some more
   bool ReadMore(size_t* drop_size, int *error);

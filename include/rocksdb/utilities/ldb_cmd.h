@@ -26,6 +26,7 @@
 
 namespace rocksdb {
 
+
 class LDBCommand {
  public:
   // Command-line arguments
@@ -260,6 +261,101 @@ class LDBCommandRunner {
       int argc, char** argv, Options options, const LDBOptions& ldb_options,
       const std::vector<ColumnFamilyDescriptor>* column_families);
 };
+
+// temporarily moved for mangling
+class InMemoryHandler : public WriteBatch::Handler {
+ public:
+  InMemoryHandler(std::stringstream& row, bool print_values,
+                  bool write_after_commit = false)
+      : Handler(),
+        row_(row),
+        print_values_(print_values),
+        write_after_commit_(write_after_commit) {}
+
+  void commonPutMerge(const Slice& key, const Slice& value) {
+    std::string k = LDBCommand::StringToHex(key.ToString());
+    if (print_values_) {
+      std::string v = LDBCommand::StringToHex(value.ToString());
+      row_ << k << " : ";
+      row_ << v << " ";
+    } else {
+      row_ << k << " ";
+    }
+  }
+
+  Status PutCF(uint32_t cf, const Slice& key, const Slice& value) override {
+    row_ << "PUT(" << cf << ") : ";
+    commonPutMerge(key, value);
+    return Status::OK();
+  }
+
+  Status MergeCF(uint32_t cf, const Slice& key, const Slice& value) override {
+    row_ << "MERGE(" << cf << ") : ";
+    commonPutMerge(key, value);
+    return Status::OK();
+  }
+
+  Status MarkNoop(bool) override {
+    row_ << "NOOP ";
+    return Status::OK();
+  }
+
+  Status DeleteCF(uint32_t cf, const Slice& key) override {
+    row_ << "DELETE(" << cf << ") : ";
+    row_ << LDBCommand::StringToHex(key.ToString()) << " ";
+    return Status::OK();
+  }
+
+  Status SingleDeleteCF(uint32_t cf, const Slice& key) override {
+    row_ << "SINGLE_DELETE(" << cf << ") : ";
+    row_ << LDBCommand::StringToHex(key.ToString()) << " ";
+    return Status::OK();
+  }
+
+  Status DeleteRangeCF(uint32_t cf, const Slice& begin_key,
+                       const Slice& end_key) override {
+    row_ << "DELETE_RANGE(" << cf << ") : ";
+    row_ << LDBCommand::StringToHex(begin_key.ToString()) << " ";
+    row_ << LDBCommand::StringToHex(end_key.ToString()) << " ";
+    return Status::OK();
+  }
+
+  Status MarkBeginPrepare(bool unprepare) override {
+    row_ << "BEGIN_PREPARE(";
+    row_ << (unprepare ? "true" : "false") << ") ";
+    return Status::OK();
+  }
+
+  Status MarkEndPrepare(const Slice& xid) override {
+    row_ << "END_PREPARE(";
+    row_ << LDBCommand::StringToHex(xid.ToString()) << ") ";
+    return Status::OK();
+  }
+
+  Status MarkRollback(const Slice& xid) override {
+    row_ << "ROLLBACK(";
+    row_ << LDBCommand::StringToHex(xid.ToString()) << ") ";
+    return Status::OK();
+  }
+
+  Status MarkCommit(const Slice& xid) override {
+    row_ << "COMMIT(";
+    row_ << LDBCommand::StringToHex(xid.ToString()) << ") ";
+    return Status::OK();
+  }
+
+  ~InMemoryHandler() override {}
+
+ protected:
+  bool WriteAfterCommit() const override { return write_after_commit_; }
+
+ private:
+  std::stringstream& row_;
+  bool print_values_;
+  bool write_after_commit_;
+};
+//
+
 
 }  // namespace rocksdb
 
