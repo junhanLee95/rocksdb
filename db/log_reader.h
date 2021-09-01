@@ -89,6 +89,8 @@ class Reader {
 
   Reporter* GetReporter() const { return reporter_; }
 
+  Status UpdateManglingMap(std::map<std::string, std::string>&);
+
  protected:
   std::shared_ptr<Logger> info_log_;
   const std::unique_ptr<SequentialFileReader> file_;

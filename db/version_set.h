@@ -416,6 +416,7 @@ class VersionStorageInfo {
                                      const Slice& largest_user_key,
                                      int last_level, int last_l0_idx);
 
+
  private:
   const InternalKeyComparator* internal_comparator_;
   const Comparator* user_comparator_;
@@ -833,6 +834,8 @@ class VersionSet {
   // printf contents (for debugging)
   Status DumpManifest(Options& options, std::string& manifestFileName,
                       bool verbose, bool hex = false, bool json = false);
+
+  std::vector<std::string> GetSmallestAndLargestKeys(Options& options, std::string& manifestFileName);
 
 #endif  // ROCKSDB_LITE
 

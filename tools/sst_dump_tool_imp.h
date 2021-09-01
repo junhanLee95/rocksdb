@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <string>
+#include <map>
 #include "db/dbformat.h"
 #include "options/cf_options.h"
 #include "util/file_reader_writer.h"
@@ -38,6 +39,10 @@ class SstFileDumper {
       size_t block_size,
       const std::vector<std::pair<CompressionType, const char*>>&
           compression_types);
+
+  // used for db_bench mangling
+  Status UpdateManglingMap(std::map<std::string, std::string>&); 
+  Status WriteMangledSSTableFiles(std::map<std::string, std::string>& mangling_map,  std::unique_ptr<SstFileWriter>& sst_file_writer);
 
  private:
   // Get the TableReader implementation for the sst file

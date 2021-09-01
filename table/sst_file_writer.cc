@@ -174,6 +174,15 @@ SstFileWriter::~SstFileWriter() {
   }
 }
 
+/* reset creation time */
+Status SstFileWriter::ResetTableProperties(const struct TableProperties* tp) {
+  Status s;
+  Rep* r = rep_.get();
+  auto tb = static_cast<BlockBasedTableBuilder *>(r->builder.get());
+  s = tb->ResetTableProperties(tp);
+  return s;
+}
+
 Status SstFileWriter::Open(const std::string& file_path) {
   Rep* r = rep_.get();
   Status s;

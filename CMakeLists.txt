@@ -628,6 +628,7 @@ set(SOURCES
         util/thread_local.cc
         util/threadpool_imp.cc
         util/trace_replay.cc
+        util/mangler.cc
         util/transaction_test_util.cc
         util/xxhash.cc
         utilities/backupable/backupable_db.cc
@@ -651,6 +652,7 @@ set(SOURCES
         utilities/leveldb_options/leveldb_options.cc
         utilities/memory/memory_util.cc
         utilities/merge_operators/bytesxor.cc
+        utilities/merge_operators/bluestore.cc
         utilities/merge_operators/max.cc
         utilities/merge_operators/put.cc
         utilities/merge_operators/string_append/stringappend.cc

@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "util/coding.h"
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "rocksdb/trace_reader_writer.h"
@@ -105,43 +106,6 @@ class Replayer {
   DBImpl* db_;
   std::unique_ptr<TraceReader> trace_reader_;
   std::unordered_map<uint32_t, ColumnFamilyHandle*> cf_map_;
-};
-
-class Mangler {
- public:
-  Mangler(DB* db, const std::vector<ColumnFamilyHandle*>& handles, std::unique_ptr<TraceReader>&& reader);
-  ~Mangler();
-
-  Status mangle();
-  Status mangle_write(std::unique_ptr<TraceReader>&& reader, std::unique_ptr<TraceWriter>&& writer);
-
-  bool IsTraceFileOverMax();
-
- private:
-  //Read Trace 
-  Status ReadHeader(Trace* header);
-  Status ReadFooter(Trace* footer);
-  Status ReadTrace(Trace* trace);
-  int compare(string* a, string* b, size_t min_len);
-
-  //Write Trace
-  Status Write(WriteBatch* write_batch, uint64_t ts);
-  Status Get(uint32_t cf_id, const Slice& key, uint64_t ts);
-  Status IteratorSeek(const uint32_t& cf_id, const Slice& key, uint64_t ts);
-  Status IteratorSeekForPrev(const uint32_t& cf_id, const Slice& key, uint64_t ts);
-
-  Status WriteHeader(uint64_t ts);
-  Status WriteFooter(uint64_t ts);
-  Status WriteTrace(const Trace& trace);
-  bool ShouldSkipTrace();
-
-  DBImpl* db_;
-  std::unique_ptr<TraceReader> trace_reader_;
-  std::unique_ptr<TraceWriter> trace_writer_;
-  std::unordered_map<uint32_t, ColumnFamilyHandle*> cf_map_;
-  map<string, string> mangling_map;
-  uint64_t start_ts;
-  uint64_t end_ts;
 };
 
 }  // namespace rocksdb

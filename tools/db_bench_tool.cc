@@ -42,6 +42,7 @@
 #include "options/cf_options.h"
 #include "port/port.h"
 #include "port/stack_trace.h"
+#include "port/port_dirent.h"
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
@@ -71,9 +72,11 @@
 #include "util/testutil.h"
 #include "util/transaction_test_util.h"
 #include "util/xxhash.h"
+#include "util/mangler.h"
 #include "utilities/blob_db/blob_db.h"
 #include "utilities/merge_operators.h"
 #include "utilities/merge_operators/bytesxor.h"
+#include "utilities/merge_operators/bluestore.h"
 #include "utilities/persistent_cache/block_cache_tier.h"
 
 #ifdef OS_WIN
@@ -759,7 +762,7 @@ DEFINE_bool(report_bg_io_stats, false,
 
 DEFINE_bool(use_stderr_info_logger, false,
             "Write info logs to stderr instead of to LOG file. ");
-
+DEFINE_string(mangling_out_dir, "", "Directory to store the mangled database and the trace file. ");
 DEFINE_string(trace_file, "", "Trace workload to a file. ");
 DEFINE_string(trace_file_result, "trace_file_result", "Trace workload to a file. ");
 
@@ -2811,9 +2814,18 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         PrintStats("rocksdb.sstables");
       } else if (name == "mangling") {
         if (FLAGS_trace_file == "") {
-          fprintf(stderr, "Please set --trace_file to mangling from\n");
+          fprintf(stderr, "Please set --trace_file to mangling from (trace file) \n");
           exit(1);
         }
+        if (FLAGS_db == "") {
+          fprintf(stderr, "Please set --db to mangling from (db dir) \n");
+          exit(1);
+        }
+        if (FLAGS_mangling_out_dir == "") {
+          fprintf(stderr, "Please set --mangling_out_dir to mangling to (trace file + db dir) \n");
+          exit(1);
+        }
+
         method = &Benchmark::Mangle;
       } else if (name == "replay") {
         if (num_threads > 1) {
@@ -3670,6 +3682,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
     options.listeners.emplace_back(listener_);
     if (FLAGS_num_multi_db <= 1) {
+      std::cout << "here\n";
       OpenDb(options, FLAGS_db, &db_);
     } else {
       multi_dbs_.clear();
@@ -3814,6 +3827,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 #endif  // ROCKSDB_LITE
     } else {
       s = DB::Open(options, db_name, &db->db);
+      std::cout << "[TEST] db cfh size : " << db->cfh.size()<< std::endl;
     }
     if (!s.ok()) {
       fprintf(stderr, "open error: %s\n", s.ToString().c_str());
@@ -6073,51 +6087,25 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   }
 
   void Mangle(ThreadState* /*thread*/, DBWithColumnFamilies* db_with_cfh) {
-    Status s;
-    std::unique_ptr<TraceReader> trace_reader;
-    s = NewFileTraceReader(FLAGS_env, EnvOptions(), FLAGS_trace_file,
-                           &trace_reader);
-    if (!s.ok()) {
-      fprintf(
-          stderr,
-          "Encountered an error creating a TraceReader from the trace file. "
-          "Error: %s\n",
-          s.ToString().c_str());
-      exit(1);
-    }
+    // Declare Mangler object
+    Mangler mangler(FLAGS_env, db_with_cfh->db, db_with_cfh->cfh, FLAGS_trace_file, FLAGS_db, FLAGS_mangling_out_dir, FLAGS_trace_file_result);
 
-    Mangler mangler(db_with_cfh->db, db_with_cfh->cfh, std::move(trace_reader));
-
-    //Make ManglerKey
-    s = mangler.mangle();
-
-    //Write Mangle Key to Trace
-    std::unique_ptr<TraceReader> trace_reader2;
-    s = NewFileTraceReader(FLAGS_env, EnvOptions(), FLAGS_trace_file,
-                           &trace_reader2);
-    if (!s.ok()) {
-      fprintf(
-          stderr,
-          "Encountered an error creating a TraceReader from the trace file. "
-          "Error: %s\n",
-          s.ToString().c_str());
-      exit(1);
-    }
-    //Make Write Tracer
-    std::unique_ptr<TraceWriter> trace_writer;
-    s = NewFileTraceWriter(FLAGS_env, EnvOptions(),
-                                        FLAGS_trace_file_result, &trace_writer);
-    if (!s.ok()) {
-      fprintf(stderr, "Encountered an error starting a trace, %s\n",
-                     s.ToString().c_str());
-      exit(1);
-    }
-    s = mangler.mangle_write(std::move(trace_reader2), std::move(trace_writer));
+    // Make Mangle Key
+    std::cout << "[INFO] Mangle test\n";
+    Status s = mangler.mangle();
     if (s.ok()) {
-      fprintf(stdout, "Replay started from trace_file: %s\n",
-              FLAGS_trace_file.c_str());
+      fprintf(stdout, "[INFO] Mangling done\n");
     } else {
-      fprintf(stderr, "Starting replay failed. Error: %s\n",
+      fprintf(stderr, "[ERROR] Mangling error :%s\n",
+              s.ToString().c_str());
+    }
+
+
+    s = mangler.mangle_write();
+    if (s.ok()) {
+      fprintf(stdout, "[INFO] Mangling write done\n");
+    } else {
+      fprintf(stderr, "[ERROR] Mangling write error :%s\n",
               s.ToString().c_str());
     }
   }

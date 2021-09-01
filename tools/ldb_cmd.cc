@@ -11,7 +11,7 @@
 #endif
 
 #include <inttypes.h>
-
+#include "utilities/merge_operators.h"
 #include "db/db_impl.h"
 #include "db/dbformat.h"
 #include "db/log_reader.h"
@@ -523,6 +523,7 @@ Options LDBCommand::PrepareOptionsForOpenDB() {
                    });
   if (column_families_iter != column_families_.end()) {
     cf_opts = &column_families_iter->options;
+    cf_opts->merge_operator = MergeOperators::CreateBytesXOROperator();
   } else {
     cf_opts = static_cast<ColumnFamilyOptions*>(&options_);
   }
@@ -1883,6 +1884,7 @@ struct StdErrReporter : public log::Reader::Reporter {
   }
 };
 
+/*
 class InMemoryHandler : public WriteBatch::Handler {
  public:
   InMemoryHandler(std::stringstream& row, bool print_values,
@@ -1974,6 +1976,8 @@ class InMemoryHandler : public WriteBatch::Handler {
   bool print_values_;
   bool write_after_commit_;
 };
+
+*/
 
 void DumpWalFile(Options options, std::string wal_file, bool print_header,
                  bool print_values, bool is_write_committed,

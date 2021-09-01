@@ -101,6 +101,8 @@ class SstFileWriter {
   // Prepare SstFileWriter to write into file located at "file_path".
   Status Open(const std::string& file_path);
 
+  Status ResetTableProperties(const struct TableProperties* tp);
+
   // Add a Put key with value to currently opened file (deprecated)
   // REQUIRES: key is after any previously added key according to comparator.
   ROCKSDB_DEPRECATED_FUNC Status Add(const Slice& user_key, const Slice& value);
@@ -129,10 +131,13 @@ class SstFileWriter {
   // Return the current file size.
   uint64_t FileSize();
 
+
  private:
   void InvalidatePageCache(bool closing);
   struct Rep;
   std::unique_ptr<Rep> rep_;
+ public:
+  std::unique_ptr<Rep>& GetRep() { return rep_; };
 };
 }  // namespace rocksdb
 

@@ -161,6 +161,7 @@ LIB_SOURCES =                                                   \
   util/thread_local.cc                                          \
   util/threadpool_imp.cc                                        \
   util/trace_replay.cc                                          \
+  util/mangler.cc                                               \
   util/transaction_test_util.cc                                 \
   util/xxhash.cc                                                \
   utilities/backupable/backupable_db.cc                         \
@@ -189,6 +190,7 @@ LIB_SOURCES =                                                   \
   utilities/merge_operators/string_append/stringappend2.cc      \
   utilities/merge_operators/uint64add.cc                        \
   utilities/merge_operators/bytesxor.cc                         \
+  utilities/merge_operators/bluestore.cc                        \
   utilities/option_change_migration/option_change_migration.cc  \
   utilities/options/options_util.cc                             \
   utilities/persistent_cache/block_cache_tier.cc                \

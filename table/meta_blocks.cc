@@ -6,6 +6,7 @@
 
 #include <map>
 #include <string>
+#include <iostream>
 
 #include "db/table_properties_collector.h"
 #include "rocksdb/table.h"
@@ -171,12 +172,15 @@ bool NotifyCollectTableCollectorsOnFinish(
   for (auto& collector : collectors) {
     UserCollectedProperties user_collected_properties;
     Status s = collector->Finish(&user_collected_properties);
-
     all_succeeded = all_succeeded && s.ok();
     if (!s.ok()) {
       LogPropertiesCollectionError(info_log, "Finish" /* method */,
                                    collector->Name());
     } else {
+      /* erase external sst file related properties */
+      user_collected_properties.erase("rocksdb.external_sst_file.global.seqno");
+      user_collected_properties.erase("rocksdb.external_sst_file.version");
+
       builder->Add(user_collected_properties);
     }
   }
