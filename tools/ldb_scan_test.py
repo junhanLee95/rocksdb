@@ -9,7 +9,7 @@ import re
 import sys
 
 def ldb_scan_test(mangle_scan, orig_scan, out_file):
-  w_file = open(out_file, 'w')
+  w_file = open(out_file, 'a')
 
   m_file = open(mangle_scan, 'r')
   mlines = m_file.readlines()

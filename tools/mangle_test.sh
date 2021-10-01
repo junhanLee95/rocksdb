@@ -61,7 +61,7 @@ function main {
     echo "[TEST 2] Compare sst files." &>> $SUMMARY_FILE
     run_sst_dump_test
 
-    echo "[Test 3] Compare Scanned keys and values" &>> $SUMMARY_FILE
+    echo "[TEST 3] Compare Scanned keys and values" &>> $SUMMARY_FILE
     run_ldb_scan_test
   fi
 
@@ -126,7 +126,6 @@ function run_db_bench {
   echo $cmd
   eval $cmd
   exit_on_error $db_bench_error
-
 }
 
 function exit_on_error {
@@ -271,7 +270,7 @@ function  run_ldb_scan_test {
 
   eval $ldb_o_cmd
   eval $ldb_m_cmd
-  python3 $DB_BENCH_DIR/ldb_scan_test.py $RESULT_PATH/original_scan $RESULT_PATH/mangle_scan $SUMMARY_FILE
+  python3 $DB_BENCH_DIR/tools/ldb_scan_test.py $RESULT_PATH/original_scan $RESULT_PATH/mangle_scan $SUMMARY_FILE
 
 }
 
