@@ -10,6 +10,7 @@
 #include "db/log_reader.h"
 
 #include <stdio.h>
+#include <iostream>
 #include "rocksdb/env.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
@@ -401,6 +402,7 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result, size_t* drop_size) {
 }
 
 Status Reader::UpdateManglingMap(std::map<std::string, std::string>& mangling_map) {
+  Status s;
   std::string scratch;
   WriteBatch batch;
   Slice record;
@@ -415,7 +417,10 @@ Status Reader::UpdateManglingMap(std::map<std::string, std::string>& mangling_ma
       WriteBatchInternal::SetContents(&batch, record);
 
       InMemoryHandler handler(row, true /* print_value */, true /* is_write_committed*/);
-      batch.UpdateManglingMap(&handler, mangling_map);
+      s = batch.UpdateManglingMap(&handler, mangling_map);
+      if (!s.ok()) {
+        return s;
+      }
       //batch.Iterate(&handler);
       row << "\n";
     }

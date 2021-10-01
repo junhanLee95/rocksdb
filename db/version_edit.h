@@ -10,6 +10,7 @@
 #pragma once
 #include <algorithm>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 #include <string>
@@ -196,6 +197,7 @@ class VersionEdit {
 
   void Clear();
 
+
   void SetComparatorName(const Slice& name) {
     has_comparator_ = true;
     comparator_ = name.ToString();
@@ -311,6 +313,9 @@ class VersionEdit {
 
   std::string DebugString(bool hex_key = false) const;
   std::string DebugJSON(int edit_num, bool hex_key = false) const;
+
+  void UpdateManglingMap(std::map<std::string, std::string>& mangling_map);
+  void WriteMangledVersionEdit(VersionEdit& ve, std::map<std::string, std::string>& mangling_map);
 
  private:
   friend class ReactiveVersionSet;

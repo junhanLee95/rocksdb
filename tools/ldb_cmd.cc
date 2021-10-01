@@ -9,7 +9,7 @@
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
-
+#include <iostream>
 #include <inttypes.h>
 #include "utilities/merge_operators.h"
 #include "db/db_impl.h"
@@ -347,6 +347,7 @@ void LDBCommand::OpenDB() {
     }
   }
   options_ = PrepareOptionsForOpenDB();
+  options_.wal_recovery_mode = WALRecoveryMode::kPointInTimeRecovery ;
   if (!exec_state_.IsNotStarted()) {
     return;
   }
@@ -2335,6 +2336,11 @@ void ScanCommand::DoCommand() {
     assert(GetExecuteState().IsFailed());
     return;
   }
+  else{
+    uint64_t manifest_size = 0;
+    std::vector<std::string> files;
+    db_->GetLiveFiles(files, &manifest_size);
+  }
 
   int num_keys_scanned = 0;
   ReadOptions scan_read_opts;
@@ -2410,6 +2416,7 @@ void ScanCommand::DoCommand() {
   if (!it->status().ok()) {  // Check for any errors found during the scan
     exec_state_ = LDBCommandExecuteResult::Failed(it->status().ToString());
   }
+
   delete it;
 }
 

@@ -138,6 +138,7 @@ class Reader {
 
   // Return type, or one of the preceding special values
   unsigned int ReadPhysicalRecord(Slice* result, size_t* drop_size);
+  unsigned int ReadPhysicalRecordForMangleProcess(Slice* result, size_t* drop_size);
 
   // Read some more
   bool ReadMore(size_t* drop_size, int *error);

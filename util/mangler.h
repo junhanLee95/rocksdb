@@ -34,7 +34,7 @@ class WriteBatch;
 
 class Mangler {
  public:
-  Mangler(Env*, DB*, const std::vector<ColumnFamilyHandle*>&, std::string, std::string, std::string, std::string);
+  Mangler(Env*, DB*, const std::vector<ColumnFamilyHandle*>&, std::string, std::string, std::string, std::string, bool);
   ~Mangler();
   Status mangle();
   Status mangle_write();
@@ -42,6 +42,8 @@ class Mangler {
   bool IsTraceFileOverMax();
 
  private:
+  // decide whether we apply mangling algorithm
+  bool apply_;
   // file paths
   std::string trace_file_path_;
   std::string trace_file_result_;
@@ -49,6 +51,7 @@ class Mangler {
   std::string db_path_;
   std::vector<std::string> sst_file_paths_;
   std::vector<std::string> wal_file_paths_;
+  std::vector<std::string> manifest_file_paths_;
 
   // Members for DB
   DBImpl* db_;
@@ -72,8 +75,11 @@ class Mangler {
 
   // Members for modifying wal files
   std::vector<std::unique_ptr<log::Reader>> wal_readers_;
-  std::vector<std::unique_ptr<log::Reader>> wal_readers2_;
   std::vector<std::unique_ptr<log::Writer>> wal_writers_;
+
+  // Members for modifying manifest files
+  std::vector<std::unique_ptr<log::Reader>> manifest_readers_;
+  std::vector<std::unique_ptr<log::Writer>> manifest_writers_;
 
   // Members for manging mangled key
   map<std::string, std::string> mangling_map;
@@ -104,6 +110,10 @@ class Mangler {
   // Methods for wal files
   Status MangleWALFiles(void);
   Status WriteMangledWALFiles(void);
+
+  // Methods for manifest files
+  Status MangleManifestFiles(void);
+  Status WriteMangledManifestFiles(void);
 
   // Methods for mangling algorithm
   Status ApplyManglingProcessToManglingMap(void); 

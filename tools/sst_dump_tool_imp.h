@@ -42,7 +42,7 @@ class SstFileDumper {
 
   // used for db_bench mangling
   Status UpdateManglingMap(std::map<std::string, std::string>&); 
-  Status WriteMangledSSTableFiles(std::map<std::string, std::string>& mangling_map,  std::unique_ptr<SstFileWriter>& sst_file_writer);
+  Status WriteMangledSSTableFiles(std::map<std::string, std::string>& mangling_map,  std::unique_ptr<SstFileWriter>& sst_file_writer, bool apply);
 
  private:
   // Get the TableReader implementation for the sst file

@@ -409,7 +409,7 @@ Status WriteBatch::UpdateManglingMap(Handler* handler, std::map<std::string, std
   // the batch boundary symbols otherwise we would mis-count the number of
   // batches. We do that by checking whether the accumulated batch is empty
   // before seeing the next Noop.
-  int found = 0;
+  //int found = 0;
   Status s;
   char tag = 0;
   uint32_t column_family = 0;  // default
@@ -450,15 +450,11 @@ Status WriteBatch::UpdateManglingMap(Handler* handler, std::map<std::string, std
     }
   }
 
-
   if (!s.ok()) {
     return s;
   }
-  if (handler_continue && found != WriteBatchInternal::Count(this)) {
-    return Status::Corruption("WriteBatch has wrong count");
-  } else {
-    return Status::OK();
-  }
+  
+  return Status::OK();
 }
 
 Status WriteBatch::Iterate(Handler* handler) const {

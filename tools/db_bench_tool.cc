@@ -762,7 +762,9 @@ DEFINE_bool(report_bg_io_stats, false,
 
 DEFINE_bool(use_stderr_info_logger, false,
             "Write info logs to stderr instead of to LOG file. ");
+DEFINE_string(mangling_in_dir, "", "Directory of the target database exported from Bluestore. ");
 DEFINE_string(mangling_out_dir, "", "Directory to store the mangled database and the trace file. ");
+DEFINE_bool(apply_mangling_algorithm, true, "Applying mangling algorithm to keys and values");
 DEFINE_string(trace_file, "", "Trace workload to a file. ");
 DEFINE_string(trace_file_result, "trace_file_result", "Trace workload to a file. ");
 
@@ -2817,8 +2819,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
           fprintf(stderr, "Please set --trace_file to mangling from (trace file) \n");
           exit(1);
         }
-        if (FLAGS_db == "") {
-          fprintf(stderr, "Please set --db to mangling from (db dir) \n");
+        if (FLAGS_mangling_in_dir == "") {
+          fprintf(stderr, "Please set --mangling_in_dir to mangling from (db dir) \n");
           exit(1);
         }
         if (FLAGS_mangling_out_dir == "") {
@@ -3682,7 +3684,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
     options.listeners.emplace_back(listener_);
     if (FLAGS_num_multi_db <= 1) {
-      std::cout << "here\n";
       OpenDb(options, FLAGS_db, &db_);
     } else {
       multi_dbs_.clear();
@@ -3827,7 +3828,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 #endif  // ROCKSDB_LITE
     } else {
       s = DB::Open(options, db_name, &db->db);
-      std::cout << "[TEST] db cfh size : " << db->cfh.size()<< std::endl;
     }
     if (!s.ok()) {
       fprintf(stderr, "open error: %s\n", s.ToString().c_str());
@@ -4429,6 +4429,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     int64_t bytes = 0;
     for (iter->SeekToFirst(); i < reads_ && iter->Valid(); iter->Next()) {
       bytes += iter->key().size() + iter->value().size();
+      std::cout << "key : " << iter->key().data() << std::endl;
       thread->stats.FinishedOps(nullptr, db, 1, kRead);
       ++i;
 
@@ -6088,7 +6089,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
   void Mangle(ThreadState* /*thread*/, DBWithColumnFamilies* db_with_cfh) {
     // Declare Mangler object
-    Mangler mangler(FLAGS_env, db_with_cfh->db, db_with_cfh->cfh, FLAGS_trace_file, FLAGS_db, FLAGS_mangling_out_dir, FLAGS_trace_file_result);
+    Mangler mangler(FLAGS_env, db_with_cfh->db, db_with_cfh->cfh, FLAGS_trace_file, FLAGS_mangling_in_dir, FLAGS_mangling_out_dir, FLAGS_trace_file_result, FLAGS_apply_mangling_algorithm);
 
     // Make Mangle Key
     std::cout << "[INFO] Mangle test\n";

@@ -110,14 +110,17 @@ class SstFileWriter {
   // Add a Put key with value to currently opened file
   // REQUIRES: key is after any previously added key according to comparator.
   Status Put(const Slice& user_key, const Slice& value);
+  Status Put(const Slice& user_key, const Slice& value, SequenceNumber seq);
 
   // Add a Merge key with value to currently opened file
   // REQUIRES: key is after any previously added key according to comparator.
   Status Merge(const Slice& user_key, const Slice& value);
+  Status Merge(const Slice& user_key, const Slice& value, SequenceNumber seq);
 
   // Add a deletion key to currently opened file
   // REQUIRES: key is after any previously added key according to comparator.
   Status Delete(const Slice& user_key);
+  Status Delete(const Slice& user_key, SequenceNumber seq);
 
   // Add a range deletion tombstone to currently opened file
   Status DeleteRange(const Slice& begin_key, const Slice& end_key);

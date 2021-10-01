@@ -101,6 +101,52 @@ struct SstFileWriter::Rep {
     return Status::OK();
   }
 
+  Status Add(const Slice& user_key, const Slice& value,
+             const ValueType value_type, SequenceNumber seq) {
+    if (!builder) {
+      return Status::InvalidArgument("File is not opened");
+    }
+
+    if (file_info.num_entries == 0) {
+      file_info.smallest_key.assign(user_key.data(), user_key.size());
+    } else {
+      if (internal_comparator.user_comparator()->Compare(
+              user_key, file_info.largest_key) <= 0) {
+        // Make sure that keys are added in order
+        return Status::InvalidArgument("Keys must be added in order");
+      }
+    }
+
+    // TODO(junhan) : For external SST files of mangling process, we could include the seqno and type.
+    switch (value_type) {
+      case ValueType::kTypeValue:
+        ikey.Set(user_key, seq,
+                 ValueType::kTypeValue /* Put */);
+        break;
+      case ValueType::kTypeMerge:
+        ikey.Set(user_key, seq,
+                 ValueType::kTypeMerge /* Merge */);
+        break;
+      case ValueType::kTypeDeletion:
+        ikey.Set(user_key, seq,
+                 ValueType::kTypeDeletion /* Delete */);
+        break;
+      default:
+        return Status::InvalidArgument("Value type is not supported");
+    }
+    builder->Add(ikey.Encode(), value);
+
+    // update file info
+    file_info.num_entries++;
+    file_info.largest_key.assign(user_key.data(), user_key.size());
+    file_info.file_size = builder->FileSize();
+
+    InvalidatePageCache(false /* closing */);
+
+    return Status::OK();
+  }
+
+
   Status DeleteRange(const Slice& begin_key, const Slice& end_key) {
     if (!builder) {
       return Status::InvalidArgument("File is not opened");
@@ -271,13 +317,26 @@ Status SstFileWriter::Put(const Slice& user_key, const Slice& value) {
   return rep_->Add(user_key, value, ValueType::kTypeValue);
 }
 
+Status SstFileWriter::Put(const Slice& user_key, const Slice& value, SequenceNumber seq) {
+  return rep_->Add(user_key, value, ValueType::kTypeValue, seq);
+}
+
 Status SstFileWriter::Merge(const Slice& user_key, const Slice& value) {
   return rep_->Add(user_key, value, ValueType::kTypeMerge);
+}
+
+Status SstFileWriter::Merge(const Slice& user_key, const Slice& value, SequenceNumber seq) {
+  return rep_->Add(user_key, value, ValueType::kTypeMerge, seq);
 }
 
 Status SstFileWriter::Delete(const Slice& user_key) {
   return rep_->Add(user_key, Slice(), ValueType::kTypeDeletion);
 }
+
+Status SstFileWriter::Delete(const Slice& user_key, SequenceNumber seq) {
+  return rep_->Add(user_key, Slice(), ValueType::kTypeDeletion, seq);
+}
+
 
 Status SstFileWriter::DeleteRange(const Slice& begin_key,
                                   const Slice& end_key) {

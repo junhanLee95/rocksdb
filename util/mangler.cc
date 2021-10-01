@@ -47,19 +47,14 @@ void DecodeCFAndKey(std::string& buffer, uint32_t* cf_id, Slice* key) {
 }
 } // namespace
 
-Mangler::Mangler(rocksdb::Env* env, DB* db, const std::vector<ColumnFamilyHandle*>& handles, std::string trace_path, std::string db_path, std::string mangling_out_dir, std::string trace_file_result) :
-                trace_file_path_(trace_path), trace_file_result_(trace_file_result), mangling_out_dir_(mangling_out_dir), db_path_(db_path), env_(env) {
+Mangler::Mangler(rocksdb::Env* env, DB* db, const std::vector<ColumnFamilyHandle*>& handles, std::string trace_path, std::string db_path, std::string mangling_out_dir, std::string trace_file_result, bool apply) :
+                apply_(apply), trace_file_path_(trace_path), trace_file_result_(trace_file_result), mangling_out_dir_(mangling_out_dir), db_path_(db_path), env_(env) {
   assert(db != nullptr);
-  //std::cout << "[INFO] Mangler Initialization Start" << std::endl;
   db_ = static_cast<DBImpl*>(db->GetRootDB());
   cfh_default_ =  db->DefaultColumnFamily();
-  //std::cout << "[INFO] default cf id : "<< cfh_default_->GetID() << std::endl;
-  //std::cout << "[INFO] default cf name : "<< cfh_default_->GetName() << std::endl;
 
   for (ColumnFamilyHandle* cfh : handles) {
     cf_map_[cfh->GetID()] = cfh;
-    //std::cout << "[INFO] cf id : " << cfh->GetID() << std::endl;
-    //std::cout << "[INFO] cf name : " << cfh->GetName() << std::endl;
   } // this is not called and not be used.
 
   /* [Step 1] Mangler Initialization */
@@ -106,16 +101,12 @@ Mangler::Mangler(rocksdb::Env* env, DB* db, const std::vector<ColumnFamilyHandle
       exit(1);
     }
     else {
-      //std::cout << "[INFO] create sst file dumper of " << sst_file_paths_[i] << std::endl;
       sst_file_dumpers_.push_back(std::move(dumper));
     } 
   }
 
   /* 3.2. sst_writer for sstable files Initialization */
   for (size_t i = 0; i < sst_file_paths_.size(); i++) {
-    //std::cout << "[INFO] create sst file writer of " << sst_file_paths_[i] << std::endl;
-
-
     std::unique_ptr<SstFileWriter> sst_file_writer( new SstFileWriter(EnvOptions(), loaded_db_opt_, cfh_default_));
     sst_file_writers_.push_back(std::move(sst_file_writer));
   }
@@ -124,11 +115,11 @@ Mangler::Mangler(rocksdb::Env* env, DB* db, const std::vector<ColumnFamilyHandle
   EnvOptions soptions(loaded_db_opt_);
   for (size_t i = 0; i < wal_file_paths_.size(); i++) {
     std::unique_ptr<SequentialFile> rfile;
-    s = env_->NewSequentialFile(wal_file_paths_[i], &rfile, soptions);
+    s = env_->NewSequentialFile(wal_file_paths_[i], &rfile, env_->OptimizeForLogRead(soptions));
     if(!s.ok()) {
       fprintf(
           stderr,
-          "Encountered an error creating a wal file reader from the trace file. "
+          "Encountered an error creating a wal file reader from the wal file. "
           "Error: %s\n",
           wal_file_paths_[i].c_str());
       exit(1);
@@ -146,14 +137,15 @@ Mangler::Mangler(rocksdb::Env* env, DB* db, const std::vector<ColumnFamilyHandle
       std::string sanitized = wal_file_paths_[i];
       std::string log_filename;
       size_t lastslash = sanitized.rfind('/');
+
       if (lastslash != std::string::npos)
         log_filename = sanitized.substr(lastslash + 1);
-      //std::cout << "[INFO] wal file name : " << log_filename << std::endl;
+
       if (!ParseFileName(log_filename, &log_number, &type)) {
         // bogus input, carry on as best we can
         log_number = 0;
       }
-      //std::cout << "[INFO] wal file num : " << log_number << std::endl;
+
       std::unique_ptr<log::Reader> reader(new log::Reader(loaded_db_opt_.info_log, std::move(wal_file_reader), &reporter, true , log_number));
       wal_readers_.push_back(std::move(reader));
 
@@ -162,7 +154,6 @@ Mangler::Mangler(rocksdb::Env* env, DB* db, const std::vector<ColumnFamilyHandle
       std::string wal_file_out_paths;
       wal_file_out_paths = mangling_out_dir_ + "/" + sanitized.substr(lastslash + 1);
 
-      //std::cout << "[INFO] wal file out paths : " << wal_file_out_paths << std::endl;
       std::unique_ptr<WritableFile> wfile;
       env_->NewWritableFile(wal_file_out_paths, &wfile, EnvOptions());
       std::unique_ptr<WritableFileWriter> file_writer(
@@ -173,11 +164,58 @@ Mangler::Mangler(rocksdb::Env* env, DB* db, const std::vector<ColumnFamilyHandle
 
     } 
   }
-  //std::cout << "[INFO] Mangler Initialization Done" << std::endl;
+
+
+  /* [Step 5] log::Reader and log::Writer for manifest file Initialization */
+  for (size_t i = 0; i < manifest_file_paths_.size(); i++) {
+    std::unique_ptr<SequentialFile> rfile;
+    s = env_->NewSequentialFile(manifest_file_paths_[i], &rfile, env_->OptimizeForManifestRead(soptions));
+    if(!s.ok()) {
+      fprintf(
+          stderr,
+          "Encountered an error creating a manifest file reader from the manifest file. "
+          "Error: %s\n",
+          manifest_file_paths_[i].c_str());
+      exit(1);
+    }
+    else {
+      std::unique_ptr<SequentialFileReader> manifest_file_reader;
+      manifest_file_reader.reset(
+          new SequentialFileReader(std::move(rfile), manifest_file_paths_[i]));
+
+      StdErrReporter reporter;
+
+      std::unique_ptr<log::Reader> reader(new log::Reader(loaded_db_opt_.info_log, std::move(manifest_file_reader), &reporter, true, 0));
+      manifest_readers_.push_back(std::move(reader));
+
+
+      // Extract log number from the log file name
+      std::string sanitized = manifest_file_paths_[i];
+      std::string manifest_filename;
+      size_t lastslash = sanitized.rfind('/');
+
+      if (lastslash != std::string::npos)
+        manifest_filename = sanitized.substr(lastslash + 1);
+
+
+      // make output file name
+      std::string manifest_file_out_paths;
+      manifest_file_out_paths = mangling_out_dir_ + "/" + sanitized.substr(lastslash + 1);
+
+      std::unique_ptr<WritableFile> wfile;
+      env_->NewWritableFile(manifest_file_out_paths, &wfile, env_->OptimizeForManifestWrite(soptions));
+      std::unique_ptr<WritableFileWriter> file_writer(
+          new WritableFileWriter(std::move(wfile), manifest_file_out_paths, soptions));
+
+      std::unique_ptr<log::Writer> writer(new log::Writer(std::move(file_writer), 0, false));
+      manifest_writers_.push_back(std::move(writer));
+    } 
+  }
+
+
 }
 
 Mangler::~Mangler() {
-  //std::cout << "[INFO] this is destructor\n";
   size_t i;
 
   trace_reader_.reset();
@@ -191,11 +229,14 @@ Mangler::~Mangler() {
   for (i = 0; i < wal_readers_.size(); i++) {
     wal_readers_[i].reset();
   }
-  for (i = 0; i < wal_readers2_.size(); i++) {
-    wal_readers2_[i].reset();
-  }
   for (i = 0; i < wal_writers_.size(); i++) {
     wal_writers_[i].reset();
+  }
+  for (i = 0; i < manifest_readers_.size(); i++) {
+    manifest_readers_[i].reset();
+  }
+  for (i = 0; i < manifest_writers_.size(); i++) {
+    manifest_writers_[i].reset();
   }
 }
 
@@ -205,16 +246,16 @@ void Mangler::GetDBFilePaths(void) {
   auto CloseDir = [](DIR* p) { closedir(p); };
   struct dirent* entry;
 
-  //std::cout << "[INFO] traversing files in the directory\n";
+  // [STEP 1]. Get SST file paths
   std::string dir_sst = db_path_ + "/db";
   std::unique_ptr<DIR, decltype(CloseDir)> d_sst(opendir(dir_sst.c_str()),
                                                  CloseDir);
-
   if (d_sst == nullptr) {
     std::cout << "[ERR] opening directory " << dir_sst << " is failed\n";
     std::cout << "[ERR] please retype FLAGS_db.\n";
     return;
   }
+
   while ((entry = readdir(d_sst.get())) != nullptr) {
     unsigned int match;
     uint64_t num;
@@ -225,30 +266,50 @@ void Mangler::GetDBFilePaths(void) {
       found = true;
     }
   }
-
   if (!found) {
     std::cout << "[ERR] finding sst file in the directory " << dir_sst << " is failed\n";
     std::cout << "[ERR] please retype FLAGS_db.\n";
     return;
   }
-  /*else {
-    for (size_t i = 0; i < sst_file_paths_.size(); i ++) {
-      std::cout << "[INFO] found sst file path : " << sst_file_paths_[i] << std::endl;
+  
+  // [STEP 2]. Get Manifest file paths
+  found = false;
+  std::string dir_manifest = db_path_ + "/db";
+  std::unique_ptr<DIR, decltype(CloseDir)> d_manifest(opendir(dir_manifest.c_str()),
+                                                 CloseDir);
+  if (d_manifest == nullptr) {
+    std::cout << "[ERR] opening directory " << dir_manifest << " is failed\n";
+    std::cout << "[ERR] please retype FLAGS_db.\n";
+    return;
+  }
+
+  while ((entry = readdir(d_manifest.get())) != nullptr) {
+    unsigned int match;
+    uint64_t num;
+    if (sscanf(entry->d_name, "MANIFEST-%" PRIu64 "%n", &num, &match) &&
+        match == strlen(entry->d_name)) {
+      foundfile = dir_manifest + "/" + std::string(entry->d_name);
+      manifest_file_paths_.push_back(foundfile);
+      found = true;
     }
-  }*/
-
-
-  //std::cout << "[INFO] traversing log files in the directory\n";
+  }
+  if (!found) {
+    std::cout << "[ERR] finding manifest file in the directory " << dir_manifest << " is failed\n";
+    std::cout << "[ERR] please retype FLAGS_db.\n";
+    return;
+  }
+  
+  // [STEP 3]. Get WAL file paths
+  found = false;
   std::string dir_wal = db_path_ + "/db.wal";
   std::unique_ptr<DIR, decltype(CloseDir)> d_wal(opendir(dir_wal.c_str()),
                                              CloseDir);
-  found = false;
-
   if (d_wal == nullptr) {
     std::cout << "[ERR] opening directory " << dir_wal << " is failed\n";
     std::cout << "[ERR] please retype FLAGS_db.\n";
     return;
   }
+
   while ((entry = readdir(d_wal.get())) != nullptr) {
     unsigned int match;
     uint64_t num;
@@ -259,17 +320,11 @@ void Mangler::GetDBFilePaths(void) {
       found = true;
     }
   }
-
   if (!found) {
     std::cout << "[ERR] finding wal file in the directory " << dir_wal << " is failed\n";
     std::cout << "[ERR] please retype FLAGS_db.\n";
     return;
   }
-  /*else {
-    for (size_t i = 0; i < wal_file_paths_.size(); i ++) {
-      std::cout << "[INFO] found wal file path : " << wal_file_paths_[i] << std::endl;
-    }
-  }*/
 }
 
 void Mangler::GetDBOptions(void) {
@@ -292,7 +347,8 @@ void Mangler::GetDBOptions(void) {
   loaded_db_opt_.table_factory.reset(new BlockBasedTableFactory(table_options));
   loaded_db_opt_.compression = kNoCompression;
   loaded_db_opt_.merge_operator = MergeOperators::CreateBluestoreOperator();
-  
+  loaded_db_opt_.wal_recovery_mode = WALRecoveryMode::kPointInTimeRecovery;
+
   if (!s.ok()) {
     fprintf(
         stderr,
@@ -301,11 +357,6 @@ void Mangler::GetDBOptions(void) {
         option_path.c_str());
     exit(1);
   }
-  /*else {
-    std::cout << "[INFO] successfully loaded options from the directory\n";
-    std::cout << "[INFO] cf name : " << loaded_cf_descs_[0].name  << std::endl;
-
-  }*/
 }
 
 Status Mangler::mangle() {
@@ -327,14 +378,19 @@ Status Mangler::mangle() {
     return Status::Corruption("Error mangling wal files");
   }
 
-  //PrintManglingMap("/home/junhan/ceph_rocksdb/rocksdb/mangle_before.txt");
+  s = MangleManifestFiles();
+  if (!s.ok()) {
+    return Status::Corruption("Error mangling manifest files");
+  }
+ 
+  PrintManglingMap("/home/junhan/ceph_rocksdb/rocksdb/mangle_before.txt");
 
   s = ApplyManglingProcessToManglingMap();
   if (!s.ok()) {
     return Status::Corruption("Error applying mangling process to the mangling map");
   } 
 
-  //PrintManglingMap("/home/junhan/ceph_rocksdb/rocksdb/mangle_after.txt");
+  PrintManglingMap("/home/junhan/ceph_rocksdb/rocksdb/mangle_after.txt");
 
   return s;
 }
@@ -365,6 +421,7 @@ Status Mangler::mangle_write(void) {
 
   /* [Step 1] write trace files */
   // reset before reading trace file again
+  
   trace_reader_.reset();
   s = NewFileTraceReader(env_, EnvOptions(), trace_file_path_,
                          &trace_reader_);
@@ -399,12 +456,12 @@ Status Mangler::mangle_write(void) {
       exit(1);
     }
     else {
-      //std::cout << "[INFO] create sst file dumper(2) of " << sst_file_paths_[i] << std::endl;
       sst_file_dumpers_.push_back(std::move(dumper));
     } 
   }
 
   /* [Step 2] write sst files */
+  
   s = WriteMangledSSTableFiles();
   if (!s.ok()) {
     fprintf(stderr,
@@ -415,9 +472,9 @@ Status Mangler::mangle_write(void) {
   
 
   /* [Step 3] write WAL files */
+  
   // reset wal readers before reading WAL file again
   wal_readers_.clear();
-  //std::cout << "[INFO] wal reader size : " << wal_readers_.size() << std::endl;
   EnvOptions soptions(loaded_db_opt_);
   for (size_t i = 0; i < wal_file_paths_.size(); i++) {
     std::unique_ptr<SequentialFile> rfile;
@@ -425,7 +482,7 @@ Status Mangler::mangle_write(void) {
     if(!s.ok()) {
       fprintf(
           stderr,
-          "Encountered an error creating a wal file reader from the trace file. "
+          "Encountered an error creating a wal file reader from the wal file(2). "
           "Error: %s\n",
           wal_file_paths_[i].c_str());
       exit(1);
@@ -458,105 +515,136 @@ Status Mangler::mangle_write(void) {
   if (!s.ok()) {
     return Status::Corruption("Error writing mangled wal files");
   }
+
+  /* [Step 4] write Manifest files */
+
+  // reset manifest readers before reading MANIFEST file again
+  manifest_readers_.clear();
+  for (size_t i = 0; i < manifest_file_paths_.size(); i++) {
+    std::unique_ptr<SequentialFile> rfile;
+    s = env_->NewSequentialFile(manifest_file_paths_[i], &rfile, env_->OptimizeForManifestRead(soptions));
+    if(!s.ok()) {
+      fprintf(
+          stderr,
+          "Encountered an error creating a manifest file reader from the manifest file. "
+          "Error: %s\n",
+          manifest_file_paths_[i].c_str());
+      exit(1);
+    }
+    else {
+      std::unique_ptr<SequentialFileReader> manifest_file_reader;
+      manifest_file_reader.reset(
+          new SequentialFileReader(std::move(rfile), manifest_file_paths_[i]));
+
+      StdErrReporter reporter;
+
+      std::unique_ptr<log::Reader> reader(new log::Reader(loaded_db_opt_.info_log, std::move(manifest_file_reader), &reporter, true, 0));
+      manifest_readers_.push_back(std::move(reader));
+    }
+  }
+
+  s = WriteMangledManifestFiles();
+  if (!s.ok()) {
+    return Status::Corruption("Error writing mangled manifest files");
+  }
    
   return s;
 }
 
 Status Mangler::ApplyManglingProcessToManglingMap(void) {
   Status s;
-  const size_t prefix_size = 2; 
-  map<string, string>::iterator it = mangling_map.begin();
-  size_t i = 0;
-  string prev, prev_prefix, prev_payload;
-  string next, next_prefix, next_payload;
-  string m_key;
-  int r = 0 ;
-  bool reset_prefix=false;
+  if (apply_) {
+    const size_t prefix_size = 2; 
+    map<string, string>::iterator it = mangling_map.begin();
+    size_t i = 0;
+    string prev, prev_prefix, prev_payload;
+    string next, next_prefix, next_payload;
+    string m_key;
+    int r = 0 ;
+    bool reset_prefix=false;
 
-  prev = it->first;
-  prev_prefix = prev.substr(0, prefix_size); //4D=M
-  prev_payload = prev.substr(2, prev.size() - prefix_size);
+    prev = it->first;
+    prev_prefix = prev.substr(0, prefix_size); //4D=M
+    prev_payload = prev.substr(2, prev.size() - prefix_size);
   
-  string init_key;
-  for (i = 0; i< 1000; i++){
-    init_key.push_back((char) (int)strtol("00",NULL,16));
-  }
+    string init_key;
+    for (i = 0; i< 1000; i++){
+      init_key.push_back((char) (int)strtol("00",NULL,16));
+    }
 
-  string prev_tmp, next_tmp;
-  string rand_tmp;
-  size_t start_index = 1000;
-  while(it != mangling_map.end()){
-    next = it->first;
-    next_prefix = next.substr(0, prefix_size);
-    next_payload = next.substr(2, next.size() - prefix_size);
-    size_t min_len = (prev.size() < next.size()) ? prev.size() : next.size();
+    string prev_tmp, next_tmp;
+    string rand_tmp;
+    size_t start_index = 1000;
+    while(it != mangling_map.end()){
+      next = it->first;
+      next_prefix = next.substr(0, prefix_size);
+      next_payload = next.substr(2, next.size() - prefix_size);
+      size_t min_len = (prev.size() < next.size()) ? prev.size() : next.size();
 
-    //prefix hex check add
-    init_key[0] = (char)(int)strtol(next_prefix.c_str(), NULL, 16);
-    bool find = false;
-    if (reset_prefix){
-      for(int j=2; j < 2000; j+=2){
-        init_key[j/2] = ((char) (int)strtol("00",NULL,16));
-      }
-    } else {
-      for ( i = 0; i < min_len; i+=2){
-        prev_tmp = prev.substr(i, 2);
-        next_tmp = next.substr(i, 2);
-        if(!find){
-          r = compare(&prev_tmp, &next_tmp, (size_t)2); // 1byte compare
-          if (r != 0) {
-            find = true;
-            if (start_index != i){
-              start_index=i;
-              for(int j=i; j < 2000; j+=2){
-                if(j == 0){
-                  reset_prefix=true;
-                  find = false;
-                  break;
-                }else{
-                  init_key[j/2] = ((char) (int)strtol("00",NULL,16));
+      //prefix hex check add
+      init_key[0] = (char)(int)strtol(next_prefix.c_str(), NULL, 16);
+      bool find = false;
+      if (reset_prefix || prev.size() <= 4){
+        for(int j=2; j < 2000; j+=2){
+          init_key[j/2] = ((char) (int)strtol("00",NULL,16));
+        }
+      } else {
+        for ( i = 0; i < min_len; i+=2){
+          prev_tmp = prev.substr(i, 2);
+          next_tmp = next.substr(i, 2);
+          if(!find){
+            r = compare(&prev_tmp, &next_tmp, (size_t)2); // 1byte compare
+            if (r != 0) {
+              find = true;
+              if (start_index != i){
+                start_index=i;
+                for(int j=i; j < 2000; j+=2){
+                  if(j == 0){
+                    reset_prefix=true;
+                    find = false;
+                    break;
+                  } else{
+                    init_key[j/2] = ((char) (int)strtol("00",NULL,16));
+                  }
                 }
               }
+              if (i != 0)
+                init_key[i/2] = (char) (int)strtol(next_tmp.c_str(),NULL,16);
             }
-            if (i != 0)
-              init_key[i/2] = (char) (int)strtol(next_tmp.c_str(),NULL,16);
           }
         }
       }
+      m_key=init_key.substr(0, next.size()/2); 
+      mangling_map[next] = m_key;
+      m_key.clear();
+      rand_tmp.clear();
+      prev_tmp.clear();
+      next_tmp.clear();
+      prev = next;
+      reset_prefix=false;
+      prev_prefix = next_prefix;
+      prev_payload = next_payload;
+      it++;
     }
-    m_key=init_key.substr(0, next.size()/2); 
-    mangling_map[next] = m_key;
-    m_key.clear();
-    rand_tmp.clear();
-    prev_tmp.clear();
-    next_tmp.clear();
-    prev = next;
-    reset_prefix=false;
-    prev_prefix = next_prefix;
-    prev_payload = next_payload;
-    it++;
   }
-  
-  init_key[0] = (char)(int)strtol(prev_prefix.c_str(), NULL, 16);
-  for ( i = 2; i < prev.size() ; i+=2){
-    init_key[i/2] = (char)(int)strtol("FF", NULL, 16); 
+  else {
+    map<string, string>::iterator it = mangling_map.begin();
+    for(; it != mangling_map.end(); it ++) {
+      std::string hex(it->first.size()/2, ' ');
+      std::string piece;
+      for (size_t j=0; j<it->first.size(); j+=2) {
+        piece = it->first.substr(j, 2);
+        hex[j/2] =  (char) (int)strtol(piece.c_str(),NULL,16);
+      }
+      mangling_map[it->first] = hex;
+    }
   }
 
-  /*
-  std::cout <<"[INFO] print Mangling map\n";
-  for (it = mangling_map.begin(); it != mangling_map.end(); it++){
-      std::cout << "k : " << it->first << "-> v : " << it->second  <<std::endl ;
-  }
-  */
-  //////Manling Succes
-  /*
-  map<string, string> jsyeon_map;
-
-    for (it = jsyeon_map.begin() ; it != jsyeon_map.end(); it++){
-      //cout << it->second << endl;
-  }
-  */
   return s;
+  /*
+  Status s;
+  return s;
+  */
 }
 
 // Methods for trace files
@@ -594,7 +682,6 @@ Status Mangler::MangleTraceFile() {
         if (!s.ok()) {
             return s;
         }
-        //std::cout << "[INFO] keys from trace : " << key.ToString(true) << std::endl;
         mangling_map.insert(make_pair(key.ToString(true).c_str(), tmp));
       }
       //jsyeon End
@@ -602,7 +689,6 @@ Status Mangler::MangleTraceFile() {
       uint32_t cf_id = 0;
       Slice key;
       DecodeCFAndKey(trace.payload, &cf_id, &key);
-      //std::cout << "[INFO] keys from trace : " << key.ToString(true) << std::endl;
       mangling_map.insert(make_pair(key.ToString(true).c_str(), tmp));
       if (cf_id > 0 && cf_map_.find(cf_id) == cf_map_.end()) {
         return Status::Corruption("Invalid Column Family ID.");
@@ -611,7 +697,6 @@ Status Mangler::MangleTraceFile() {
       uint32_t cf_id = 0;
       Slice key;
       DecodeCFAndKey(trace.payload, &cf_id, &key);
-      //std::cout << "[INFO] keys from trace : " << key.ToString(true) << std::endl;
       mangling_map.insert(make_pair(key.ToString(true).c_str(), tmp));
       if (cf_id > 0 && cf_map_.find(cf_id) == cf_map_.end()) {
         return Status::Corruption("Invalid Column Family ID.");
@@ -621,7 +706,6 @@ Status Mangler::MangleTraceFile() {
       uint32_t cf_id = 0;
       Slice key;
       DecodeCFAndKey(trace.payload, &cf_id, &key);
-      //std::cout << "[INFO] keys from trace : " << key.ToString(true) << std::endl;
       mangling_map.insert(make_pair(key.ToString(true).c_str(), tmp));
       if (cf_id > 0 && cf_map_.find(cf_id) == cf_map_.end()) {
         return Status::Corruption("Invalid Column Family ID.");
@@ -641,7 +725,6 @@ Status Mangler::MangleTraceFile() {
 }
 
 Status Mangler::WriteMangledTraceFile(void) {
-  std::cout << "[INFO] start writing mangled trace files " << std::endl;
   Status s;
   Trace header;
   s = ReadHeader(&header);
@@ -680,10 +763,16 @@ Status Mangler::WriteMangledTraceFile(void) {
         }
         Slice m_key(mangling_map[key.ToString(true).c_str()]);
         string z_value;
-        for (size_t i=0; i< value.size() ; i++){
-          z_value.push_back('0'); 
+        if (apply_) {
+          for (size_t i=0; i< value.size() ; i++){
+            z_value.push_back('0'); 
+          }
+        } else {
+          z_value = string(value.data());
         }
+        
         Slice m_value(z_value);
+
         switch(tag){
           case kTypeDeletion:
             m_batch.Delete(m_key);
@@ -903,12 +992,12 @@ bool Mangler::ShouldSkipTrace() {
 // Methods for sstable files
 
 Status Mangler::MangleSSTableFiles(void) {
-  std::cout << "[INFO] start mangling for SSTable " << std::endl;
   Status s;
   // Read SSTable Files
   // Update Mangled Map
   size_t i;
   for (i = 0; i < sst_file_dumpers_.size(); i++) {
+    std::cout << "[INFO] Mangle sst : " << sst_file_paths_[i] << std::endl;
     sst_file_dumpers_[i]->UpdateManglingMap(mangling_map);
   }
 
@@ -916,11 +1005,11 @@ Status Mangler::MangleSSTableFiles(void) {
 }
 
 Status Mangler::WriteMangledSSTableFiles(void) {
-  std::cout << "[INFO] start writing mangled SSTable " << std::endl;
   Status s;
   size_t i;
 
   for (i = 0; i < sst_file_paths_.size(); i++) {
+    std::cout << "[INFO] Sst Write : " << sst_file_paths_[i] << std::endl;
     // make output file name
     std::string sst_file_out_paths;
     std::string sanitized;
@@ -945,7 +1034,7 @@ Status Mangler::WriteMangledSSTableFiles(void) {
     tp = tpptr.get();
 
     sst_file_writers_[i]->ResetTableProperties(tp);
-    s = sst_file_dumpers_[i]->WriteMangledSSTableFiles(mangling_map, sst_file_writers_[i]);
+    s = sst_file_dumpers_[i]->WriteMangledSSTableFiles(mangling_map, sst_file_writers_[i], apply_);
 
     if (!s.ok()) {
       fprintf(
@@ -976,37 +1065,57 @@ Status Mangler::WriteMangledSSTableFiles(void) {
 // Methods for wal files
 
 Status Mangler::MangleWALFiles(void) {
-  std::cout << "[INFO] Start mangling WAL" << std::endl;
   Status s;
 
   // Read WAL Files
   // Update Mangled Map
   size_t i;
   for (i = 0; i < wal_readers_.size(); i++) {
-    wal_readers_[i]->UpdateManglingMap(mangling_map);
+    std::cout << "[INFO] Mangle wal : " << wal_file_paths_[i] << std::endl;
+    s = wal_readers_[i]->UpdateManglingMap(mangling_map);
+    if (!s.ok()) {
+      fprintf(
+        stderr,
+        "Encountered an error mangling wal files"
+        "Error: %s\n",
+        s.ToString().c_str());
+      return s;
+    }
   }
 
   return s;
 }
 
 Status Mangler::WriteMangledWALFiles(void) {
-  std::cout << "[INFO] Start writing mangled WAL" << std::endl;
   Status s;
   size_t i;
 
+  int record_num = 0;
+  int batch_num = 0;
+
   for (i = 0; i < wal_readers_.size(); i++) {
+    std::cout << "[INFO] Wal Write " << wal_file_paths_[i] << std::endl;
     std::string scratch;
     WriteBatch ibatch;
     WriteBatch obatch;
     Slice record;
     std::stringstream row;
+    record_num = 0;
+    batch_num = 0;
 
     while (wal_readers_[i]->ReadRecord(&record, &scratch)) {
+      record_num ++;
+
       row.str("");
       if (record.size() < WriteBatchInternal::kHeader) {
         std::cerr << "[ERR] log record too small : " <<  record.size() << std::endl;
         return Status::Corruption();
-      } else {
+      } else if (record.size() == WriteBatchInternal::kHeader) {
+          obatch.Clear();
+          WriteBatchInternal::SetContents(&obatch, record);
+          wal_writers_[i]->AddRecord(WriteBatchInternal::Contents(&obatch));
+      }
+      else {
         // get ibatch
         WriteBatchInternal::SetContents(&ibatch, record);
         // clear obatch
@@ -1027,8 +1136,10 @@ Status Mangler::WriteMangledWALFiles(void) {
         char tag = 0;
         uint32_t column_family = 0;  // default
         bool last_was_try_again = false;
+        batch_num = 0;
+
         while (((s.ok() && !input.empty()) || UNLIKELY(s.IsTryAgain()))) {
-      
+          batch_num ++;
           if (LIKELY(!s.IsTryAgain())) {
             last_was_try_again = false;
             tag = 0;
@@ -1059,8 +1170,12 @@ Status Mangler::WriteMangledWALFiles(void) {
             case kTypeValue: {
               Slice m_key(mangling_map[key.ToString(true).c_str()]);
               string z_value;
-              for (size_t j=0; j< value.size() ; j++){
-                z_value.push_back('0'); 
+              if (apply_) {
+                for (size_t j=0; j< value.size() ; j++){
+                  z_value.push_back('0'); 
+                } 
+              } else {
+                z_value = string(value.data());
               }
               Slice m_value(z_value);
  
@@ -1070,7 +1185,6 @@ Status Mangler::WriteMangledWALFiles(void) {
             case kTypeColumnFamilyDeletion:
             case kTypeDeletion: {
               Slice m_key(mangling_map[key.ToString(true).c_str()]);
-
               obatch.Delete(m_key);
               break;
             }
@@ -1084,7 +1198,6 @@ Status Mangler::WriteMangledWALFiles(void) {
             case kTypeColumnFamilyRangeDeletion: // NOT_USED
             case kTypeRangeDeletion: {
               Slice m_key(mangling_map[key.ToString(true).c_str()]);
-
               s = obatch.DeleteRange(m_key, m_key);
               break;
             }
@@ -1092,9 +1205,14 @@ Status Mangler::WriteMangledWALFiles(void) {
             case kTypeMerge: {
               Slice m_key(mangling_map[key.ToString(true).c_str()]);
               string z_value;
-              for (size_t j=0; j< value.size() ; j++){
-                z_value.push_back('0'); 
+              if (apply_) {
+                for (size_t j=0; j< value.size() ; j++){
+                  z_value.push_back('0'); 
+                }
+              } else {
+                z_value = string(value.data());
               }
+
               Slice m_value(z_value);
  
               s = obatch.Merge(m_key, m_value);
@@ -1102,8 +1220,7 @@ Status Mangler::WriteMangledWALFiles(void) {
             }
             case kTypeColumnFamilyBlobIndex:
             case kTypeBlobIndex:
-              //s = obatch.PutBlobIndex(m_key, m_value);;
-              std::cerr << "[ERROR] not supported\n";
+              std::cout << "[ERROR] not supported\n";
               break;
            case kTypeLogData:    
               s = obatch.PutLogData(blob);
@@ -1111,26 +1228,22 @@ Status Mangler::WriteMangledWALFiles(void) {
            case kTypeBeginPrepareXID:
            case kTypeBeginPersistedPrepareXID:
            case kTypeBeginUnprepareXID:
-             std::cerr << "[ERROR] not supported\n";
+             std::cout << "[ERROR] not supported\n";
              break;
            case kTypeEndPrepareXID:
-             std::cerr << "[ERROR] not supported\n";
-             //s = obatch.MarkEndPrepare(xid);
+             std::cout << "[ERROR] not supported\n";
              break;
            case kTypeCommitXID:
-             std::cerr << "[ERROR] not supported\n";
-             //s = obatch.MarkCommit(xid);
+             std::cout << "[ERROR] not supported\n";
              break;
            case kTypeRollbackXID:
-             std::cerr << "[ERROR] not supported\n";
-             //s = obatch.MarkRollBack(xid);
+             std::cout << "[ERROR] not supported\n";
              break;
            case kTypeNoop:
-             std::cerr << "[ERROR] not supported\n";
-             //s = obatch.InsertNoop();
+             std::cout << "[ERROR] not supported\n";
              break;
            default:
-             std::cerr << "[ERROR] unknown tag\n";
+             std::cout << "[ERROR] unknown tag\n";
              break;
           }
         }
@@ -1138,6 +1251,78 @@ Status Mangler::WriteMangledWALFiles(void) {
       } 
     }
   }
+  return s;
+}
+
+// Methods for manifest files
+
+Status Mangler::MangleManifestFiles(void) {
+  Status s;
+
+  EnvOptions sopt;
+  std::shared_ptr<Cache> tc(NewLRUCache(loaded_db_opt_.max_open_files - 10,
+                                        loaded_db_opt_.table_cache_numshardbits));
+  // Notice we are using the default options not through SanitizeOptions(),
+  // if VersionSet::DumpManifest() depends on any option done by
+  // SanitizeOptions(), we need to initialize it manually.
+  WriteController wc(loaded_db_opt_.delayed_write_rate);
+  WriteBufferManager wb(loaded_db_opt_.db_write_buffer_size);
+  ImmutableDBOptions immutable_db_options(loaded_db_opt_);
+  VersionSet versions(cfh_default_->GetName(), &immutable_db_options, sopt, tc.get(), &wb, &wc);
+
+  size_t i;
+  std::string tmp = "";
+  Slice record;
+  std::string scratch;
+
+  for (i = 0; i < manifest_file_paths_.size(); i++) {
+    std::cout << "[INFO] Mangle Manifest : " << manifest_file_paths_[i] << std::endl;
+    while (manifest_readers_[i]->ReadRecord(&record, &scratch) && s.ok()) {
+      VersionEdit edit;
+      s = edit.DecodeFrom(record);
+      if (!s.ok()) {
+        break;
+      }
+      
+      // update Mangled Map
+      edit.UpdateManglingMap(mangling_map);
+    }
+  }
+
+  return s;
+}
+
+Status Mangler::WriteMangledManifestFiles(void) {
+  Status s;
+
+  // Read Manifest Files
+  size_t i;
+  for (i = 0; i < manifest_readers_.size(); i++) {
+    std::cout << "[INFO] Manifest Write " << manifest_file_paths_[i] << std::endl;
+    Slice record;
+    std::string scratch;
+
+    while (manifest_readers_[i]->ReadRecord(&record, &scratch) && s.ok()) {
+      VersionEdit edit;
+      std::string new_record_str;
+      s = edit.DecodeFrom(record);
+      if (!s.ok()) {
+        break;
+      }
+      
+      // if edit contains FileMetadata and key data, update the value by looking at the mangling map
+      // if not, write the original edit to the log file
+      VersionEdit new_edit;
+      edit.WriteMangledVersionEdit(new_edit, mangling_map);
+
+      if (!new_edit.EncodeTo(&new_record_str)) {
+        return Status::Corruption("cannot encode new record from manifest file");
+      }
+ 
+      manifest_writers_[i]->AddRecord(Slice(new_record_str));
+    }   
+  }
+
   return s;
 }
 

@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "db/dbformat.h"
 #include "db/internal_stats.h"
@@ -346,7 +347,7 @@ class VersionBuilder::Rep {
         prev_added_file = added;
       }
 #endif
-
+     
       auto base_iter = base_files.begin();
       auto base_end = base_files.end();
       auto added_iter = added_files.begin();
