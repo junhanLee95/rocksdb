@@ -48,7 +48,8 @@ ConcurrentArena::Shard* ConcurrentArena::Repick() {
 std::vector<IntegratedArena*> IntegratedArena::arenas_;
 
 IntegratedArena::IntegratedArena(size_t block_size, AllocTracker* tracker, 
-                                 size_t huge_page_size) {
+                                 size_t huge_page_size) 
+  : ConcurrentArena(block_size, tracker, huge_page_size) {
   // std::cout << "[INFO] IntegratedArena: push the pointer into list." << std::endl;
   arenas_.push_back(this);
 }
