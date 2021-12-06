@@ -8,6 +8,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "util/concurrent_arena.h"
+#include <iostream>
 #include <thread>
 #include "port/port.h"
 #include "util/random.h"
@@ -44,4 +45,28 @@ ConcurrentArena::Shard* ConcurrentArena::Repick() {
   return shard_and_index.first;
 }
 
+std::vector<IntegratedArena*> IntegratedArena::arenas_;
+
+IntegratedArena::IntegratedArena(size_t block_size, AllocTracker* tracker, 
+                                 size_t huge_page_size) {
+  // std::cout << "[INFO] IntegratedArena: push the pointer into list." << std::endl;
+  arenas_.push_back(this);
+}
+
+IntegratedArena::~IntegratedArena() {
+  // std::cout << "[INFO] IntegratedArena: remove the pointer in list." << std::endl;
+  arenas_.erase(remove(arenas_.begin(), arenas_.end(), this), arenas_.end());
+}
+
+size_t IntegratedArena::GetTotalMemoryAllocatedBytes() const {
+  size_t usage = 0;
+  for (auto a: arenas_) {
+    usage += a->MemoryAllocatedBytes();
+  }
+  return usage;
+}
+
+size_t IntegratedArena::GetNumberOfArenas() const {
+  return arenas_.size();
+}
 }  // namespace rocksdb

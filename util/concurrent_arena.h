@@ -212,4 +212,16 @@ class ConcurrentArena : public Allocator {
   ConcurrentArena& operator=(const ConcurrentArena&) = delete;
 };
 
+class IntegratedArena : public ConcurrentArena {
+ public:
+  static std::vector<IntegratedArena*> arenas_;
+  
+  explicit IntegratedArena(size_t block_size = Arena::kMinBlockSize,
+                           AllocTracker* tracker = nullptr,
+                           size_t huge_page_size = 0);
+  ~IntegratedArena();
+
+  size_t GetTotalMemoryAllocatedBytes() const;
+  size_t GetNumberOfArenas() const;
+};
 }  // namespace rocksdb

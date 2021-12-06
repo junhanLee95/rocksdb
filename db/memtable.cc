@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <iostream>
 
 #include "db/dbformat.h"
 #include "db/merge_context.h"
@@ -147,11 +148,29 @@ bool MemTable::ShouldFlushNow() const {
   // allocate one more block.
   const double kAllowOverAllocationRatio = 0.6;
 
-  // If arena still have room for new block allocation, we can safely say it
-  // shouldn't flush.
-  auto allocated_memory = table_->ApproximateMemoryUsage() +
-                          range_del_table_->ApproximateMemoryUsage() +
-                          arena_.MemoryAllocatedBytes();
+  size_t single_wb_size = write_buffer_size; 
+  const double kNeverFlushMemoryRatio = 0.75;
+  size_t allocated_memory = 0;
+
+  bool new_flush_condition = true;
+  if (new_flush_condition) {
+    write_buffer_size *= arena_.GetNumberOfArenas();
+
+    assert(table_->ApproximateMemoryUsage() == 0);
+    assert(range_del_table_->ApproximateMemoryUsage() == 0);
+    allocated_memory = arena_.GetTotalMemoryAllocatedBytes();
+  
+    // if the flush can be delayed, this memtable is not enough to flush. 
+    if (arena_.MemoryAllocatedBytes() < single_wb_size * kNeverFlushMemoryRatio) {
+      return false; 
+    }
+  } else {
+    // If arena still have room for new block allocation, we can safely say it
+    // shouldn't flush.
+    allocated_memory = table_->ApproximateMemoryUsage() +
+                       range_del_table_->ApproximateMemoryUsage() +
+                       arena_.MemoryAllocatedBytes();
+  }
 
   // if we can still allocate one more block without exceeding the
   // over-allocation ratio, then we should not flush.
