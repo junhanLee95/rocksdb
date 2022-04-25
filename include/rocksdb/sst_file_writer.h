@@ -101,6 +101,9 @@ class SstFileWriter {
   // Prepare SstFileWriter to write into file located at "file_path".
   Status Open(const std::string& file_path);
 
+  // Prepare SstFileWriter to write into file located at "file_path" and "level".
+  Status Open(const std::string& file_path, int level);
+
   // Add a Put key with value to currently opened file (deprecated)
   // REQUIRES: key is after any previously added key according to comparator.
   ROCKSDB_DEPRECATED_FUNC Status Add(const Slice& user_key, const Slice& value);

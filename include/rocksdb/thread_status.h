@@ -73,6 +73,13 @@ struct ThreadStatus {
     NUM_OP_STAGES
   };
 
+  enum SplitPropertyType : int {
+    SPLIT_JOB_ID = 0,
+    SPLIT_BYTES_MEMTABLES ,
+    SPLIT_BYTES_WRITTEN 
+  };
+
+
   enum CompactionPropertyType : int {
     COMPACTION_JOB_ID = 0,
     COMPACTION_INPUT_OUTPUT_LEVEL,

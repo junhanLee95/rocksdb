@@ -21,6 +21,7 @@
 
 #include "db/column_family.h"
 #include "db/compaction_job.h"
+#include "db/split_job.h"
 #include "db/dbformat.h"
 #include "db/error_handler.h"
 #include "db/event_helpers.h"
@@ -129,6 +130,10 @@ class DBImpl : public DB {
   virtual Status CreateColumnFamily(const ColumnFamilyOptions& cf_options,
                                     const std::string& column_family,
                                     ColumnFamilyHandle** handle) override;
+  virtual Status SplitColumnFamily(const ColumnFamilyOptions& cf_options,
+                                   ColumnFamilyHandle** handle_in_0,
+                                   ColumnFamilyHandle** handle_out_0,
+                                   ColumnFamilyHandle** handle_out_1) override;
   virtual Status CreateColumnFamilies(
       const ColumnFamilyOptions& cf_options,
       const std::vector<std::string>& column_family_names,
@@ -425,6 +430,7 @@ class DBImpl : public DB {
   // We add a bool parameter to wait for unscheduledCompactions_ == 0, but this
   // is only for the special test of CancelledCompactions
   Status TEST_WaitForCompact(bool waitUnscheduled = false);
+  Status TEST_WaitForSplit(void);
 
   // Return the maximum overlapping data (in bytes) at next level for any
   // file at a level >= 1.
@@ -744,6 +750,10 @@ class DBImpl : public DB {
                        uint64_t* new_time,
                        std::map<std::string, uint64_t>* stats_map);
 
+
+  void PrintLogicalColumnFamily(void);
+  std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
+
  protected:
   Env* const env_;
   const std::string dbname_;
@@ -801,6 +811,15 @@ class DBImpl : public DB {
   void NotifyOnFlushCompleted(ColumnFamilyData* cfd, FileMetaData* file_meta,
                               const MutableCFOptions& mutable_cf_options,
                               int job_id, TableProperties prop);
+
+  void NotifyOnSplitBegin(ColumnFamilyData* cfd, Compaction* c,
+                               const Status& st,
+                               const SplitJobStats& job_stats, int job_id);
+
+  void NotifyOnSplitCompleted(ColumnFamilyData* cfd, Compaction* c,
+                                   const Status& st,
+                                   const SplitJobStats& job_stats,
+                                   int job_id);
 
   void NotifyOnCompactionBegin(ColumnFamilyData* cfd, Compaction* c,
                                const Status& st,
@@ -934,6 +953,12 @@ class DBImpl : public DB {
                                 const std::string& cf_name,
                                 ColumnFamilyHandle** handle);
 
+  Status SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
+                                   ColumnFamilyHandle** handle_in_0,
+                                   ColumnFamilyHandle** handle_out_0,
+                                   ColumnFamilyHandle** handle_out_1);
+
+
   Status DropColumnFamilyImpl(ColumnFamilyHandle* column_family);
 
   // Delete any unneeded files and stale in-memory entries.
@@ -1004,6 +1029,14 @@ class DBImpl : public DB {
     Env::Priority thread_pri_;
   };
 
+  // Argument passed to flush thread.
+  struct SplitThreadArg {
+    DBImpl* db_;
+
+    Env::Priority thread_pri_;
+  };
+
+
   // Flush the memtables of (multiple) column families to multiple files on
   // persistent storage.
   Status FlushMemTablesToOutputFiles(
@@ -1042,6 +1075,8 @@ class DBImpl : public DB {
   Status ScheduleFlushes(WriteContext* context);
 
   Status SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context);
+
+  Status SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, ColumnFamilyData* cfd_out1);
 
   void SelectColumnFamiliesForAtomicFlush(autovector<ColumnFamilyData*>* cfds);
 
@@ -1149,6 +1184,7 @@ class DBImpl : public DB {
   void SchedulePendingFlush(const FlushRequest& req, FlushReason flush_reason);
 
   void SchedulePendingCompaction(ColumnFamilyData* cfd);
+  void SchedulePendingSplit(ColumnFamilyData* cfd);
   void SchedulePendingPurge(std::string fname, std::string dir_to_sync,
                             FileType type, uint64_t number, int job_id);
   static void BGWorkCompaction(void* arg);
@@ -1156,13 +1192,20 @@ class DBImpl : public DB {
   // separate, bottom-pri thread pool.
   static void BGWorkBottomCompaction(void* arg);
   static void BGWorkFlush(void* arg);
+  static void BGWorkSplit(void* arg);
   static void BGWorkPurge(void* arg);
+  static void UnscheduleSplitCallback(void* arg);
   static void UnscheduleCompactionCallback(void* arg);
   static void UnscheduleFlushCallback(void* arg);
   void BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
                                 Env::Priority thread_pri);
   void BackgroundCallFlush(Env::Priority thread_pri);
+  void BackgroundCallSplit(Env::Priority thread_pri);
   void BackgroundCallPurge();
+  Status BackgroundSplit(bool* madeProgress, JobContext* job_context,
+                         LogBuffer* log_buffer,
+                         Env::Priority thread_pri);
+
   Status BackgroundCompaction(bool* madeProgress, JobContext* job_context,
                               LogBuffer* log_buffer,
                               PrepickedCompaction* prepicked_compaction,
@@ -1207,7 +1250,9 @@ class DBImpl : public DB {
 
   // helper functions for adding and removing from flush & compaction queues
   void AddToCompactionQueue(ColumnFamilyData* cfd);
+  void AddToSplitQueue(ColumnFamilyData* cfd);
   ColumnFamilyData* PopFirstFromCompactionQueue();
+  ColumnFamilyData* PopFirstFromSplitQueue();
   FlushRequest PopFirstFromFlushQueue();
 
   // Pick the first unthrottled compaction with task token from queue.
@@ -1227,6 +1272,7 @@ class DBImpl : public DB {
   Status CloseHelper();
 
   void WaitForBackgroundWork();
+  void WaitForBackgroundSplit();
 
   // table_cache_ provides its own synchronization
   std::shared_ptr<Cache> table_cache_;
@@ -1448,6 +1494,9 @@ class DBImpl : public DB {
   // ColumnFamilyData::pending_compaction_ == true)
   std::deque<ColumnFamilyData*> compaction_queue_;
 
+  // TODO: Maybe I should add split_queue_
+  std::deque<ColumnFamilyData*> split_queue_;
+
   // A queue to store filenames of the files to be purged
   std::deque<PurgeFileInfo> purge_queue_;
 
@@ -1459,6 +1508,7 @@ class DBImpl : public DB {
   std::deque<log::Writer*> logs_to_free_queue_;
   int unscheduled_flushes_;
   int unscheduled_compactions_;
+  int unscheduled_splits_;
 
   // count how many background compactions are running or have been scheduled in
   // the BOTTOM pool
@@ -1475,6 +1525,12 @@ class DBImpl : public DB {
 
   // stores the number of flushes are currently running
   int num_running_flushes_;
+
+  // number of background cf split jobs, submitted to the LOW pool
+  int bg_split_scheduled_;
+
+  // stores the number of splits are currently running
+  int num_running_splits_;
 
   // number of background obsolete file purge jobs, submitted to the HIGH pool
   int bg_purge_scheduled_;
@@ -1646,6 +1702,12 @@ class DBImpl : public DB {
                               const CompactionJobStats& compaction_job_stats,
                               const int job_id, const Version* current,
                               CompactionJobInfo* compaction_job_info) const;
+  void BuildSplitJobInfo(const ColumnFamilyData* cfd, Compaction* c,
+                              const Status& st,
+                              const SplitJobStats& compaction_job_stats,
+                              const int job_id, const Version* current,
+                              SplitJobInfo* compaction_job_info) const;
+
   // Reserve the next 'num' file numbers for to-be-ingested external SST files,
   // and return the current file_number in 'next_file_number'.
   // Write a version edit to the MANIFEST.

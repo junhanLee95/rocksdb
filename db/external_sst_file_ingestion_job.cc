@@ -178,6 +178,8 @@ Status ExternalSstFileIngestionJob::Run() {
   // the only active writer, and hence they are equal
   const SequenceNumber last_seqno = versions_->LastSequence();
   edit_.SetColumnFamily(cfd_->GetID());
+  fprintf(stdout, "[ExternalSstFileIngestionJob] RUN id : %ld\n", (long int)cfd_->GetID());
+  fprintf(stdout, "[ExternalSstFileIngestionJob] RUN name : %s\n", cfd_->GetName().c_str());
   // The levels that the files will be ingested into
 
   for (IngestedFileInfo& f : files_to_ingest_) {
@@ -201,6 +203,7 @@ Status ExternalSstFileIngestionJob::Run() {
     if (!status.ok()) {
       return status;
     }
+    fprintf(stdout, "[ExternalSstFileIngestionJob] AddFile fd : %ld\n", (long int)f.fd.GetNumber());
     edit_.AddFile(f.picked_level, f.fd.GetNumber(), f.fd.GetPathId(),
                   f.fd.GetFileSize(), f.smallest_internal_key(),
                   f.largest_internal_key(), f.assigned_seqno, f.assigned_seqno,

@@ -248,6 +248,21 @@ void MemTableListVersion::Remove(MemTable* m,
   }
 }
 
+void MemTableListVersion::SplitRemove(MemTable* m,
+                                 autovector<MemTable*>* to_delete) {
+  fprintf(stdout, "refs : %d\n", (int)(refs_));
+  //assert(refs_ == 0);  // only when refs_ == 1 is MemTableListVersion mutable
+  memlist_.remove(m);
+
+  if (max_write_buffer_number_to_maintain_ > 0) {
+    memlist_history_.push_front(m);
+    TrimHistory(to_delete);
+  } else {
+    UnrefMemTable(to_delete, m);
+  }
+}
+
+
 // Make sure we don't use up too much space in history
 void MemTableListVersion::TrimHistory(autovector<MemTable*>* to_delete) {
   while (memlist_.size() + memlist_history_.size() >
@@ -269,6 +284,19 @@ bool MemTableList::IsFlushPending() const {
     return true;
   }
   return false;
+}
+
+void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete) {
+  InstallNewVersion();
+  const auto& memlist = current_->memlist_;
+  for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
+    MemTable* m = *it;
+    num_flush_not_started_--;
+    if (num_flush_not_started_ == 0) {
+        imm_flush_needed.store(false, std::memory_order_release);
+      }
+    current_->Remove(m, to_delete);
+  }
 }
 
 // Returns the memtables that need to be flushed.
@@ -526,6 +554,24 @@ uint64_t MemTableList::PrecomputeMinLogContainingPrepSection(
 
   return min_log;
 }
+
+size_t MemTableList::GetMemTableListSize(void) {
+  return current_->memlist_.size();
+}
+
+MemTable* MemTableList::GetMemTableFromList(size_t id) {
+  size_t i = 0;
+  MemTable* mem = nullptr;
+  for (auto& m : current_->memlist_) {
+    mem = m;
+    if (i == id){
+      break;
+    }
+    i ++;
+  }
+  return mem;
+}
+
 
 // Commit a successful atomic flush in the manifest file.
 Status InstallMemtableAtomicFlushResults(

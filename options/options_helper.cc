@@ -210,6 +210,7 @@ std::map<CompactionStyle, std::string>
         {kCompactionStyleLevel, "kCompactionStyleLevel"},
         {kCompactionStyleUniversal, "kCompactionStyleUniversal"},
         {kCompactionStyleFIFO, "kCompactionStyleFIFO"},
+        /*{kCompactionStyleSplit,"kCompactionStyleSplit"},*/
         {kCompactionStyleNone, "kCompactionStyleNone"}};
 
 std::map<CompactionPri, std::string> OptionsHelper::compaction_pri_to_string = {

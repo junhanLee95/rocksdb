@@ -40,6 +40,7 @@ enum Tag : uint32_t {
   kColumnFamilyAdd = 201,
   kColumnFamilyDrop = 202,
   kMaxColumnFamily = 203,
+  kColumnFamilySplit = 204,
 
   kInAtomicGroup = 300,
 };
@@ -87,6 +88,7 @@ void VersionEdit::Clear() {
   column_family_ = 0;
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
+  is_column_family_split_ = 0;
   column_family_name_.clear();
   is_in_atomic_group_ = false;
   remaining_entries_ = 0;
@@ -201,6 +203,11 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
 
   if (is_column_family_add_) {
     PutVarint32(dst, kColumnFamilyAdd);
+    PutLengthPrefixedSlice(dst, Slice(column_family_name_));
+  }
+
+  if (is_column_family_split_) {
+    PutVarint32(dst, kColumnFamilySplit);
     PutLengthPrefixedSlice(dst, Slice(column_family_name_));
   }
 
@@ -514,6 +521,17 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         }
         break;
 
+      case kColumnFamilySplit:
+        if (GetLengthPrefixedSlice(&input, &str)) {
+          is_column_family_split_ = true;
+          column_family_name_ = str.ToString();
+        } else {
+          if (!msg) {
+            msg = "column family split";
+          }
+        }
+        break;
+
       case kColumnFamilyDrop:
         is_column_family_drop_ = true;
         break;
@@ -612,6 +630,10 @@ std::string VersionEdit::DebugString(bool hex_key) const {
     r.append("\n  ColumnFamilyAdd: ");
     r.append(column_family_name_);
   }
+  if (is_column_family_split_) {
+    r.append("\n  ColumnFamilySplit: ");
+    r.append(column_family_name_);
+  }
   if (is_column_family_drop_) {
     r.append("\n  ColumnFamilyDrop");
   }
@@ -686,6 +708,9 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
 
   if (is_column_family_add_) {
     jw << "ColumnFamilyAdd" << column_family_name_;
+  }
+  if (is_column_family_split_) {
+    jw << "ColumnFamilySplit" << column_family_name_;
   }
   if (is_column_family_drop_) {
     jw << "ColumnFamilyDrop" << column_family_name_;
