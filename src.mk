@@ -13,6 +13,8 @@ LIB_SOURCES =                                                   \
   db/compaction_picker.cc                                       \
   db/compaction_picker_fifo.cc                                  \
   db/compaction_picker_universal.cc                             \
+  db/split_job.cc        			                                  \
+  db/split_picker.cc          		                              \
   db/convenience.cc                                             \
   db/db_filesnapshot.cc                                         \
   db/db_impl.cc                                                 \
@@ -134,6 +136,7 @@ LIB_SOURCES =                                                   \
   util/build_version.cc                                         \
   util/coding.cc                                                \
   util/compaction_job_stats_impl.cc                             \
+  util/split_job_stats_impl.cc                             \
   util/comparator.cc                                            \
   util/compression_context_cache.cc                             \
   util/concurrent_arena.cc                                      \

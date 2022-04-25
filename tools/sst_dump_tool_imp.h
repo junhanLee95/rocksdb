@@ -12,6 +12,7 @@
 #include "db/dbformat.h"
 #include "options/cf_options.h"
 #include "util/file_reader_writer.h"
+#include "table/internal_iterator.h"
 
 namespace rocksdb {
 
@@ -19,6 +20,10 @@ class SstFileDumper {
  public:
   explicit SstFileDumper(const Options& options, const std::string& file_name,
                          bool verify_checksum, bool output_hex);
+
+  Status WriteSplittedSSTableFiles(std::unique_ptr<SstFileWriter>& writer0, std::unique_ptr<SstFileWriter>& writer1);
+
+  InternalIterator* getInternalIterator(void); // NOTE: Need to be freed after the usage
 
   Status ReadSequential(bool print_kv, uint64_t read_num, bool has_from,
                         const std::string& from_key, bool has_to,

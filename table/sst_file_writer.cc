@@ -174,6 +174,84 @@ SstFileWriter::~SstFileWriter() {
   }
 }
 
+Status SstFileWriter::Open(const std::string& file_path, int level) {
+  Rep* r = rep_.get();
+  Status s;
+  std::unique_ptr<WritableFile> sst_file;
+  s = r->ioptions.env->NewWritableFile(file_path, &sst_file, r->env_options);
+  if (!s.ok()) {
+    return s;
+  }
+
+  sst_file->SetIOPriority(r->io_priority);
+
+  CompressionType compression_type;
+  CompressionOptions compression_opts;
+  if (r->ioptions.bottommost_compression != kDisableCompressionOption) {
+    compression_type = r->ioptions.bottommost_compression;
+    if (r->ioptions.bottommost_compression_opts.enabled) {
+      compression_opts = r->ioptions.bottommost_compression_opts;
+    } else {
+      compression_opts = r->ioptions.compression_opts;
+    }
+  } else if (!r->ioptions.compression_per_level.empty()) {
+    // Use the compression of the last level if we have per level compression
+    compression_type = *(r->ioptions.compression_per_level.rbegin());
+    compression_opts = r->ioptions.compression_opts;
+  } else {
+    compression_type = r->mutable_cf_options.compression;
+    compression_opts = r->ioptions.compression_opts;
+  }
+  uint64_t sample_for_compression =
+      r->mutable_cf_options.sample_for_compression;
+
+  std::vector<std::unique_ptr<IntTblPropCollectorFactory>>
+      int_tbl_prop_collector_factories;
+
+  // SstFileWriter properties collector to add SstFileWriter version.
+  int_tbl_prop_collector_factories.emplace_back(
+      new SstFileWriterPropertiesCollectorFactory(2 /* version */,
+                                                  0 /* global_seqno*/));
+
+  // User collector factories
+  auto user_collector_factories =
+      r->ioptions.table_properties_collector_factories;
+  for (size_t i = 0; i < user_collector_factories.size(); i++) {
+    int_tbl_prop_collector_factories.emplace_back(
+        new UserKeyTablePropertiesCollectorFactory(
+            user_collector_factories[i]));
+  }
+  uint32_t cf_id;
+
+  if (r->cfh != nullptr) {
+    // user explicitly specified that this file will be ingested into cfh,
+    // we can persist this information in the file.
+    cf_id = r->cfh->GetID();
+    r->column_family_name = r->cfh->GetName();
+  } else {
+    r->column_family_name = "";
+    cf_id = TablePropertiesCollectorFactory::Context::kUnknownColumnFamily;
+  }
+
+  TableBuilderOptions table_builder_options(
+      r->ioptions, r->mutable_cf_options, r->internal_comparator,
+      &int_tbl_prop_collector_factories, compression_type,
+      sample_for_compression, compression_opts, r->skip_filters,
+      r->column_family_name, level /* assigned level*/);
+  r->file_writer.reset(new WritableFileWriter(
+      std::move(sst_file), file_path, r->env_options, r->ioptions.env,
+      nullptr /* stats */, r->ioptions.listeners));
+
+  // TODO(tec) : If table_factory is using compressed block cache, we will
+  // be adding the external sst file blocks into it, which is wasteful.
+  r->builder.reset(r->ioptions.table_factory->NewTableBuilder(
+      table_builder_options, cf_id, r->file_writer.get()));
+
+  r->file_info = ExternalSstFileInfo();
+  r->file_info.file_path = file_path;
+  r->file_info.version = 2;
+  return s;
+}
 Status SstFileWriter::Open(const std::string& file_path) {
   Rep* r = rep_.get();
   Status s;

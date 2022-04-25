@@ -27,6 +27,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "db/column_family.h"
 #include "db/compaction.h"
@@ -279,6 +280,8 @@ class VersionStorageInfo {
     return level_files_brief_[level];
   }
 
+  Slice GetMedianKey(void);
+
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
   const std::vector<int>& FilesByCompactionPri(int level) const {
     assert(finalized_);
@@ -291,6 +294,14 @@ class VersionStorageInfo {
       const {
     assert(finalized_);
     return files_marked_for_compaction_;
+  }
+
+  // REQUIRES: This version has been saved (see VersionSet::SaveTo)
+  // REQUIRES: DB mutex held during access
+  const autovector<std::pair<int, FileMetaData*>>& FilesMarkedForSplit()
+      const {
+    assert(finalized_);
+    return files_marked_for_split_;
   }
 
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
@@ -461,6 +472,11 @@ class VersionStorageInfo {
   // few largest files because a new version is created every few
   // seconds/minutes (because of concurrent compactions).
   static const size_t number_of_files_to_sort_ = 50;
+
+  // This vector contains list of files marked for split and also not
+  // currently being compacted/splitted. It is protected by DB mutex. It is calculated in
+  // ComputeCompactionScore()
+  autovector<std::pair<int, FileMetaData*>> files_marked_for_split_;
 
   // This vector contains list of files marked for compaction and also not
   // currently being compacted. It is protected by DB mutex. It is calculated in
@@ -1012,6 +1028,9 @@ class VersionSet {
 
   ColumnFamilyData* CreateColumnFamily(const ColumnFamilyOptions& cf_options,
                                        VersionEdit* edit);
+
+  ColumnFamilyData* CreateColumnFamily(const ColumnFamilyOptions& cf_options,
+                                       VersionEdit* edit, std::string smallest, std::string largest);
 
   // REQUIRES db mutex
   Status ApplyOneVersionEditToBuilder(

@@ -7,6 +7,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #include "db/db_impl.h"
+#include "db/memtable_list.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -1353,6 +1354,122 @@ void DBImpl::NotifyOnMemTableSealed(ColumnFamilyData* /*cfd*/,
   }
 }
 #endif  // ROCKSDB_LITE
+
+// REQUIRES: mutex_ is held
+// REQUIRES: this thread is currently at the front of the writer queue
+Status DBImpl::SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, ColumnFamilyData* cfd_out1) {
+  mutex_.AssertHeld();
+  assert(cfd->mem()->IsEmpty()); // we already switched all mutable memtables into imm list.
+  assert(!cfd->imm()->HasFlushRequested());
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                "SplitMemtable: start");
+
+
+  // get median key from cfd
+  Slice median_key = cfd->current()->storage_info()->GetMedianKey();
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                "SplitMemtable: med key : %s", median_key.ToString().c_str());
+
+  // create memtable for cfd_out0 and cfd_out1
+  ReadOptions ro;
+  Arena arena;
+  ro.total_order_seek = true;
+
+  InternalKeyComparator cmp(BytewiseComparator());
+  auto factory = std::make_shared<SkipListFactory>();
+  WriteBufferManager* wb0 = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
+  WriteBufferManager* wb1 = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
+  Options options;
+  options.memtable_factory = factory;
+  ImmutableCFOptions ioptions(options);
+
+
+  size_t imm_size = cfd->imm()->GetMemTableListSize();
+  for (size_t i=0; i<imm_size; i++) {
+    MemTable* mem = cfd->imm()->GetMemTableFromList(i);
+    // prepare two memtables for cfd_out0 and cfd_out1 each
+    WriteContext context0;
+    WriteContext context1;
+
+    MemTable *mem0, *mem1;
+    mem0 = new MemTable(cmp, ioptions, MutableCFOptions(options) ,  wb0, kMaxSequenceNumber, cfd_out0->GetID());
+    mem0->Ref();
+
+    mem1 = new MemTable(cmp, ioptions, MutableCFOptions(options) ,  wb1, kMaxSequenceNumber, cfd_out1->GetID());
+    mem1->Ref();
+
+    MemTable* tmp_mem = mem0;
+    bool key_greater_than_median = false;
+    SequenceNumber seq = 1;
+
+    InternalIterator* mem_iter = mem->NewIterator(ro, &arena);
+    for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
+      Slice key = mem_iter->key();
+      Slice value = mem_iter->value();
+      ParsedInternalKey ikey;
+
+      if (!ParseInternalKey(key, &ikey)) {
+        fprintf(stderr, "SplitMemtable: parse error - internal key : %s\n",
+                key.ToString(true).c_str());
+        continue;
+      }
+
+      Slice user_key = ikey.user_key;
+      ValueType type = ikey.type;
+ 
+      if (!key_greater_than_median && user_key.compare(median_key) >= 0) {
+        // switch
+        key_greater_than_median = true;
+
+        cfd_out0->imm()->Add(mem0, &context0.memtables_to_free_);
+        InstallSuperVersionAndScheduleWork(cfd_out0, &context0.superversion_context,
+                                       *cfd_out0->GetLatestMutableCFOptions());
+
+
+        tmp_mem = mem1; // switch memtable
+        seq = 1; // reset
+      }
+
+      //fprintf(stdout, "[SplitMemTable] type: %d, k: %s, v: %s to mem[%d]\n", type, user_key.ToString(false).c_str(), value.ToString(false).c_str(), (int)(key_greater_than_median));
+
+      switch (type) {
+        case kTypeValue:
+        case kTypeMerge:
+        {
+          //tmp_mem->Add(seq++, type, Slice(user_key.ToString(false)), value); 
+          tmp_mem->Add(seq++, type, user_key, value); 
+          break;
+        }
+        case kTypeDeletion:
+        case kTypeSingleDeletion: {
+          //tmp_mem->Add(seq++, type, Slice(user_key.ToString(false)), Slice("")); 
+          tmp_mem->Add(seq++, type, user_key, Slice("")); 
+          break;
+        }
+        default: {
+          fprintf(stderr, "SplitMemtable: invalid type %d\n",
+                type);
+        }
+      }
+    }
+
+    // add mems to the imm list of each cfd
+    cfd_out1->imm()->Add(mem1, &context1.memtables_to_free_);
+
+    InstallSuperVersionAndScheduleWork(cfd_out1, &context1.superversion_context,
+                                       *cfd_out1->GetLatestMutableCFOptions());
+  }
+
+  // clear imm of cfd_in0
+  /*
+  WriteContext context_in;
+  cfd->imm()->current()->Unref(&context_in.memtables_to_free_);
+  InstallSuperVersionAndScheduleWork(cfd, &context_in.superversion_context,
+                                    *cfd->GetLatestMutableCFOptions());
+  */
+  return Status::OK();
+}
+
 
 // REQUIRES: mutex_ is held
 // REQUIRES: this thread is currently at the front of the writer queue

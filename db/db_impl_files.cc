@@ -310,6 +310,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
   for (const FileDescriptor& fd : state.sst_live) {
     sst_live_map[fd.GetNumber()] = &fd;
   }
+
   std::unordered_set<uint64_t> log_recycle_files_set(
       state.log_recycle_files.begin(), state.log_recycle_files.end());
 
@@ -323,12 +324,14 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
     candidate_files.emplace_back(
         MakeTableFileName(kDumbDbName, file.metadata->fd.GetNumber()),
         file.path);
+
     if (file.metadata->table_reader_handle) {
       table_cache_->Release(file.metadata->table_reader_handle);
     }
+
     file.DeleteMetadata();
   }
-
+  
   for (auto file_num : state.log_delete_files) {
     if (file_num > 0) {
       candidate_files.emplace_back(LogFileName(kDumbDbName, file_num),

@@ -600,6 +600,7 @@ set(SOURCES
         util/bloom.cc
         util/coding.cc
         util/compaction_job_stats_impl.cc
+        util/split_job_stats_impl.cc
         util/comparator.cc
         util/compression_context_cache.cc
         util/concurrent_arena.cc
@@ -937,6 +938,7 @@ if(WITH_TESTS)
         table/full_filter_block_test.cc
         table/merger_test.cc
         table/sst_file_reader_test.cc
+        table/sst_file_split_test.cc
         table/table_test.cc
         tools/ldb_cmd_test.cc
         tools/reduce_levels_test.cc

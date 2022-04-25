@@ -25,7 +25,6 @@
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "util/thread_local.h"
-
 namespace rocksdb {
 
 class Version;
@@ -35,6 +34,7 @@ class MemTable;
 class MemTableListVersion;
 class CompactionPicker;
 class Compaction;
+class SplitPicker;
 class InternalKey;
 class InternalStats;
 class ColumnFamilyData;
@@ -271,6 +271,16 @@ class ColumnFamilyData {
   // REQUIRES: DB mutex held
   Compaction* PickCompaction(const MutableCFOptions& mutable_options,
                              LogBuffer* log_buffer);
+  // REQUIRES: DB mutex held
+  bool NeedsSplit() const;
+
+  // REQUIRES: DB mutex held
+  Compaction* PickSplit(
+                   LogBuffer* log_buffer);
+
+  // thread-safe
+  std::string GetSmallestKey();
+  std::string GetLargestKey();
 
   // Check if the passed range overlap with any running compactions.
   // REQUIRES: DB mutex held
@@ -301,6 +311,7 @@ class ColumnFamilyData {
                            InternalKey** compaction_end, bool* manual_conflict);
 
   CompactionPicker* compaction_picker() { return compaction_picker_.get(); }
+  SplitPicker* split_picker() { return split_picker_.get(); }
   // thread-safe
   const Comparator* user_comparator() const {
     return internal_comparator_.user_comparator();
@@ -347,8 +358,11 @@ class ColumnFamilyData {
   // Protected by DB mutex
   void set_queued_for_flush(bool value) { queued_for_flush_ = value; }
   void set_queued_for_compaction(bool value) { queued_for_compaction_ = value; }
+  void set_queued_for_split(bool value) { queued_for_split_ = value; }
   bool queued_for_flush() { return queued_for_flush_; }
   bool queued_for_compaction() { return queued_for_compaction_; }
+  bool queued_for_split() { return queued_for_split_; }
+
 
   enum class WriteStallCause {
     kNone,
@@ -385,6 +399,9 @@ class ColumnFamilyData {
 
   ThreadLocalPtr* TEST_GetLocalSV() { return local_sv_.get(); }
 
+  // children cfds which is splitted from the parent
+  std::vector<ColumnFamilyData*> children_cfds;
+
  private:
   friend class ColumnFamilySet;
   ColumnFamilyData(uint32_t id, const std::string& name,
@@ -395,8 +412,19 @@ class ColumnFamilyData {
                    const EnvOptions& env_options,
                    ColumnFamilySet* column_family_set);
 
+  ColumnFamilyData(uint32_t id, const std::string& name,
+                   std::string smallest_user_key, std::string largest_user_key,
+                   Version* dummy_versions, Cache* table_cache,
+                   WriteBufferManager* write_buffer_manager,
+                   const ColumnFamilyOptions& options,
+                   const ImmutableDBOptions& db_options,
+                   const EnvOptions& env_options,
+                   ColumnFamilySet* column_family_set);
+
   uint32_t id_;
   const std::string name_;
+  std::string smallest_user_key_; // active if split is enabled
+  std::string largest_user_key_;  // active if split is enabled
   Version* dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;         // == dummy_versions->prev_
 
@@ -450,6 +478,10 @@ class ColumnFamilyData {
   // and picks the next compaction
   std::unique_ptr<CompactionPicker> compaction_picker_;
 
+  // An object that keeps all the split stats
+  // and picks the next split
+  std::unique_ptr<SplitPicker> split_picker_;
+
   ColumnFamilySet* column_family_set_;
 
   std::unique_ptr<WriteControllerToken> write_controller_token_;
@@ -460,6 +492,10 @@ class ColumnFamilyData {
   // If true --> this ColumnFamily is currently present in
   // DBImpl::compaction_queue_
   bool queued_for_compaction_;
+
+  // If true --> this ColumnFamily is currently present in
+  // DBImpl::split_queue_
+  bool queued_for_split_;
 
   uint64_t prev_compaction_needed_bytes_;
 
@@ -537,9 +573,20 @@ class ColumnFamilySet {
   void UpdateMaxColumnFamily(uint32_t new_max_column_family);
   size_t NumberOfColumnFamilies() const;
 
+  bool AddLogicalColumnFamily(ColumnFamilyData* c_in); // return true if successfully update lcf vector 
+  bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFamilyData* c_out_0, ColumnFamilyData* c_out_1); // return true if successfully update lcf vector 
+  void PrintLogicalColumnFamily(void);
+  std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
+
   ColumnFamilyData* CreateColumnFamily(const std::string& name, uint32_t id,
                                        Version* dummy_version,
                                        const ColumnFamilyOptions& options);
+
+  ColumnFamilyData* CreateColumnFamily(const std::string& name, uint32_t id,
+                                       Version* dummy_version,
+                                       const ColumnFamilyOptions& options,
+                                       std::string smallest, std::string largest
+                                       );
 
   iterator begin() { return iterator(dummy_cfd_->next_); }
   iterator end() { return iterator(dummy_cfd_); }
@@ -565,6 +612,8 @@ class ColumnFamilySet {
   // 2. accessed from a single-threaded write thread
   std::unordered_map<std::string, uint32_t> column_families_;
   std::unordered_map<uint32_t, ColumnFamilyData*> column_family_data_;
+  int comp_smallest_key (ColumnFamilyData* c1, ColumnFamilyData* c2) { return c1->GetSmallestKey().compare(c2->GetSmallestKey()); };
+  std::vector<ColumnFamilyData*> logical_column_family_data_;
 
   uint32_t max_column_family_;
   ColumnFamilyData* dummy_cfd_;

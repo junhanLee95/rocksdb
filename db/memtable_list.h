@@ -114,6 +114,7 @@ class MemTableListVersion {
   // History.
   SequenceNumber GetEarliestSequenceNumber(bool include_history = false) const;
 
+  void SplitRemove(MemTable* m, autovector<MemTable*>* to_delete);
  private:
   friend class MemTableList;
 
@@ -212,6 +213,10 @@ class MemTableList {
 
   // Returns the earliest memtables that needs to be flushed. The returned
   // memtables are guaranteed to be in the ascending order of created time.
+  void ClearSplittedMemtables(autovector<MemTable*>* to_delete);
+
+  // Returns the earliest memtables that needs to be flushed. The returned
+  // memtables are guaranteed to be in the ascending order of created time.
   void PickMemtablesToFlush(const uint64_t* max_memtable_id,
                             autovector<MemTable*>* mems);
 
@@ -293,6 +298,9 @@ class MemTableList {
       }
     }
   }
+
+  size_t GetMemTableListSize(void);
+  MemTable* GetMemTableFromList(size_t id);
 
  private:
   friend Status InstallMemtableAtomicFlushResults(

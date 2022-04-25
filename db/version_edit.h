@@ -109,10 +109,14 @@ struct FileMetaData {
   int refs;  // Reference count
 
   bool being_compacted;        // Is this file undergoing compaction?
+  bool being_splitted;         // Is this file undergoing split?
   bool init_stats_from_file;   // true if the data-entry stats of this file
                                // has initialized from file.
 
   bool marked_for_compaction;  // True if client asked us nicely to compact this
+                               // file.
+
+  bool marked_for_split;       // True if client asked us nicely to split this
                                // file.
 
   FileMetaData()
@@ -124,8 +128,11 @@ struct FileMetaData {
         raw_value_size(0),
         refs(0),
         being_compacted(false),
+        being_splitted(false),
         init_stats_from_file(false),
-        marked_for_compaction(false) {}
+        marked_for_compaction(false),
+        marked_for_split(false)
+        {}
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
@@ -267,7 +274,11 @@ class VersionEdit {
   size_t NumEntries() { return new_files_.size() + deleted_files_.size(); }
 
   bool IsColumnFamilyManipulation() {
-    return is_column_family_add_ || is_column_family_drop_;
+    return is_column_family_add_ || is_column_family_drop_ || is_column_family_split_;
+  }
+
+  bool IsColumnFamilySplit() {
+    return is_column_family_split_;
   }
 
   void SetColumnFamily(uint32_t column_family_id) {
@@ -278,8 +289,18 @@ class VersionEdit {
   void AddColumnFamily(const std::string& name) {
     assert(!is_column_family_drop_);
     assert(!is_column_family_add_);
+    assert(!is_column_family_split_);
     assert(NumEntries() == 0);
     is_column_family_add_ = true;
+    column_family_name_ = name;
+  }
+
+  // set column family ID by calling SplitColumnFamily()
+  void SplitColumnFamily(const std::string& name) {
+    assert(!is_column_family_drop_);
+    assert(!is_column_family_add_);
+    assert(!is_column_family_split_);
+    is_column_family_split_ = true;
     column_family_name_ = name;
   }
 
@@ -287,6 +308,7 @@ class VersionEdit {
   void DropColumnFamily() {
     assert(!is_column_family_drop_);
     assert(!is_column_family_add_);
+    assert(!is_column_family_split_);
     assert(NumEntries() == 0);
     is_column_family_drop_ = true;
   }
@@ -347,6 +369,10 @@ class VersionEdit {
   // it also includes column family name.
   bool is_column_family_drop_;
   bool is_column_family_add_;
+  // If it's column family split,
+  // it also includes column family name.
+  bool is_column_family_split_;
+
   std::string column_family_name_;
 
   bool is_in_atomic_group_;

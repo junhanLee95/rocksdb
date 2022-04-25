@@ -18,8 +18,10 @@
 #include <string>
 #include <algorithm>
 #include <limits>
+#include <fstream>
 
 #include "db/compaction_picker.h"
+#include "db/split_picker.h"
 #include "db/compaction_picker_fifo.h"
 #include "db/compaction_picker_universal.h"
 #include "db/db_impl.h"
@@ -400,6 +402,99 @@ void SuperVersionUnrefHandle(void* ptr) {
 }  // anonymous namespace
 
 ColumnFamilyData::ColumnFamilyData(
+    uint32_t id, const std::string& name, std::string smallest_user_key, std::string largest_user_key,  Version* _dummy_versions,
+    Cache* _table_cache, WriteBufferManager* write_buffer_manager,
+    const ColumnFamilyOptions& cf_options, const ImmutableDBOptions& db_options,
+    const EnvOptions& env_options, ColumnFamilySet* column_family_set)
+    : id_(id),
+      name_(name),
+      smallest_user_key_(smallest_user_key),
+      largest_user_key_(largest_user_key),
+      dummy_versions_(_dummy_versions),
+      current_(nullptr),
+      refs_(0),
+      initialized_(false),
+      dropped_(false),
+      internal_comparator_(cf_options.comparator),
+      initial_cf_options_(SanitizeOptions(db_options, cf_options)),
+      ioptions_(db_options, initial_cf_options_),
+      mutable_cf_options_(initial_cf_options_),
+      is_delete_range_supported_(
+          cf_options.table_factory->IsDeleteRangeSupported()),
+      write_buffer_manager_(write_buffer_manager),
+      mem_(nullptr),
+      imm_(ioptions_.min_write_buffer_number_to_merge,
+           ioptions_.max_write_buffer_number_to_maintain),
+      super_version_(nullptr),
+      super_version_number_(0),
+      local_sv_(new ThreadLocalPtr(&SuperVersionUnrefHandle)),
+      next_(nullptr),
+      prev_(nullptr),
+      log_number_(0),
+      flush_reason_(FlushReason::kOthers),
+      column_family_set_(column_family_set),
+      queued_for_flush_(false),
+      queued_for_compaction_(false),
+      prev_compaction_needed_bytes_(0),
+      allow_2pc_(db_options.allow_2pc),
+      last_memtable_id_(0) {
+  Ref();
+
+  // Convert user defined table properties collector factories to internal ones.
+  GetIntTblPropCollectorFactory(ioptions_, &int_tbl_prop_collector_factories_);
+
+  // if _dummy_versions is nullptr, then this is a dummy column family.
+  if (_dummy_versions != nullptr) {
+    internal_stats_.reset(
+        new InternalStats(ioptions_.num_levels, db_options.env, this));
+    table_cache_.reset(new TableCache(ioptions_, env_options, _table_cache));
+    if (ioptions_.compaction_style == kCompactionStyleLevel) {
+      compaction_picker_.reset(
+          new LevelCompactionPicker(ioptions_, &internal_comparator_));
+#ifndef ROCKSDB_LITE
+    } else if (ioptions_.compaction_style == kCompactionStyleUniversal) {
+      compaction_picker_.reset(
+          new UniversalCompactionPicker(ioptions_, &internal_comparator_));
+    } else if (ioptions_.compaction_style == kCompactionStyleFIFO) {
+      compaction_picker_.reset(
+          new FIFOCompactionPicker(ioptions_, &internal_comparator_));
+    }/* else if (ioptions_.compaction_style == kCompactionStyleSplit) {
+      compaction_picker_.reset(
+          new SplitCompactionPicker(ioptions_, &internal_comparator_));
+    }*/ else if (ioptions_.compaction_style == kCompactionStyleNone) {
+      compaction_picker_.reset(new NullCompactionPicker(
+          ioptions_, &internal_comparator_));
+      ROCKS_LOG_WARN(ioptions_.info_log,
+                     "Column family %s does not use any background compaction. "
+                     "Compactions can only be done via CompactFiles\n",
+                     GetName().c_str());
+#endif  // !ROCKSDB_LITE
+    } else {
+      ROCKS_LOG_ERROR(ioptions_.info_log,
+                      "Unable to recognize the specified compaction style %d. "
+                      "Column family %s will use kCompactionStyleLevel.\n",
+                      ioptions_.compaction_style, GetName().c_str());
+      compaction_picker_.reset(
+          new LevelCompactionPicker(ioptions_, &internal_comparator_));
+    }
+
+    split_picker_.reset(new SplitPicker(ioptions_, mutable_cf_options_));
+
+    if (column_family_set_->NumberOfColumnFamilies() < 10) {
+      ROCKS_LOG_INFO(ioptions_.info_log,
+                     "--------------- Options for column family [%s]:\n",
+                     name.c_str());
+      initial_cf_options_.Dump(ioptions_.info_log);
+    } else {
+      ROCKS_LOG_INFO(ioptions_.info_log, "\t(skipping printing options)\n");
+    }
+  }
+
+  RecalculateWriteStallConditions(mutable_cf_options_);
+}
+
+
+ColumnFamilyData::ColumnFamilyData(
     uint32_t id, const std::string& name, Version* _dummy_versions,
     Cache* _table_cache, WriteBufferManager* write_buffer_manager,
     const ColumnFamilyOptions& cf_options, const ImmutableDBOptions& db_options,
@@ -454,7 +549,10 @@ ColumnFamilyData::ColumnFamilyData(
     } else if (ioptions_.compaction_style == kCompactionStyleFIFO) {
       compaction_picker_.reset(
           new FIFOCompactionPicker(ioptions_, &internal_comparator_));
-    } else if (ioptions_.compaction_style == kCompactionStyleNone) {
+    }/* else if (ioptions_.compaction_style == kCompactionStyleSplit) {
+      compaction_picker_.reset(
+          new SplitCompactionPicker(ioptions_, &internal_comparator_));
+    }*/ else if (ioptions_.compaction_style == kCompactionStyleNone) {
       compaction_picker_.reset(new NullCompactionPicker(
           ioptions_, &internal_comparator_));
       ROCKS_LOG_WARN(ioptions_.info_log,
@@ -470,6 +568,8 @@ ColumnFamilyData::ColumnFamilyData(
       compaction_picker_.reset(
           new LevelCompactionPicker(ioptions_, &internal_comparator_));
     }
+
+    split_picker_.reset(new SplitPicker(ioptions_, mutable_cf_options_));
 
     if (column_family_set_->NumberOfColumnFamilies() < 10) {
       ROCKS_LOG_INFO(ioptions_.info_log,
@@ -487,6 +587,7 @@ ColumnFamilyData::ColumnFamilyData(
 // DB mutex held
 ColumnFamilyData::~ColumnFamilyData() {
   assert(refs_.load(std::memory_order_relaxed) == 0);
+
   // remove from linked list
   auto prev = prev_;
   auto next = next_;
@@ -915,8 +1016,31 @@ bool ColumnFamilyData::NeedsCompaction() const {
   return compaction_picker_->NeedsCompaction(current_->storage_info());
 }
 
+bool ColumnFamilyData::NeedsSplit() const {
+  return split_picker_->NeedsSplit(current_->storage_info());
+}
+
+Compaction* ColumnFamilyData::PickSplit(
+     LogBuffer* log_buffer) {
+  auto* result = split_picker_->PickSplit(
+      GetName(), current_->storage_info(), log_buffer);
+  if (result != nullptr) {
+    result->SetInputVersion(current_);
+  }
+  return result;
+}
+
+std::string ColumnFamilyData::GetSmallestKey() {
+  return smallest_user_key_;
+}
+
+std::string ColumnFamilyData::GetLargestKey() {
+  return largest_user_key_;
+}
+
 Compaction* ColumnFamilyData::PickCompaction(
-    const MutableCFOptions& mutable_options, LogBuffer* log_buffer) {
+    const MutableCFOptions& mutable_options,
+    LogBuffer* log_buffer) {
   auto* result = compaction_picker_->PickCompaction(
       GetName(), mutable_options, current_->storage_info(), log_buffer);
   if (result != nullptr) {
@@ -1277,6 +1401,90 @@ size_t ColumnFamilySet::NumberOfColumnFamilies() const {
 }
 
 // under a DB mutex AND write thread
+bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
+  // find c_in
+  int l = 0;
+  int r = logical_column_family_data_.size();
+  int m = -1;
+
+  if (c_in->GetID() == 0) {
+    return true;
+  }
+
+  if (r == 0) {
+    logical_column_family_data_.push_back(c_in);
+    return true;
+  }
+
+  // binary search c_in in logical_column_family_data_
+  while (l < r) {
+    m = (l + r) / 2;
+    int cmp = comp_smallest_key(logical_column_family_data_[m], c_in);
+    if (cmp == 0) {
+      return false;
+    }
+    else if (cmp > 0) {
+      r = m; 
+    }
+    else {
+      l = m + 1;
+    }
+  }
+
+  if (m != -1) { // found
+    logical_column_family_data_.insert(logical_column_family_data_.begin() + m, c_in);
+    return true;
+  } else { // not found
+    return false;
+  }
+}
+
+// under a DB mutex AND write thread
+bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFamilyData* c_out_0, ColumnFamilyData* c_out_1) {
+  // find c_in
+  int l = 0;
+  int r = logical_column_family_data_.size();
+  int m = -1;
+
+  // binary search c_in in logical_column_family_data_
+  while (l < r) {
+    m = (l + r) / 2;
+    int cmp = comp_smallest_key(logical_column_family_data_[m], c_in);
+    if (cmp == 0) {
+      break;
+    }
+    else if (cmp > 0) {
+      r = m; 
+    }
+    else {
+      l = m + 1;
+    }
+  }
+
+  if (m != -1) { // found
+    logical_column_family_data_.erase(logical_column_family_data_.begin() + m);
+    logical_column_family_data_.insert(logical_column_family_data_.begin() + m, c_out_0);
+    logical_column_family_data_.insert(logical_column_family_data_.begin() + m + 1, c_out_1);
+    return true;
+  } else { // not found
+    return false;
+  }
+}
+
+void ColumnFamilySet::PrintLogicalColumnFamily(void) {
+  fprintf(stdout, "=======PrintLogicalColumnFamily=======\n");
+  for (auto c: logical_column_family_data_) {
+    fprintf(stdout, "LCF[%d] %s => [%s, %s)\n", c->GetID(), c->GetName().c_str()
+                                              , c->GetSmallestKey().c_str(), c->GetLargestKey().c_str());
+  }
+  fprintf(stdout, "======================================\n");
+}
+
+std::vector<ColumnFamilyData*> ColumnFamilySet::GetLogicalColumnFamily(void) {
+  return logical_column_family_data_;
+}
+
+// under a DB mutex AND write thread
 ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
     const std::string& name, uint32_t id, Version* dummy_versions,
     const ColumnFamilyOptions& options) {
@@ -1298,6 +1506,33 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   }
   return new_cfd;
 }
+
+// under a DB mutex AND write thread
+ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
+    const std::string& name, uint32_t id, Version* dummy_versions,
+    const ColumnFamilyOptions& options, std::string smallest, std::string largest) {
+  assert(column_families_.find(name) == column_families_.end());
+  ColumnFamilyData* new_cfd = new ColumnFamilyData(
+      id, name, smallest, largest, dummy_versions, table_cache_, write_buffer_manager_, options,
+      *db_options_, env_options_, this);
+  fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: smallest : %s\n", smallest.c_str());
+  fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: largest : %s\n", largest.c_str());
+
+  column_families_.insert({name, id});
+  column_family_data_.insert({id, new_cfd});
+  max_column_family_ = std::max(max_column_family_, id);
+  // add to linked list
+  new_cfd->next_ = dummy_cfd_;
+  auto prev = dummy_cfd_->prev_;
+  new_cfd->prev_ = prev;
+  prev->next_ = new_cfd;
+  dummy_cfd_->prev_ = new_cfd;
+  if (id == 0) {
+    default_cfd_cache_ = new_cfd;
+  }
+  return new_cfd;
+}
+
 
 // REQUIRES: DB mutex held
 void ColumnFamilySet::FreeDeadColumnFamilies() {

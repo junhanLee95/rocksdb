@@ -293,6 +293,81 @@ Status SstFileDumper::SetOldTableOptions() {
   return Status::OK();
 }
 
+InternalIterator* SstFileDumper::getInternalIterator(void) {
+  InternalIterator* iter = table_reader_->NewIterator(
+      ReadOptions(verify_checksum_, false), moptions_.prefix_extractor.get());
+
+  return iter;
+}
+
+Status SstFileDumper::WriteSplittedSSTableFiles(std::unique_ptr<SstFileWriter>& writer0,
+                                                std::unique_ptr<SstFileWriter>& writer1) {
+  uint64_t num_entries, num_boundaries;
+  std::shared_ptr<const TableProperties> tpptr;
+  this->ReadTableProperties(&tpptr);
+  num_entries = tpptr.get()->num_entries;
+  num_boundaries = num_entries / 2;
+
+  if (!table_reader_) {
+    return init_result_;
+  }
+
+  InternalIterator* iter = table_reader_->NewIterator(
+      ReadOptions(verify_checksum_, false), moptions_.prefix_extractor.get());
+
+  uint64_t i = 0;
+  std::string tmp = "";
+  SstFileWriter* tmpWriter = writer0.get();
+  bool writer_switched = false;
+
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next(), i++) {
+    if (!writer_switched && i >= num_boundaries) {
+      tmpWriter = writer1.get();
+      writer_switched = true;
+    }
+
+    Slice key = iter->key();
+    Slice value = iter->value();
+
+    ParsedInternalKey ikey;
+    if (!ParseInternalKey(key, &ikey)) {
+      fprintf(stderr, "WriteSplittedSSTableFiles: parse error - internal key : %s\n",
+              key.ToString(true /* in hex */).c_str());
+      continue;
+    }
+
+    Slice user_key = ikey.user_key;
+    ValueType type = ikey.type;
+
+    // insert items
+    switch (type) {
+      case kTypeValue: {
+        tmpWriter->Put(user_key, value);
+        break;
+      }
+      case kTypeDeletion:
+      case kTypeSingleDeletion: {
+        tmpWriter->Delete(user_key);
+        break;
+      }
+      case kTypeMerge: {
+        tmpWriter->Merge(user_key, value);
+        break;
+      }
+      default:
+        fprintf(stderr, "WriteSplittedSSTableFiles: type error - key type: %d\n",
+                type);
+        break;
+    }
+  }
+
+  Status ret = iter->status();
+  delete iter;
+  return ret;
+
+}
+
+
 Status SstFileDumper::ReadSequential(bool print_kv, uint64_t read_num,
                                      bool has_from, const std::string& from_key,
                                      bool has_to, const std::string& to_key,

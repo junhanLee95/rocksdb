@@ -253,6 +253,11 @@ class DB {
   virtual Status CreateColumnFamily(const ColumnFamilyOptions& options,
                                     const std::string& column_family_name,
                                     ColumnFamilyHandle** handle);
+                                    
+  virtual Status SplitColumnFamily(const ColumnFamilyOptions& options,
+                                  ColumnFamilyHandle** handle_in_0,
+                                  ColumnFamilyHandle** handle_out_0,
+                                  ColumnFamilyHandle** handle_out_1);
 
   // Bulk create column families with the same column family options.
   // Return the handles of the column families through the argument handles.

@@ -27,6 +27,11 @@
 #include <utility>
 #include <vector>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fstream>
+
 #include "db/builder.h"
 #include "db/compaction_job.h"
 #include "db/db_info_dumper.h"
@@ -74,6 +79,8 @@
 #include "rocksdb/status.h"
 #include "rocksdb/table.h"
 #include "rocksdb/write_buffer_manager.h"
+#include "rocksdb/sst_file_reader.h"
+#include "rocksdb/sst_file_writer.h"
 #include "table/block.h"
 #include "table/block_based_table_factory.h"
 #include "table/merging_iterator.h"
@@ -252,23 +259,25 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
   // we won't drop any deletion markers until SetPreserveDeletesSequenceNumber()
   // is called by client and this seqnum is advanced.
   preserve_deletes_seqnum_.store(0);
- 
+  /*
   std::string home_dir("/var/lib/ceph/osd/trace/");
   TraceOptions trace_options_;
   std::unique_ptr<TraceWriter> trace_writer;
 
   for ( int i = 0; i < 30 ; i++ ) {
     trace_fn = home_dir + dbname + std::to_string(i);
+    
     if (access(trace_fn.c_str(), F_OK) < 0) {
       fprintf(stdout,"[INFO] Trace file name: %s\n", trace_fn.c_str());
       break;
     }
+    
     if (i == 29) {
       fprintf(stderr, "[ERROR] Encountered an error finding a trace file name\n");
       exit(1);
     }
   }
-
+  
   Status s = NewFileTraceWriter( Env::Default(), EnvOptions(), \
 				 trace_fn, &trace_writer);
   if (!s.ok()) {
@@ -282,7 +291,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
     fprintf(stderr, "[ERROR] Encountered an error linking a trace, %s\n",
 		s.ToString().c_str());
     exit(1);
-  } 
+  } */
 }
 
 Status DBImpl::Resume() {
@@ -410,7 +419,21 @@ Status DBImpl::ResumeImpl() {
 void DBImpl::WaitForBackgroundWork() {
   // Wait for background work to finish
   while (bg_bottom_compaction_scheduled_ || bg_compaction_scheduled_ ||
-         bg_flush_scheduled_) {
+         bg_flush_scheduled_ ) {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "WaitForBackgroundWork : comp : %d", bg_compaction_scheduled_);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "WaitForBackgroundWork : flu : %d", bg_flush_scheduled_);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "WaitForBackgroundWork : sp : %d", bg_split_scheduled_);
+
+    bg_cv_.Wait();
+  }
+}
+
+void DBImpl::WaitForBackgroundSplit() {
+  // Wait for split work to finish
+  while (bg_split_scheduled_) {
     bg_cv_.Wait();
   }
 }
@@ -618,11 +641,11 @@ Status DBImpl::CloseImpl() { return CloseHelper(); }
 
 DBImpl::~DBImpl() {
   if (!closed_) {
-    Status s = EndTrace();
-    fprintf(stdout, "[INFO] Tracing end, trace file name: %s\n", trace_fn.c_str());
+    //Status s = EndTrace();
+    /*fprintf(stdout, "[INFO] Tracing end, trace file name: %s\n", trace_fn.c_str());
     if (!s.ok()) {
       fprintf(stderr, "[DEBUG] Encountered an error ending a trace, %s\n",s.ToString().c_str());
-    } 
+    } */
     closed_ = true;
     CloseHelper();
   }
@@ -1707,6 +1730,203 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
   return s;
 }
 
+Status DBImpl::SplitColumnFamily(const ColumnFamilyOptions& cf_options,
+                                 ColumnFamilyHandle** handle_in_0,
+                                 ColumnFamilyHandle** handle_out_0,
+                                 ColumnFamilyHandle** handle_out_1
+) {
+  assert(handle_in_0 != nullptr);
+  assert(handle_out_0 != nullptr);
+  assert(handle_out_1 != nullptr);
+
+  Status s;
+  s = SplitColumnFamilyImpl(cf_options, handle_in_0, handle_out_0, handle_out_1);
+
+  if (s.ok()) {
+    Status persist_options_status = WriteOptionsFile(
+        true /*need_mutex_lock*/, true /*need_enter_write_thread*/);
+    if (s.ok() && !persist_options_status.ok()) {
+      s = persist_options_status;
+    }
+  }
+
+  /*
+  // Make a set of all of the live *.sst files
+  std::vector<std::string> live_files;
+  std::vector<std::string> sst_files;
+  uint64_t manifest_file_size = 0;
+  this->GetLiveFiles(live_files, &manifest_file_size);
+
+  // check live sst files
+  ReadOptions ropts;
+  Options options;
+  std::shared_ptr<const TableProperties> properties;
+  SstFileReader reader(options);
+  uint64_t num_entries, num_boundaries;
+
+  num_entries = 0;
+  for (auto& live_file : live_files) {
+    if (live_file.substr(live_file.size() - 4, std::string::npos) == ".sst") {
+      sst_files.push_back(live_file);
+      reader.Open(GetName() + live_file);
+      properties = reader.GetTableProperties();
+      fprintf(stdout,"[INFO] cf name : %s\n", properties->column_family_name.c_str());
+      fprintf(stdout,"[INFO] cf id : %ld\n", properties->column_family_id);
+      fprintf(stdout,"[INFO] num entries : %ld\n", properties->num_entries);
+      fprintf(stdout,"[INFO] sst file name : %s\n", live_file.c_str());
+      num_entries += properties->num_entries;
+    }
+  }
+  num_boundaries = num_entries / 2;
+
+  
+
+  std::string cf_name_in_0, cf_name_out_0, cf_name_out_1;
+
+  cf_name_in_0 = (*handle_in_0)->GetName();
+  cf_name_out_0 = cf_name_in_0 + "0";
+  cf_name_out_1 = cf_name_in_0 + "1";
+
+  Status s;
+  bool success_once = false;
+  // create cf_out_0
+  s = CreateColumnFamilyImpl(cf_options, cf_name_out_0, handle_out_0);
+  if (s.ok()) {
+    success_once = true;
+  }
+  // create cf_out_1
+  s = CreateColumnFamilyImpl(cf_options, cf_name_out_1, handle_out_1);
+  if (s.ok()) {
+    success_once = true;
+  }
+
+  // write option file
+  if (success_once) {
+    Status persist_options_status = WriteOptionsFile(
+        true , true need_enter_write_thread);
+    if (s.ok() && !persist_options_status.ok()) {
+      s = persist_options_status;
+    }
+  }
+  
+  // now copy the data from cf_in_0 to cf_out_0 & cf_out_1
+
+  // Open all sst files included in the cf_in and put them into dumper
+  // Sst file reader(dumper) for input cf
+  std::vector<std::unique_ptr<SstFileDumper>> dumpers;
+  for (auto& sst_file: sst_files) {
+    std::unique_ptr<SstFileDumper> dumper(new SstFileDumper(options, GetName() + sst_file, false, false));
+    if(!dumper->getStatus().ok()){
+      fprintf(stderr,
+              "Encountered an error creating a SstFileDumper from SplitColumnFamily"
+              );
+    } 
+    dumpers.push_back(std::move(dumper));
+  }
+
+  
+  // Sst file writer for two cfs
+  std::unique_ptr<SstFileWriter> writer_0(new SstFileWriter(EnvOptions(), options, *handle_out_0));
+  std::unique_ptr<SstFileWriter> writer_1(new SstFileWriter(EnvOptions(), options, *handle_out_1));
+  std::string sst_0_name = "/split_sst0.sst";
+  std::string sst_1_name = "/split_sst1.sst";
+  writer_0->Open(GetName() + sst_0_name);
+  writer_1->Open(GetName() + sst_1_name);
+
+  // Construct MergingIterator from Dumpers
+  const InternalKeyComparator* icomp = (const InternalKeyComparator*)BytewiseComparator();
+  std::vector<InternalIterator*> child_iters;
+  for(auto& dumper: dumpers) {
+    child_iters.push_back(dumper->getInternalIterator());
+  }
+  InternalIterator* merge_iter = NewMergingIterator(icomp, &child_iters[0], child_iters.size());
+
+  // Read the sst file from the dumper and write them with the splitted form into cf0 and cf1
+  uint64_t i = 0;
+  bool writer_switched = false;
+  std::string tmp = "";
+  SstFileWriter* tmpWriter = writer_0.get();
+  Slice user_key;
+  for (merge_iter->SeekToFirst(); merge_iter->Valid(); merge_iter->Next(), i++) {
+    if (!writer_switched && i >= num_boundaries) {
+      // switch writer
+      tmpWriter = writer_1.get();
+      writer_switched = true;
+    }
+
+    Slice key = merge_iter->key();
+    Slice value = merge_iter->value();
+    ParsedInternalKey ikey;
+    if (!ParseInternalKey(key, &ikey)) {
+      fprintf(stderr, "Split CF: parse error - internal key : %s\n",
+              key.ToString(true).c_str());
+      continue;
+    }
+    
+
+    user_key = ikey.user_key;
+    ValueType type = ikey.type;
+    //fprintf(stdout, "key : %s, value : %s\n", user_key.ToString(true).c_str(), value.ToString(true).c_str());
+
+    // insert items;
+    switch (type) {
+      case kTypeValue: {
+        tmpWriter->Put(user_key, value);
+        break;
+      }
+      case kTypeDeletion:
+      case kTypeSingleDeletion: {
+        tmpWriter->Delete(user_key);
+        break;
+      }
+      case kTypeMerge: {
+        tmpWriter->Merge(user_key, value);
+        break;
+      }
+      default: {
+        fprintf(stderr, "SplitCF: type error - key type : %d\n",
+                type);
+        break;
+      }
+    }
+  }
+
+  s = merge_iter->status();
+  delete merge_iter;
+  if (!s.ok()) {
+     fprintf(stderr,
+            "SplitCF: Encountered an error finishing iterator\n"
+            );
+      return s;
+  }
+
+  // Finish writing sst
+  ExternalSstFileInfo sst_file_infoi;
+  s = writer_0->Finish(&sst_file_infoi);
+  if (!s.ok()) {
+     fprintf(stderr,
+            "Encountered an error finishing SST file %s from SplitColumnFamily",
+            sst_0_name.c_str()
+            );
+  }
+  s = writer_1->Finish(&sst_file_infoi);
+  if (!s.ok()) {
+     fprintf(stderr,
+            "Encountered an error finishing SST file %s from SplitColumnFamily",
+            sst_1_name.c_str()
+            );
+  }
+
+  // reset
+  for (size_t j=0; j<dumpers.size(); j++) {
+    dumpers[j].reset();
+  }
+  writer_0.reset();
+  writer_1.reset();
+  */
+  return s;
+}
+
 Status DBImpl::CreateColumnFamilies(
     const ColumnFamilyOptions& cf_options,
     const std::vector<std::string>& column_family_names,
@@ -1762,6 +1982,283 @@ Status DBImpl::CreateColumnFamilies(
   }
   return s;
 }
+
+Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
+                              ColumnFamilyHandle** handle_in0,
+                              ColumnFamilyHandle** handle_out0,
+                              ColumnFamilyHandle** handle_out1
+                              ) {
+  Status s;
+  Status persist_options_status;
+  *handle_out0 = nullptr;
+  *handle_out1 = nullptr;
+  std::string in0_name, out0_name, out1_name;
+
+  s = CheckCompressionSupported(cf_options);
+  if (s.ok() && immutable_db_options_.allow_concurrent_memtable_write) {
+    s = CheckConcurrentWritesSupported(cf_options);
+  }
+  if (s.ok()) {
+    s = CheckConcurrentWritesSupported(cf_options);
+  }
+  if (s.ok()) {
+    s = CheckCFPathsSupported(initial_db_options_, cf_options);
+  }
+  if (s.ok()) {
+    for (auto& cf_path : cf_options.cf_paths) {
+      s = env_->CreateDirIfMissing(cf_path.path);
+      if (!s.ok()) {
+        break;
+      }
+    }
+  }
+  if (!s.ok()) {
+    return s;
+  }
+
+  // STEP 1. Create cfh objects
+  //
+  SuperVersionContext sv_context0(/* create_superversion */ true);
+  SuperVersionContext sv_context1(/* create_superversion */ true);
+  {
+    InstrumentedMutexLock l(&mutex_);
+
+    auto cfh_in0 = reinterpret_cast<ColumnFamilyHandleImpl*>(*handle_in0);
+    auto cfd_in0 = cfh_in0->cfd();
+
+    in0_name = (*handle_in0)->GetName();
+    out0_name = in0_name + "0";
+    out1_name = in0_name + "1";
+
+    if (versions_->GetColumnFamilySet()->GetColumnFamily(out0_name) !=
+        nullptr) {
+      return Status::InvalidArgument("ColumnFamily already exists");    
+    }
+    if (versions_->GetColumnFamilySet()->GetColumnFamily(out1_name) !=
+        nullptr) {
+      return Status::InvalidArgument("ColumnFamily already exists");    
+    }
+    
+    autovector<ColumnFamilyData*> column_family_datas;
+    column_family_datas.push_back(cfd_in0);
+
+    autovector<autovector<VersionEdit*>> edit_lists;
+    autovector<const MutableCFOptions*> mutable_cf_options_list;
+
+    VersionEdit edit_in0, edit_out0, edit_out1;
+    autovector<VersionEdit*> edits_in0;
+    autovector<VersionEdit*> edits_out0;
+    autovector<VersionEdit*> edits_out1;
+    
+    edit_in0.SplitColumnFamily(in0_name);
+    edit_in0.SetColumnFamily((*handle_in0)->GetID());
+    edits_in0.push_back(&edit_in0);
+
+    uint32_t new_id0 = versions_->GetColumnFamilySet()->GetNextColumnFamilyID();
+    uint32_t new_id1 = versions_->GetColumnFamilySet()->GetNextColumnFamilyID();
+    edit_out0.AddColumnFamily(out0_name);
+    edit_out0.SetColumnFamily(new_id0);
+    edit_out0.SetLogNumber(logfile_number_);
+    edit_out0.SetComparatorName(cf_options.comparator->Name());
+    edits_out0.push_back(&edit_out0);
+
+    edit_out1.AddColumnFamily(out1_name);
+    edit_out1.SetColumnFamily(new_id1);
+    edit_out1.SetLogNumber(logfile_number_);
+    edit_out1.SetComparatorName(cf_options.comparator->Name());
+    edits_out1.push_back(&edit_out1);
+
+    // insert edits to editlists
+    edit_lists.push_back(edits_in0);
+    edit_lists.push_back(edits_out0);
+    edit_lists.push_back(edits_out1);
+    uint32_t num_entries = 3;
+    // insert mutable_cf_options
+    for (uint32_t i=0; i<num_entries; i++) {
+      mutable_cf_options_list.push_back(cfd_in0->GetLatestMutableCFOptions());
+    }
+    // Mark the version edits as an atomic group if the number of version
+    // edits exceeds 1.
+    for (auto& edits: edit_lists) {
+      assert(edits.size() == 1);
+      edits[0]->MarkAtomicGroup(--num_entries);
+    }
+    assert(num_entries == 0);
+
+    // LogAndApply will both write the creation in MANIFEST and create
+    // ColumnFamilyData object
+    {  // write thread
+      WriteThread::Writer w;
+      write_thread_.EnterUnbatched(&w, &mutex_);
+
+      // LogAndApply will both write the creation in MANIFEST and create
+      // two splitted ColumnFamilyData object
+      s = versions_->LogAndApply(column_family_datas , mutable_cf_options_list,
+                                 edit_lists, &mutex_, directories_.GetDbDir(), false,
+                                 &cf_options);
+
+      write_thread_.ExitUnbatched(&w);
+    }
+    if (s.ok()) {
+      auto* cfd0 =
+          versions_->GetColumnFamilySet()->GetColumnFamily(out0_name);
+      assert(cfd0 != nullptr);
+      s = cfd0->AddDirectories();
+    }
+    if (s.ok()) {
+      auto* cfd1 =
+          versions_->GetColumnFamilySet()->GetColumnFamily(out1_name);
+      assert(cfd1 != nullptr);
+      s = cfd1->AddDirectories();
+    }
+    if (s.ok()) {
+      single_column_family_mode_ = false;
+      auto* cfd0 =
+          versions_->GetColumnFamilySet()->GetColumnFamily(out0_name);
+      auto* cfd1 =
+          versions_->GetColumnFamilySet()->GetColumnFamily(out1_name);
+
+      assert(cfd0 != nullptr);
+      assert(cfd1 != nullptr);
+      InstallSuperVersionAndScheduleWork(cfd0, &sv_context0,
+                                         *cfd0->GetLatestMutableCFOptions());
+      InstallSuperVersionAndScheduleWork(cfd1, &sv_context1,
+                                         *cfd1->GetLatestMutableCFOptions());
+
+
+      if (!cfd0->mem()->IsSnapshotSupported()) {
+        is_snapshot_supported_ = false;
+      }
+      cfd0->set_initialized();
+
+      if (!cfd1->mem()->IsSnapshotSupported()) {
+        is_snapshot_supported_ &= false;
+      }
+      cfd1->set_initialized();
+
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "Split column family [%s] (ID %u)",
+                     in0_name.c_str(), (unsigned)(*handle_in0)->GetID());
+
+      *handle_out0 = new ColumnFamilyHandleImpl(cfd0, this, &mutex_);
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "Created column family [%s] (ID %u)",
+                     out0_name.c_str(), (unsigned)cfd0->GetID());
+
+      *handle_out1 = new ColumnFamilyHandleImpl(cfd1, this, &mutex_);
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "Created column family [%s] (ID %u)",
+                     out1_name.c_str(), (unsigned)cfd1->GetID());
+
+
+    } else {
+      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                      "Splitting column family [%s] FAILED -- %s",
+                      in0_name.c_str(), s.ToString().c_str());
+    }
+  }  // InstrumentedMutexLock l(&mutex_)
+
+  sv_context0.Clean();
+  sv_context1.Clean();
+  // this is outside the mutex
+  if (s.ok()) {
+    NewThreadStatusCfInfo(
+        reinterpret_cast<ColumnFamilyHandleImpl*>(*handle_out0)->cfd());
+    NewThreadStatusCfInfo(
+        reinterpret_cast<ColumnFamilyHandleImpl*>(*handle_out1)->cfd());
+  }
+
+
+  // STEP 2. acquire lock, Split Memtable
+  //
+  
+  WriteContext context;
+  {
+    InstrumentedMutexLock l(&mutex_);
+
+    auto cfh_in0 = reinterpret_cast<ColumnFamilyHandleImpl*>(*handle_in0);
+
+    auto cfd_in0 = cfh_in0->cfd();
+    auto* cfd0 =
+      versions_->GetColumnFamilySet()->GetColumnFamily(out0_name);
+    auto* cfd1 =
+      versions_->GetColumnFamilySet()->GetColumnFamily(out1_name);
+
+    assert(cfd_in0 != nullptr);
+    assert(cfd0 != nullptr);
+    assert(cfd1 != nullptr);
+
+    if (!cfd_in0->mem()->IsEmpty()) {
+      cfd_in0->Ref();
+      s = SwitchMemtable(cfd_in0, &context);
+      cfd_in0->Unref();
+    }
+   
+    if (s.ok()) {
+      assert(cfd_in0->mem()->IsEmpty());
+      cfd_in0->Ref();
+      s = SplitMemtable(cfd_in0, cfd0, cfd1);
+
+      WriteContext context_in;
+      autovector<MemTable*> imms;
+      cfd_in0->imm()->ClearSplittedMemtables(&context_in.memtables_to_free_);
+      InstallSuperVersionAndScheduleWork(cfd_in0, &context_in.superversion_context,
+                                        *cfd_in0->GetLatestMutableCFOptions());
+      cfd_in0->Unref();
+    } else {
+      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+          "Switching memtable of cf [%s] FAILED -- %s",
+          (*handle_in0)->GetName().c_str(), s.ToString().c_str());
+    }
+
+    if (s.ok()) {
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "Split memtable of column family [%s] (ID %u)",
+                     (*handle_in0)->GetName().c_str(), (unsigned)(*handle_in0)->GetID());
+
+    } else {
+       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+          "Splitting memtable of cf [%s] FAILED -- %s",
+          (*handle_in0)->GetName().c_str(), s.ToString().c_str());
+    }
+    // STEP 4. Split SSTable
+    if (s.ok()) {
+      // generate split req
+      // add to schedule
+      SchedulePendingSplit(cfd_in0);
+      MaybeScheduleFlushOrCompaction();
+      // activate scheduler
+    }
+  }  // InstrumentedMutexLock l(&mutex_)
+
+  // STEP 3. Modify LCF vector, write manifest, release lock
+  //
+  //
+  // STEP 5. write manifest
+
+
+  return s;
+}
+
+void DBImpl::PrintLogicalColumnFamily(void) {
+  {
+    InstrumentedMutexLock l(&mutex_);
+    auto column_family_set = versions_->GetColumnFamilySet();
+    column_family_set->PrintLogicalColumnFamily();
+  }
+  return;
+}
+
+std::vector<ColumnFamilyData*> DBImpl::GetLogicalColumnFamily(void) {
+  std::vector<ColumnFamilyData*> lcf;
+  {
+    InstrumentedMutexLock l(&mutex_);
+    auto column_family_set = versions_->GetColumnFamilySet();
+    lcf = column_family_set->GetLogicalColumnFamily();
+  }
+  return lcf;
+}
+
 
 Status DBImpl::CreateColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
                                       const std::string& column_family_name,
@@ -1910,8 +2407,10 @@ Status DBImpl::DropColumnFamilyImpl(ColumnFamilyHandle* column_family) {
       // we drop column family from a single write thread
       WriteThread::Writer w;
       write_thread_.EnterUnbatched(&w, &mutex_);
+      fprintf(stdout, "Drop Log[1]\n");
       s = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(), &edit,
                                  &mutex_);
+      fprintf(stdout, "Drop Log[2]\n");
       write_thread_.ExitUnbatched(&w);
     }
     if (s.ok()) {
@@ -2863,6 +3362,14 @@ Status DB::CreateColumnFamily(const ColumnFamilyOptions& /*cf_options*/,
   return Status::NotSupported("");
 }
 
+Status DB::SplitColumnFamily(const ColumnFamilyOptions& /*cf_options*/,
+                              ColumnFamilyHandle** /*handle in0*/,
+                              ColumnFamilyHandle** /*handle out0*/,
+                              ColumnFamilyHandle** /*handle out1*/
+                              ) {
+  return Status::NotSupported("");
+}
+
 Status DB::CreateColumnFamilies(
     const ColumnFamilyOptions& /*cf_options*/,
     const std::vector<std::string>& /*column_family_names*/,
@@ -3412,6 +3919,7 @@ Status DBImpl::IngestExternalFiles(
   {
     auto* cfd =
         static_cast<ColumnFamilyHandleImpl*>(args[0].column_family)->cfd();
+
     SuperVersion* super_version = cfd->GetReferencedSuperVersion(&mutex_);
     exec_results[0].second = ingestion_jobs[0].Prepare(
         args[0].external_files, next_file_number, super_version);
@@ -3498,6 +4006,7 @@ Status DBImpl::IngestExternalFiles(
             auto* cfd =
                 static_cast<ColumnFamilyHandleImpl*>(args[i].column_family)
                     ->cfd();
+
             status = FlushMemTable(cfd, flush_opts,
                                    FlushReason::kExternalFileIngestion,
                                    true /* writes_stopped */);

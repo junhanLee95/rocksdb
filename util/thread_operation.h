@@ -109,6 +109,12 @@ static OperationProperty flush_operation_properties[] = {
   {ThreadStatus::FLUSH_BYTES_WRITTEN, "BytesWritten"}
 };
 
+static OperationProperty split_operation_properties[] = {
+  {ThreadStatus::SPLIT_JOB_ID, "JobID"},
+  {ThreadStatus::SPLIT_BYTES_MEMTABLES, "BytesMemtables"},
+  {ThreadStatus::SPLIT_BYTES_WRITTEN, "BytesWritten"}
+};
+
 #else
 
 struct OperationInfo {

@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 #include "rocksdb/compaction_job_stats.h"
+#include "rocksdb/split_job_stats.h"
 #include "rocksdb/status.h"
 #include "rocksdb/table_properties.h"
 
@@ -27,6 +28,7 @@ enum CompressionType : unsigned char;
 enum class TableFileCreationReason {
   kFlush,
   kCompaction,
+  kSplit,
   kRecovery,
   kMisc,
 };
@@ -56,6 +58,43 @@ struct TableFileCreationInfo : public TableFileCreationBriefInfo {
   // The status indicating whether the creation was successful or not.
   Status status;
 };
+
+enum class SplitReason : int {
+  kUnknown = 0,
+  // [Level] number of L0 files > level0_file_num_compaction_trigger
+  kLevelL0FilesNum,
+  // [Level] total size of level > MaxBytesForLevel()
+  kLevelMaxLevelSize,
+  // [Universal] Compacting for size amplification
+  kUniversalSizeAmplification,
+  // [Universal] Compacting for size ratio
+  kUniversalSizeRatio,
+  // [Universal] number of sorted runs > level0_file_num_compaction_trigger
+  kUniversalSortedRunNum,
+  // [FIFO] total size > max_table_files_size
+  kFIFOMaxSize,
+  // [FIFO] reduce number of files.
+  kFIFOReduceNumFiles,
+  // [FIFO] files with creation time < (current_time - interval)
+  kFIFOTtl,
+  // Manual compaction
+  kManualSplit,
+  // DB::SuggestCompactRange() marked files for compaction
+  kFilesMarkedForSplit,
+  // [Level] Automatic compaction within bottommost level to cleanup duplicate
+  // versions of same user key, usually due to a released snapshot.
+  kBottommostFiles,
+  // Compaction based on TTL
+  kTtl,
+  // According to the comments in flush_job.cc, RocksDB treats flush as
+  // a level 0 compaction in internal stats.
+  kFlush,
+  // Compaction caused by external sst file ingestion
+  kExternalSstIngestion,
+  // total number of compaction reasons, new reasons must be added above this.
+  kNumOfReasons,
+};
+
 
 enum class CompactionReason : int {
   kUnknown = 0,
@@ -89,6 +128,12 @@ enum class CompactionReason : int {
   kFlush,
   // Compaction caused by external sst file ingestion
   kExternalSstIngestion,
+  // Compaction caused by split
+  kSplit,
+  // Compaction caused by split
+  kManualSplit,
+  // DB::SuggestCompactRange() marked files for compaction
+  kFilesMarkedForSplit,
   // total number of compaction reasons, new reasons must be added above this.
   kNumOfReasons,
 };
@@ -111,6 +156,7 @@ enum class FlushReason : int {
 enum class BackgroundErrorReason {
   kFlush,
   kCompaction,
+  kSplit,
   kWriteCallback,
   kMemTable,
 };
@@ -188,6 +234,45 @@ struct FlushJobInfo {
   TableProperties table_properties;
 
   FlushReason flush_reason;
+};
+
+struct SplitJobInfo {
+  SplitJobInfo() = default;
+  explicit SplitJobInfo(const SplitJobStats& _stats)
+      : stats(_stats) {}
+
+  // the id of the column family where the compaction happened.
+  uint32_t cf_id;
+  // the name of the column family where the compaction happened.
+  std::string cf_name;
+  // the status indicating whether the compaction was successful or not.
+  Status status;
+  // the id of the thread that completed this compaction job.
+  uint64_t thread_id;
+  // the job id, which is unique in the same thread.
+  int job_id;
+  // the smallest input level of the compaction.
+  int base_input_level;
+  // the output level of the compaction.
+  int output_level;
+  // the names of the compaction input files.
+  std::vector<std::string> input_files;
+
+  // the names of the compaction output files.
+  std::vector<std::string> output_files;
+  // Table properties for input and output tables.
+  // The map is keyed by values from input_files and output_files.
+  TablePropertiesCollection table_properties;
+
+  // Reason to run the compaction
+  CompactionReason compaction_reason;
+
+  // Compression algorithm used for output files
+  CompressionType compression;
+
+  // If non-null, this variable stores detailed information
+  // about this compaction.
+  SplitJobStats stats;
 };
 
 struct CompactionJobInfo {
@@ -324,6 +409,7 @@ class EventListener {
   // it should not run for an extended period of time before the function
   // returns.  Otherwise, RocksDB may be blocked.
   virtual void OnCompactionBegin(DB* /*db*/, const CompactionJobInfo& /*ci*/) {}
+  virtual void OnSplitBegin(DB* /*db*/, const SplitJobInfo& /*ci*/) {}
 
   // A callback function for RocksDB which will be called whenever
   // a registered RocksDB compacts a file. The default implementation
@@ -340,6 +426,9 @@ class EventListener {
   //  outside of this function.
   virtual void OnCompactionCompleted(DB* /*db*/,
                                      const CompactionJobInfo& /*ci*/) {}
+  virtual void OnSplitCompleted(DB* /*db*/,
+                                     const SplitJobInfo& /*ci*/) {}
+
 
   // A callback function for RocksDB which will be called whenever
   // a SST file is created.  Different from OnCompactionCompleted and

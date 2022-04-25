@@ -11,8 +11,9 @@
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
+#include <fstream>
 #include <inttypes.h>
-
+#include "db/split_job.h"
 #include "db/builder.h"
 #include "db/error_handler.h"
 #include "db/event_helpers.h"
@@ -1127,6 +1128,106 @@ void DBImpl::NotifyOnCompactionBegin(ColumnFamilyData* cfd, Compaction* c,
 #endif  // ROCKSDB_LITE
 }
 
+void DBImpl::NotifyOnSplitBegin(ColumnFamilyData* cfd, Compaction* c,
+                                     const Status& st,
+                                     const SplitJobStats& job_stats,
+                                     int job_id) {
+#ifndef ROCKSDB_LITE
+  if (immutable_db_options_.listeners.empty()) {
+    return;
+  }
+  mutex_.AssertHeld();
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    return;
+  }
+  Version* current = cfd->current();
+  current->Ref();
+  // release lock while notifying events
+  mutex_.Unlock();
+  TEST_SYNC_POINT("DBImpl::NotifyOnSplitBegin::UnlockMutex");
+  {
+    SplitJobInfo info;
+    info.cf_name = cfd->GetName();
+    info.status = st;
+    info.thread_id = env_->GetThreadID();
+    info.job_id = job_id;
+    info.base_input_level = c->start_level();
+    info.output_level = c->output_level();
+    info.stats = job_stats;
+    info.table_properties = c->GetOutputTableProperties();
+    info.compaction_reason = c->compaction_reason();
+    info.compression = c->output_compression();
+    for (size_t i = 0; i < c->num_input_levels(); ++i) {
+      for (const auto fmd : *c->inputs(i)) {
+        auto fn = TableFileName(c->immutable_cf_options()->cf_paths,
+                                fmd->fd.GetNumber(), fmd->fd.GetPathId());
+        info.input_files.push_back(fn);
+        if (info.table_properties.count(fn) == 0) {
+          std::shared_ptr<const TableProperties> tp;
+          auto s = current->GetTableProperties(&tp, fmd, &fn);
+          if (s.ok()) {
+            info.table_properties[fn] = tp;
+          }
+        }
+      }
+    }
+    for (const auto newf : c->edit()->GetNewFiles()) {
+      info.output_files.push_back(TableFileName(
+          c->immutable_cf_options()->cf_paths, newf.second.fd.GetNumber(),
+          newf.second.fd.GetPathId()));
+    }
+    for (auto listener : immutable_db_options_.listeners) {
+      listener->OnSplitBegin(this, info);
+    }
+  }
+  mutex_.Lock();
+  current->Unref();
+#else
+  (void)cfd;
+  (void)c;
+  (void)st;
+  (void)job_stats;
+  (void)job_id;
+#endif  // ROCKSDB_LITE
+}
+
+void DBImpl::NotifyOnSplitCompleted(
+    ColumnFamilyData* cfd, Compaction* c, const Status& st,
+    const SplitJobStats& split_job_stats, const int job_id) {
+#ifndef ROCKSDB_LITE
+  if (immutable_db_options_.listeners.size() == 0U) {
+    return;
+  }
+  mutex_.AssertHeld();
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    return;
+  }
+  Version* current = cfd->current();
+  current->Ref();
+  // release lock while notifying events
+  mutex_.Unlock();
+  TEST_SYNC_POINT("DBImpl::NotifyOnSplitCompleted::UnlockMutex");
+  {
+    SplitJobInfo info;
+    BuildSplitJobInfo(cfd, c, st, split_job_stats, job_id, current,
+                           &info);
+    for (auto listener : immutable_db_options_.listeners) {
+      listener->OnSplitCompleted(this, info);
+    }
+  }
+  mutex_.Lock();
+  current->Unref();
+  // no need to signal bg_cv_ as it will be signaled at the end of the
+  // flush process.
+#else
+  (void)cfd;
+  (void)c;
+  (void)st;
+  (void)compaction_job_stats;
+  (void)job_id;
+#endif  // ROCKSDB_LITE
+}
+
 void DBImpl::NotifyOnCompactionCompleted(
     ColumnFamilyData* cfd, Compaction* c, const Status& st,
     const CompactionJobStats& compaction_job_stats, const int job_id) {
@@ -1810,6 +1911,17 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
                      &DBImpl::UnscheduleFlushCallback);
     }
   }
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "unscheduled_splits_ : %d", unscheduled_splits_);
+  if (/*bg_split_ && */ unscheduled_splits_ > 0) {
+      bg_split_scheduled_++;
+      unscheduled_splits_--;
+      SplitThreadArg* fta = new SplitThreadArg;
+      fta->db_ = this;
+      fta->thread_pri_ = Env::Priority::LOW;
+      env_->Schedule(&DBImpl::BGWorkSplit, fta, Env::Priority::LOW, this,
+                     &DBImpl::UnscheduleSplitCallback);
+  }
 
   if (bg_compaction_paused_ > 0) {
     // we paused the background compaction
@@ -1898,6 +2010,22 @@ DBImpl::FlushRequest DBImpl::PopFirstFromFlushQueue() {
   return flush_req;
 }
 
+void DBImpl::AddToSplitQueue(ColumnFamilyData* cfd) {
+  assert(!cfd->queued_for_split());
+  cfd->Ref();
+  split_queue_.push_back(cfd);
+  cfd->set_queued_for_split(true);
+}
+
+ColumnFamilyData* DBImpl::PopFirstFromSplitQueue() {
+  assert(!split_queue_.empty());
+  auto cfd = *split_queue_.begin();
+  split_queue_.pop_front();
+  assert(cfd->queued_for_split());
+  cfd->set_queued_for_split(false);
+  return cfd;
+}
+
 ColumnFamilyData* DBImpl::PickCompactionFromQueue(
     std::unique_ptr<TaskLimiterToken>* token, LogBuffer* log_buffer) {
   assert(!compaction_queue_.empty());
@@ -1945,11 +2073,28 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   }
 }
 
+void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
+  if (!cfd->queued_for_split() && cfd->NeedsSplit()) {
+    AddToSplitQueue(cfd);
+    ++unscheduled_splits_;
+  }
+}
+
 void DBImpl::SchedulePendingPurge(std::string fname, std::string dir_to_sync,
                                   FileType type, uint64_t number, int job_id) {
   mutex_.AssertHeld();
   PurgeFileInfo file_info(fname, dir_to_sync, type, number, job_id);
   purge_queue_.push_back(std::move(file_info));
+}
+
+void DBImpl::BGWorkSplit(void* arg) {
+  SplitThreadArg fta = *(reinterpret_cast<SplitThreadArg*>(arg));
+  delete reinterpret_cast<SplitThreadArg*>(arg);
+
+  IOSTATS_SET_THREAD_POOL_ID(fta.thread_pri_);
+  TEST_SYNC_POINT("DBImpl::BGWorkSplit");
+  reinterpret_cast<DBImpl*>(fta.db_)->BackgroundCallSplit(fta.thread_pri_);
+  TEST_SYNC_POINT("DBImpl::BGWorkSplit:done");
 }
 
 void DBImpl::BGWorkFlush(void* arg) {
@@ -1991,6 +2136,11 @@ void DBImpl::BGWorkPurge(void* db) {
   TEST_SYNC_POINT("DBImpl::BGWorkPurge:start");
   reinterpret_cast<DBImpl*>(db)->BackgroundCallPurge();
   TEST_SYNC_POINT("DBImpl::BGWorkPurge:end");
+}
+
+void DBImpl::UnscheduleSplitCallback(void* arg) {
+  delete reinterpret_cast<SplitThreadArg*>(arg);
+  TEST_SYNC_POINT("DBImpl::UnscheduleSplitCallback");
 }
 
 void DBImpl::UnscheduleCompactionCallback(void* arg) {
@@ -2086,6 +2236,113 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
     }
   }
   return status;
+}
+
+void DBImpl::BackgroundCallSplit(Env::Priority thread_pri) {
+  bool made_progress = false;
+  JobContext job_context(next_job_id_.fetch_add(1), true);
+  TEST_SYNC_POINT("BackgroundCallSplit:0");
+  LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL,
+                       immutable_db_options_.info_log.get());
+  {
+    InstrumentedMutexLock l(&mutex_);
+
+    // This call will unlock/lock the mutex to wait for current running
+    // flush/compaction calls to finish.
+    assert(bg_bottom_compaction_scheduled_==0);
+    assert(bg_compaction_scheduled_==0);
+    assert(bg_flush_scheduled_==0);
+
+    num_running_splits_++;
+
+    auto pending_outputs_inserted_elem =
+        CaptureCurrentFileNumberInPendingOutputs();
+
+    assert(thread_pri == Env::Priority::LOW &&
+           bg_split_scheduled_);
+    Status s = BackgroundSplit(&made_progress, &job_context, &log_buffer,
+                               thread_pri);
+    TEST_SYNC_POINT("BackgroundCallSplit:1");
+
+    if (s.IsBusy()) {
+      bg_cv_.SignalAll();  // In case a waiter can proceed despite the error
+      mutex_.Unlock();
+      env_->SleepForMicroseconds(10000);  // prevent hot loop
+      mutex_.Lock();
+    } else if (!s.ok() && !s.IsShutdownInProgress()) {
+      // Wait a little bit before retrying background compaction in
+      // case this is an environmental problem and we do not want to
+      // chew up resources for failed compactions for the duration of
+      // the problem.
+      uint64_t error_cnt =
+          default_cf_internal_stats_->BumpAndGetBackgroundErrorCount();
+      bg_cv_.SignalAll();  // In case a waiter can proceed despite the error
+      mutex_.Unlock();
+      log_buffer.FlushBufferToLog();
+      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                      "Waiting after background split error: %s, "
+                      "Accumulated background error counts: %" PRIu64,
+                      s.ToString().c_str(), error_cnt);
+      LogFlush(immutable_db_options_.info_log);
+      env_->SleepForMicroseconds(1000000);
+      mutex_.Lock();
+    }
+
+    ReleaseFileNumberFromPendingOutputs(pending_outputs_inserted_elem);
+
+    // If compaction failed, we want to delete all temporary files that we might
+    // have created (they might not be all recorded in job_context in case of a
+    // failure). Thus, we force full scan in FindObsoleteFiles()
+    FindObsoleteFiles(&job_context, !s.ok() && !s.IsShutdownInProgress());
+    TEST_SYNC_POINT("DBImpl::BackgroundCallSplit:FoundObsoleteFiles");
+
+    // delete unnecessary files if any, this is done outside the mutex
+    if (job_context.HaveSomethingToClean() ||
+        job_context.HaveSomethingToDelete() || !log_buffer.IsEmpty()) {
+      mutex_.Unlock();
+      // Have to flush the info logs before bg_split_scheduled_--
+      // because if bg_flush_scheduled_ becomes 0 and the lock is
+      // released, the deconstructor of DB can kick in and destroy all the
+      // states of DB so info_log might not be available after that point.
+      // It also applies to access other states that DB owns.
+      //
+
+      log_buffer.FlushBufferToLog();
+
+      if (job_context.HaveSomethingToDelete()) {
+        PurgeObsoleteFiles(job_context);
+        TEST_SYNC_POINT("DBImpl::BackgroundCallSplit:PurgedObsoleteFiles");
+      }
+      job_context.Clean();
+      mutex_.Lock();
+    }
+
+    assert(num_running_splits_ > 0);
+    num_running_splits_--;
+    assert(thread_pri == Env::Priority::LOW);
+    bg_split_scheduled_--;
+
+    versions_->GetColumnFamilySet()->FreeDeadColumnFamilies();
+
+    // See if there's more work to be done
+    MaybeScheduleFlushOrCompaction();
+    if (made_progress ||
+        bg_split_scheduled_ == 0 ||
+        /*HasPendingManualSplit() || */ unscheduled_splits_ == 0) {
+      // signal if
+      // * made_progress -- need to wakeup DelayWrite
+      // * bg_split_scheduled_ == 0 -- need to wakeup ~DBImpl
+      // * HasPendingManualSplit -- need to wakeup RunManualSplit
+      // If none of this is true, there is no need to signal since nobody is
+      // waiting for it bg_cv_.SignalAll();
+      //
+      bg_cv_.SignalAll();
+    }
+    // IMPORTANT: there should be no code after calling SignalAll. This call may
+    // signal the DB destructor that it's OK to proceed with destruction. In
+    // that case, all DB variables will be dealloacated and referencing them
+    // will cause trouble.
+  }
 }
 
 void DBImpl::BackgroundCallFlush(Env::Priority thread_pri) {
@@ -2271,6 +2528,185 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
     // that case, all DB variables will be dealloacated and referencing them
     // will cause trouble.
   }
+}
+
+Status DBImpl::BackgroundSplit(bool* made_progress,
+                               JobContext* job_context,
+                               LogBuffer* log_buffer,
+                               Env::Priority thread_pri) {
+  *made_progress = false;
+  mutex_.AssertHeld();
+  TEST_SYNC_POINT("DBImpl::BackgroundSplit:Start");
+
+  std::unique_ptr<Compaction> c;
+
+  SplitJobStats split_job_stats;
+  Status status;
+  if (!error_handler_.IsBGWorkStopped()) {
+    if (shutting_down_.load(std::memory_order_acquire)) {
+      status = Status::ShutdownInProgress();
+    }
+  } else {
+    status = error_handler_.GetBGError();
+    // If we get here, it means a hard error happened after this split
+    // was scheduled by MaybeScheduleFlushOrCompaction(), but before it got
+    // a chance to execute. Since we didn't pop a cfd from the split
+    // queue, increment unscheduled_splits_
+    unscheduled_splits_++;
+  }
+
+  if (!status.ok()) {
+    if (c) {
+      c.reset();
+    }
+    return status;
+  }
+
+  std::unique_ptr<TaskLimiterToken> task_token;
+
+  // InternalKey manual_end_storage;
+  // InternalKey* manual_end = &manual_end_storage;
+  bool sfm_reserved_compact_space = false;
+
+  if (!split_queue_.empty()) {
+    auto cfd = PopFirstFromSplitQueue();
+    if (cfd == nullptr) {
+      // Can't find any executable task from the split queue.
+      ++unscheduled_splits_;
+      return Status::Busy();
+    }
+
+    // We unreference here because the following code will take a Ref() on
+    // this cfd if it is going to use it (Compaction class holds a
+    // reference).
+    // This will all happen under a mutex so we don't have to be afraid of
+    // somebody else deleting it.
+    if (cfd->Unref()) {
+      // This was the last reference of the column family, so no need to
+      // compact.
+      delete cfd;
+      return Status::OK();
+    }
+
+    // Pick up latest mutable CF Options and use it throughout the
+    // split job
+    // Split makes a copy of the latest MutableCFOptions. It should be used
+    // throughout the split procedure to make sure consistency. It will
+    // eventually be installed into SuperVersion
+    if (!cfd->IsDropped()) {
+      // NOTE: try to avoid unnecessary copy of MutableCFOptions if
+      // compaction is not necessary. Need to make sure mutex is held
+      // until we make a copy in the following code
+      //auto* mutable_cf_options = cfd->GetLatestMutableCFOptions();
+      TEST_SYNC_POINT("DBImpl::BackgroundSplit():BeforePickSplit");
+      c.reset(cfd->PickSplit(/**mutable_cf_options, */log_buffer));
+      TEST_SYNC_POINT("DBImpl::BackgroundSplit():AfterPickSplit");
+
+      // update statistics
+      //RecordInHistogram(stats_, NUM_FILES_IN_SINGLE_COMPACTION,
+       //                 c->inputs(0)->size());
+    }
+  }
+
+  if (!c) {
+    // Nothing to do
+    ROCKS_LOG_BUFFER(log_buffer, "Split nothing to do");
+  } else {
+    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:BeforeSplit",
+                             c->column_family_data());
+    int output_level __attribute__((__unused__));
+    output_level = c->output_level();
+    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:NonTrivial",
+                             &output_level);
+    std::vector<SequenceNumber> snapshot_seqs;
+    SequenceNumber earliest_write_conflict_snapshot;
+    SnapshotChecker* snapshot_checker;
+    GetSnapshotContext(job_context, &snapshot_seqs,
+                       &earliest_write_conflict_snapshot, &snapshot_checker);
+    assert(is_snapshot_supported_ || snapshots_.empty());
+    SplitJob split_job(
+        job_context->job_id, c.get(), immutable_db_options_,
+        env_options_for_compaction_, versions_.get(), &shutting_down_,
+        preserve_deletes_seqnum_.load(), log_buffer, directories_.GetDbDir(),
+        GetDataDir(c->column_family_data(), c->output_path_id()), stats_,
+        &mutex_, &error_handler_, snapshot_seqs,
+        earliest_write_conflict_snapshot, snapshot_checker, table_cache_,
+        &event_logger_, c->mutable_cf_options()->paranoid_file_checks,
+        c->mutable_cf_options()->report_bg_io_stats, dbname_,
+        &split_job_stats, thread_pri);
+    split_job.Prepare();
+
+    NotifyOnSplitBegin(c->column_family_data(), c.get(), status,
+                            split_job_stats, job_context->job_id);
+
+    mutex_.Unlock();
+    split_job.Run();
+    TEST_SYNC_POINT("DBImpl::BackgroundSplit:NonTrivial:AfterRun");
+    mutex_.Lock();
+
+    status = split_job.Install(*c->mutable_cf_options());
+    if (status.ok()) {
+      InstallSuperVersionAndScheduleWork(c->column_family_data(),
+                                         &job_context->superversion_contexts[0],
+                                         *c->mutable_cf_options());
+    }
+    *made_progress = true;
+    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:AfterSplit",
+                             c->column_family_data());
+  }
+
+  if (c != nullptr) {
+    c->ReleaseCompactionFiles(status);
+    *made_progress = true;
+
+#ifndef ROCKSDB_LITE
+    // Need to make sure SstFileManager does its bookkeeping
+    auto sfm = static_cast<SstFileManagerImpl*>(
+        immutable_db_options_.sst_file_manager.get());
+    if (sfm && sfm_reserved_compact_space) {
+      sfm->OnCompactionCompletion(c.get());
+    }
+#endif  // ROCKSDB_LITE
+
+    NotifyOnSplitCompleted(c->column_family_data(), c.get(), status,
+                           split_job_stats, job_context->job_id);
+  }
+
+  if (status.ok()) {
+    // Done
+    ROCKS_LOG_INFO(c->immutable_cf_options()->info_log,
+                     "Split column family finish");
+  } else if (status.IsShutdownInProgress()) {
+    // Ignore compaction errors found during shutting down
+  } else {
+    ROCKS_LOG_WARN(immutable_db_options_.info_log, "Split error: %s",
+                   status.ToString().c_str());
+    error_handler_.SetBGError(status, BackgroundErrorReason::kSplit);
+    if (c != nullptr &&/* !is_manual &&*/ !error_handler_.IsBGWorkStopped()) {
+      // Put this cfd back in the compaction queue so we can retry after some
+      // time
+      auto cfd = c->column_family_data();
+      assert(cfd != nullptr);
+      // Since this compaction failed, we need to recompute the score so it
+      // takes the original input files into account
+      c->column_family_data()
+          ->current()
+          ->storage_info()
+          ->ComputeCompactionScore(*(c->immutable_cf_options()),
+                                   *(c->mutable_cf_options()));
+      if (!cfd->queued_for_compaction()) {
+        AddToCompactionQueue(cfd);
+        ++unscheduled_compactions_;
+      }
+      // TODO: compute and push compaction request not only the input cfd,
+      // but also the output cfds
+    }
+  }
+  // this will unref its input_version and column_family_data
+  c.reset();
+
+  TEST_SYNC_POINT("DBImpl::BackgroundSplit:Finish");
+  return status;
 }
 
 Status DBImpl::BackgroundCompaction(bool* made_progress,
@@ -2818,6 +3254,43 @@ void DBImpl::BuildCompactionJobInfo(
     const ColumnFamilyData* cfd, Compaction* c, const Status& st,
     const CompactionJobStats& compaction_job_stats, const int job_id,
     const Version* current, CompactionJobInfo* compaction_job_info) const {
+  assert(compaction_job_info != nullptr);
+  compaction_job_info->cf_id = cfd->GetID();
+  compaction_job_info->cf_name = cfd->GetName();
+  compaction_job_info->status = st;
+  compaction_job_info->thread_id = env_->GetThreadID();
+  compaction_job_info->job_id = job_id;
+  compaction_job_info->base_input_level = c->start_level();
+  compaction_job_info->output_level = c->output_level();
+  compaction_job_info->stats = compaction_job_stats;
+  compaction_job_info->table_properties = c->GetOutputTableProperties();
+  compaction_job_info->compaction_reason = c->compaction_reason();
+  compaction_job_info->compression = c->output_compression();
+  for (size_t i = 0; i < c->num_input_levels(); ++i) {
+    for (const auto fmd : *c->inputs(i)) {
+      auto fn = TableFileName(c->immutable_cf_options()->cf_paths,
+                              fmd->fd.GetNumber(), fmd->fd.GetPathId());
+      compaction_job_info->input_files.push_back(fn);
+      if (compaction_job_info->table_properties.count(fn) == 0) {
+        std::shared_ptr<const TableProperties> tp;
+        auto s = current->GetTableProperties(&tp, fmd, &fn);
+        if (s.ok()) {
+          compaction_job_info->table_properties[fn] = tp;
+        }
+      }
+    }
+  }
+  for (const auto& newf : c->edit()->GetNewFiles()) {
+    compaction_job_info->output_files.push_back(
+        TableFileName(c->immutable_cf_options()->cf_paths,
+                      newf.second.fd.GetNumber(), newf.second.fd.GetPathId()));
+  }
+}
+
+void DBImpl::BuildSplitJobInfo(
+    const ColumnFamilyData* cfd, Compaction* c, const Status& st,
+    const SplitJobStats& compaction_job_stats, const int job_id,
+    const Version* current, SplitJobInfo* compaction_job_info) const {
   assert(compaction_job_info != nullptr);
   compaction_job_info->cf_id = cfd->GetID();
   compaction_job_info->cf_name = cfd->GetName();
