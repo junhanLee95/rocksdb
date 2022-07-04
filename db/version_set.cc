@@ -3314,12 +3314,12 @@ Status VersionSet::LogAndApply(
     }
 #endif /* ! NDEBUG */
   }
-
+  /*
   for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
-      fprintf(stdout, edit->DebugString(true).c_str());
+      fprintf(stdout, "%s\n", edit->DebugString(true).c_str());
     }
-  }
+  }*/
 
   int num_cfds = static_cast<int>(column_family_datas.size());
   if (num_cfds == 1 && column_family_datas[0] == nullptr) {
