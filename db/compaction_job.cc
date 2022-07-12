@@ -143,6 +143,7 @@ struct CompactionJob::SubcompactionState {
   }
 
   uint64_t current_output_file_size;
+  uint64_t current_input_records;
 
   // State during the subcompaction
   uint64_t total_bytes;
@@ -166,6 +167,7 @@ struct CompactionJob::SubcompactionState {
         outfile(nullptr),
         builder(nullptr),
         current_output_file_size(0),
+        current_input_records(0),
         total_bytes(0),
         num_input_records(0),
         num_output_records(0),
@@ -967,6 +969,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       output_file_ended = true;
     }
     if (output_file_ended) {
+      sub_compact->current_input_records = c_iter_stats.num_input_records -
+                                           sub_compact->num_input_records;
+      sub_compact->num_input_records = c_iter_stats.num_input_records;
+
       const Slice* next_key = nullptr;
       if (c_iter->Valid()) {
         next_key = &c_iter->key();
@@ -980,6 +986,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
   }
 
+  sub_compact->current_input_records = c_iter_stats.num_input_records -
+                                       sub_compact->num_input_records;
   sub_compact->num_input_records = c_iter_stats.num_input_records;
   sub_compact->compaction_job_stats.num_input_deletion_records =
       c_iter_stats.num_input_deletion_records;
@@ -1277,6 +1285,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     meta->marked_for_compaction = sub_compact->builder->NeedCompact();
   }
   const uint64_t current_entries = sub_compact->builder->NumEntries();
+  const uint64_t current_input_entries = sub_compact->current_input_records;
   if (s.ok()) {
     s = sub_compact->builder->Finish();
   } else {
@@ -1326,9 +1335,10 @@ Status CompactionJob::FinishCompactionOutputFile(
         std::make_shared<TableProperties>(tp);
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-                   " keys, %" PRIu64 " bytes%s",
+                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s",
                    cfd->GetName().c_str(), job_id_, output_number,
-                   current_entries, current_bytes,
+                   current_entries, current_input_entries,
+                   (float)current_entries/current_input_entries, current_bytes,
                    meta->marked_for_compaction ? " (need compaction)" : "");
   }
   std::string fname;
