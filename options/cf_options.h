@@ -122,6 +122,8 @@ struct ImmutableCFOptions {
   std::vector<DbPath> cf_paths;
 
   std::shared_ptr<ConcurrentTaskLimiter> compaction_thread_limiter;
+
+  bool allow_logical_column_families;
 };
 
 struct MutableCFOptions {

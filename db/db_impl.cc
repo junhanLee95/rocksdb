@@ -254,7 +254,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
   // we won't drop any deletion markers until SetPreserveDeletesSequenceNumber()
   // is called by client and this seqnum is advanced.
   preserve_deletes_seqnum_.store(0);
- 
+  /*
   std::string home_dir("/var/lib/ceph/osd/trace/");
   TraceOptions trace_options_;
   std::unique_ptr<TraceWriter> trace_writer;
@@ -277,18 +277,18 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
     fprintf(stderr, "[ERROR] Encountered an error starting a trace, %s\n", 
 		s.ToString().c_str());
     exit(1);
-  }
+  }*/
 
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableCount);
   rocksdb::get_perf_context()->Reset();
   rocksdb::get_iostats_context()->Reset();
-
+  /*
   s = StartTrace(trace_options_, std::move(trace_writer));
   if (!s.ok()) {
     fprintf(stderr, "[ERROR] Encountered an error linking a trace, %s\n",
 		s.ToString().c_str());
     exit(1);
-  } 
+  } */
 }
 
 Status DBImpl::Resume() {
@@ -631,7 +631,7 @@ DBImpl::~DBImpl() {
         "[INFO] perf stat : %s\n", pc->ToString(true).c_str());
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[INFO] io stat : %s\n", ic->ToString(true).c_str());
-
+    /*
     Status s = EndTrace();
 
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -639,7 +639,7 @@ DBImpl::~DBImpl() {
     if (!s.ok()) {
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[DEBUG] Encountered an error ending a trace, %s\n",s.ToString().c_str());
-    } 
+    } */
     closed_ = true;
     CloseHelper();
   }
