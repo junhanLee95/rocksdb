@@ -25,6 +25,9 @@
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "util/thread_local.h"
+
+#include "db/partition_tree.h"
+
 namespace rocksdb {
 
 class Version;
@@ -614,6 +617,7 @@ class ColumnFamilySet {
   std::unordered_map<uint32_t, ColumnFamilyData*> column_family_data_;
   int comp_smallest_key (ColumnFamilyData* c1, ColumnFamilyData* c2) { return c1->GetSmallestKey().compare(c2->GetSmallestKey()); };
   std::vector<ColumnFamilyData*> logical_column_family_data_;
+  PartitionTree partition_tree_;
 
   uint32_t max_column_family_;
   ColumnFamilyData* dummy_cfd_;
