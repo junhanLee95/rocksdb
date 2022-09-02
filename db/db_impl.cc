@@ -183,11 +183,14 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       last_batch_group_size_(0),
       unscheduled_flushes_(0),
       unscheduled_compactions_(0),
+      unscheduled_splits_(0),
       bg_bottom_compaction_scheduled_(0),
       bg_compaction_scheduled_(0),
       num_running_compactions_(0),
       bg_flush_scheduled_(0),
       num_running_flushes_(0),
+      bg_split_scheduled_(0),
+      num_running_splits_(0),
       bg_purge_scheduled_(0),
       disable_delete_obsolete_files_(0),
       pending_purge_obsolete_files_(0),
@@ -2148,13 +2151,10 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "Created column family [%s] (ID %u)",
                      out0_name.c_str(), (unsigned)cfd0->GetID());
-
       *handle_out1 = new ColumnFamilyHandleImpl(cfd1, this, &mutex_);
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "Created column family [%s] (ID %u)",
                      out1_name.c_str(), (unsigned)cfd1->GetID());
-
-
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                       "Splitting column family [%s] FAILED -- %s",

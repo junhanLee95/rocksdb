@@ -354,6 +354,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultiple) {
   delete db;
 }
 */
+/*
 TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   std::vector<std::string> keys;
   for (uint64_t i = 0; i < kNumKeys; i++) {
@@ -400,8 +401,8 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   db->DestroyColumnFamilyHandle(cfh);
 
   delete db;
-}
-/*
+}*/
+
 TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   std::vector<std::string> keys;
   for (uint64_t i = 0; i < kNumKeys; i++) {
@@ -431,8 +432,6 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   }
   std::cout << "[SplitTest] keys5 [" << EncodeAsString(kNumKeys/2) << ", " << EncodeAsString(4*kNumKeys-1) << "]"<<std::endl;
 
-
-
   // Ingest the file into a db, to assign it a global sequence number.
   Options options;
   options.create_if_missing = true;
@@ -442,16 +441,17 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
 
   // create column family
   std::cout << "[SplitTest] create cf : cf0" << std::endl;
-  ColumnFamilyHandle* cfh;
-  std::string cf_name = "cf0";
+  ColumnFamilyHandle* cfh = db->DefaultColumnFamily();
+  /*std::string cf_name = "cf0";
 
   std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
   cfo->compaction_style = kCompactionStyleLevel;
-  cfo->num_levels = 1;
+  cfo->num_levels = 2;
   cfo->write_buffer_size = 64 << 20; // 64 MB
-  cfo->level0_file_num_compaction_trigger = 1; 
+  cfo->target_file_size_base = 1024*1024; // 1MB
+  cfo->level0_file_num_compaction_trigger = 4; 
 
-  db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);
+  db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);*/
 
   // Generate a SST file.
   CreateMT(db, cfh, keys);
@@ -487,7 +487,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   fprintf(stdout,"[SplitTest] cf01 : largest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh2)->cfd()->GetLargestKey().c_str());
 
 
-  fprintf(stdout,"[SplitTest] wait split\n");
+  fprintf(stdout,"[SplitTest] wait split\n"); 
   dbfull(db)->TEST_WaitForSplit();
   fprintf(stdout,"[SplitTest] wait split done\n");
   
@@ -535,17 +535,17 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   fprintf(stdout,"[SplitTest] cf01 : key median -> %s\n", value33.c_str());
  
   dbfull(db)->PrintLogicalColumnFamily();
-  auto lcf = dbfull(db)->GetLogicalColumnFamily();
+  /*auto lcf = dbfull(db)->GetLogicalColumnFamily();
   for (auto l: lcf) {
     fprintf(stdout, "[SplitTest] LCF[%d] %s => [%s, %s)\n", l->GetID(), l->GetName().c_str(), l->GetSmallestKey().c_str(), l->GetLargestKey().c_str());
-  }
+  }*/
   //db->DropColumnFamily(cfh);
-  db->DestroyColumnFamilyHandle(cfh);
   db->DestroyColumnFamilyHandle(cfh1);
   db->DestroyColumnFamilyHandle(cfh2);
+  // db->DestroyColumnFamilyHandle(cfh); // Default column family automatically removed when the dbimpl is removed. 
 
   delete db;
-}*/
+}
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
