@@ -31,10 +31,10 @@ PartitionTreeNode *PartitionTreeNode::SearchNextNode (
     return nullptr;
 
   // Linear Search
-  for (auto nodes: lower_level_nodes) {
+  for (auto nodes: lower_level_nodes_) {
     Slice right_most_key(get_rmost_key(nodes));
 
-    if (key.compare(right_most_key) =< 0) { 
+    if (key.compare(right_most_key) <= 0) { 
 
       Slice left_most_key(get_lmost_key(nodes));
 
@@ -50,7 +50,7 @@ PartitionTreeNode *PartitionTreeNode::SearchNextNode (
 
 // PartitionTree function.
 
-void PartitionTree::SetColumnFamily (
+void PartitionTree::SetRootColumnFamily (
     ColumnFamilyData* column_family_data) {
   root_.SetColumnFamily(column_family_data);
 }
@@ -59,8 +59,8 @@ void PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
 
-  auto base_node = partition_nodes_.find(base_cfd->GetID());
-  bool push_back = base_node->lower_level_cfds_.empty();
+  auto base_node = partition_nodes_.find(base_cfd->GetID())->second;
+  bool push_back = base_node->lower_level_nodes_.empty();
 
   // TODO: check violation 1. 
   // Violation 1. The key range of splitted nodes under the base should be 
@@ -72,7 +72,7 @@ void PartitionTree::InsertSplittedColumnFamily (
     auto node = new PartitionTreeNode(new_cfd);
 
     if (push_back) {
-      base_node->lower_level_cfds_.push_back(node);
+      base_node->lower_level_nodes_.push_back(node);
       continue;
     } 
 
@@ -80,7 +80,7 @@ void PartitionTree::InsertSplittedColumnFamily (
   }
 }
 
-ColumnFamilyData *SearchColumnFamily (const Slice &key) {
+ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
   PartitionTreeNode *cnode = &root_; // current node
   PartitionTreeNode *nnode = nullptr; // next node
 

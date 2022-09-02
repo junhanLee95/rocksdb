@@ -1443,7 +1443,7 @@ bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
 bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFamilyData* c_out_0, ColumnFamilyData* c_out_1) {
   std::vector<ColumnFamilyData*> c_outs = {c_out_0, c_out_1};
 
-  partition_tree_.InsertSplittedColumnFamily(c_in, c_outs);
+  partition_tree_->InsertSplittedColumnFamily(c_in, c_outs);
 
   return true;
   
@@ -1493,7 +1493,7 @@ std::vector<ColumnFamilyData*> ColumnFamilySet::GetLogicalColumnFamily(void) {
 }*/
 
 ColumnFamilyData* ColumnFamilySet::GetLogicalColumnFamily(const Slice &key) {
-  return partition_tree_.SearchColumnFamily(key);
+  return partition_tree_->SearchColumnFamily(key);
 }
 
 // under a DB mutex AND write thread
@@ -1515,7 +1515,7 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   dummy_cfd_->prev_ = new_cfd;
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
-    partition_tree_.SetRootColumnFamily(new_cfd);
+    partition_tree_ = new PartitionTree(new_cfd);
   }
   return new_cfd;
 }
@@ -1542,7 +1542,7 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   dummy_cfd_->prev_ = new_cfd;
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
-    partition_tree_.SetRootColumnFamily(new_cfd);
+    partition_tree_ = new PartitionTree(new_cfd);
   }
   return new_cfd;
 }
