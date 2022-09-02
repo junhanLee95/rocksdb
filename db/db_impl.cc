@@ -1424,6 +1424,10 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
+  // Dohyun Kim: Partition Tree Search (NO Mutex)
+  auto cfs = cfd->GetColumnFamilySet();
+  cfd = cfs->GetLogicalColumnFamily(key);
+
   if (tracer_) {
     // TODO: This mutex should be removed later, to improve performance when
     // tracing is enabled.
@@ -2249,6 +2253,7 @@ void DBImpl::PrintLogicalColumnFamily(void) {
   return;
 }
 
+/*
 std::vector<ColumnFamilyData*> DBImpl::GetLogicalColumnFamily(void) {
   std::vector<ColumnFamilyData*> lcf;
   {
@@ -2257,7 +2262,7 @@ std::vector<ColumnFamilyData*> DBImpl::GetLogicalColumnFamily(void) {
     lcf = column_family_set->GetLogicalColumnFamily();
   }
   return lcf;
-}
+}*/
 
 
 Status DBImpl::CreateColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
