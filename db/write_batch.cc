@@ -1178,6 +1178,11 @@ class MemTableInserter : public WriteBatch::Handler {
     }
   }
 
+  bool SeekToColumnFamilyByKey(const Slice &key, Status* s) {
+    auto cfd = cf_mems_->SeekLogicalColumnFamily(key);
+    return SeekToColumnFamily(cfd->GetID(), s);
+  }
+
   bool SeekToColumnFamily(uint32_t column_family_id, Status* s) {
     // If we are in a concurrent mode, it is the caller's responsibility
     // to clone the original ColumnFamilyMemTables so that each thread
@@ -1228,7 +1233,8 @@ class MemTableInserter : public WriteBatch::Handler {
     }
 
     Status seek_status;
-    if (UNLIKELY(!SeekToColumnFamily(column_family_id, &seek_status))) {
+    //if (UNLIKELY(!SeekToColumnFamily(column_family_id, &seek_status))) {
+    if (UNLIKELY(!SeekToColumnFamilyByKey(key, &seek_status))) {
       bool batch_boundry = false;
       if (rebuilding_trx_ != nullptr) {
         assert(!write_after_commit_);

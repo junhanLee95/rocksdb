@@ -1445,6 +1445,8 @@ bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFam
 
   partition_tree_.InsertSplittedColumnFamily(c_in, c_outs);
 
+  return true;
+  
   /*
   // find c_in
   int l = 0;
@@ -1485,9 +1487,13 @@ void ColumnFamilySet::PrintLogicalColumnFamily(void) {
   }
   fprintf(stdout, "======================================\n");
 }
-
+/*
 std::vector<ColumnFamilyData*> ColumnFamilySet::GetLogicalColumnFamily(void) {
   return logical_column_family_data_;
+}*/
+
+ColumnFamilyData* ColumnFamilySet::GetLogicalColumnFamily(const Slice &key) {
+  return partition_tree_.SearchColumnFamily(key);
 }
 
 // under a DB mutex AND write thread
@@ -1589,6 +1595,10 @@ MemTable* ColumnFamilyMemTablesImpl::GetMemTable() const {
 ColumnFamilyHandle* ColumnFamilyMemTablesImpl::GetColumnFamilyHandle() {
   assert(current_ != nullptr);
   return &handle_;
+}
+
+ColumnFamilyData* ColumnFamilyMemTablesImpl::SeekLogicalColumnFamily(const Slice &key) {
+  return column_family_set_->GetLogicalColumnFamily(key);
 }
 
 uint32_t GetColumnFamilyID(ColumnFamilyHandle* column_family) {

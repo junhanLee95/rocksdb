@@ -329,6 +329,8 @@ class ColumnFamilyData {
     return &int_tbl_prop_collector_factories_;
   }
 
+  ColumnFamilySet* GetColumnFamilySet() { return column_family_set_; }
+
   SuperVersion* GetSuperVersion() { return super_version_; }
   // thread-safe
   // Return a already referenced SuperVersion to be used safely.
@@ -579,7 +581,7 @@ class ColumnFamilySet {
   bool AddLogicalColumnFamily(ColumnFamilyData* c_in); // return true if successfully update lcf vector 
   bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFamilyData* c_out_0, ColumnFamilyData* c_out_1); // return true if successfully update lcf vector 
   void PrintLogicalColumnFamily(void);
-  std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
+  //std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
 
   ColumnFamilyData* CreateColumnFamily(const std::string& name, uint32_t id,
                                        Version* dummy_version,
@@ -600,6 +602,7 @@ class ColumnFamilySet {
 
   Cache* get_table_cache() { return table_cache_; }
 
+  ColumnFamilyData* GetLogicalColumnFamily(const Slice &key);
  private:
   friend class ColumnFamilyData;
   // helper function that gets called from cfd destructor
@@ -671,6 +674,8 @@ class ColumnFamilyMemTablesImpl : public ColumnFamilyMemTables {
   // REQUIRES: use this function of DBImpl::column_family_memtables_ should be
   //           under a DB mutex OR from a write thread
   virtual ColumnFamilyData* current() override { return current_; }
+
+  virtual ColumnFamilyData* SeekLogicalColumnFamily(const Slice &key) override;
 
  private:
   ColumnFamilySet* column_family_set_;

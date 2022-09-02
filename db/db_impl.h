@@ -752,7 +752,7 @@ class DBImpl : public DB {
 
 
   void PrintLogicalColumnFamily(void);
-  std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
+  //std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
 
  protected:
   Env* const env_;
