@@ -620,7 +620,7 @@ class ColumnFamilySet {
   std::unordered_map<std::string, uint32_t> column_families_;
   std::unordered_map<uint32_t, ColumnFamilyData*> column_family_data_;
   int comp_smallest_key (ColumnFamilyData* c1, ColumnFamilyData* c2) { return c1->GetSmallestKey().compare(c2->GetSmallestKey()); };
-  std::vector<ColumnFamilyData*> logical_column_family_data_;
+  //std::vector<ColumnFamilyData*> logical_column_family_data_;
   PartitionTree* partition_tree_;
 
   uint32_t max_column_family_;
