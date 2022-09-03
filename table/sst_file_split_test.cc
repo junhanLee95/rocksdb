@@ -7,6 +7,8 @@
 
 #include <inttypes.h>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 
 #include "db/db_impl.h"
 #include "rocksdb/db.h"
@@ -427,14 +429,21 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   std::cout << "[SplitTest] keys4 [" << EncodeAsString(kNumKeys*3) << ", " << EncodeAsString(4*kNumKeys-1) << "]"<<std::endl;
   
   std::vector<std::string> keys5;
-  for (uint64_t i = kNumKeys/2; i < 4*kNumKeys; i++) {
+  for (uint64_t i = kNumKeys/2; i < 4*kNumKeys - kNumKeys/2; i++) {
     keys5.emplace_back(EncodeAsString(i));
   }
-  std::cout << "[SplitTest] keys5 [" << EncodeAsString(kNumKeys/2) << ", " << EncodeAsString(4*kNumKeys-1) << "]"<<std::endl;
+  std::cout << "[SplitTest] keys5 [" << EncodeAsString(kNumKeys/2) << ", " << EncodeAsString(4*kNumKeys- kNumKeys/2 - 1) << "]"<<std::endl;
 
   // Ingest the file into a db, to assign it a global sequence number.
   Options options;
   options.create_if_missing = true;
+
+  options.compaction_style = kCompactionStyleLevel;
+  options.num_levels = 1;
+  options.write_buffer_size = 256 << 20;
+  options.target_file_size_base = 1024*1024;
+  options.level0_file_num_compaction_trigger = 1;
+
   std::string db_name = test::PerThreadDBPath("test_db");
   DB* db;
   ASSERT_OK(DB::Open(options, db_name, &db));
@@ -496,10 +505,41 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
     fprintf(stdout,"[childrencfd] %s : largest key : %s\n", c->GetName().c_str(), c->GetLargestKey().c_str());
   }
 
-
   std::string value1, value2, value3;
   std::string value12, value22, value32;
   std::string value13, value23, value33;
+
+  // pair : {TestName, key}
+  std::vector<std::pair<std::string, uint32_t>> GetTestKey 
+    = {{"SSTtable search (key < median)", kNumKeys/4},
+       {"SSTtable search (key > median)", 4*kNumKeys - kNumKeys/4},
+       {"Memtable search (key < median)", 2*kNumKeys - 1},
+       {"Memtable search (key == median)", 2*kNumKeys},
+       {"Memtable search (key > median)", 2*kNumKeys + 1}};
+  
+  for (auto p: GetTestKey) {
+    std::ostringstream ss;
+    ss << std::setw(8) << std::setfill('0') << p.second;
+    std::string key = ss.str();
+    std::string test_name = p.first; 
+    std::string value; 
+    Status s; 
+
+    s = db->Get(ReadOptions(), cfh, key, &value);
+   
+    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
+
+    if (s.IsNotFound())
+      fprintf(stdout, "Not Found...\n");
+    if (s.ok())
+      fprintf(stdout, "==> %s\n", value.c_str());
+  }
+  
+  /*
+  std::string value1, value2, value3;
+  std::string value12, value22, value32;
+  std::string value13, value23, value33;
+
   db->Get(ReadOptions(), cfh, "00001999", &value1);
   db->Get(ReadOptions(), cfh1, "00001999",&value2);
   db->Get(ReadOptions(), cfh2, "00001999", &value3);
@@ -519,9 +559,6 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   fprintf(stdout,"[SplitTest] cf01 : smallest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh2)->cfd()->GetSmallestKey().c_str());
   fprintf(stdout,"[SplitTest] cf01 : largest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh2)->cfd()->GetLargestKey().c_str());
 
-
-
-
   fprintf(stdout,"[SplitTest] cf0 : key less than median(00001999) -> %s\n", value1.c_str());
   fprintf(stdout,"[SplitTest] cf00 : key less than median(00001999) -> %s\n", value2.c_str());
   fprintf(stdout,"[SplitTest] cf01 : key less than median(00001999) -> %s\n", value3.c_str());
@@ -535,10 +572,11 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   fprintf(stdout,"[SplitTest] cf01 : key median -> %s\n", value33.c_str());
  
   dbfull(db)->PrintLogicalColumnFamily();
-  /*auto lcf = dbfull(db)->GetLogicalColumnFamily();
+  auto lcf = dbfull(db)->GetLogicalColumnFamily();
   for (auto l: lcf) {
     fprintf(stdout, "[SplitTest] LCF[%d] %s => [%s, %s)\n", l->GetID(), l->GetName().c_str(), l->GetSmallestKey().c_str(), l->GetLargestKey().c_str());
   }*/
+
   //db->DropColumnFamily(cfh);
   db->DestroyColumnFamilyHandle(cfh1);
   db->DestroyColumnFamilyHandle(cfh2);
