@@ -36,8 +36,8 @@ PartitionTreeNode *PartitionTreeNode::SearchNextNode (
   for (auto nodes: lower_level_nodes_) {
     Slice right_most_key(get_rmost_key(nodes));
 
-    // Right most key is "" or key is less than or equal to right most key. 
-    if (right_most_key.empty() || key.compare(right_most_key) <= 0) { 
+    // Right most key is "" or key is less than right most key. 
+    if (right_most_key.empty() || key.compare(right_most_key) < 0) { 
 
       Slice left_most_key(get_lmost_key(nodes));
 

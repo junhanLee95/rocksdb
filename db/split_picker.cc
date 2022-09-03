@@ -98,6 +98,8 @@ bool SplitPicker::NeedsSplit(const VersionStorageInfo* vstorage) {
   ROCKS_LOG_INFO(ioptions_.info_log,
                      "NeedsSplit: level1 file count : %d", (int)vstorage->LevelFiles(1).size());
 
+  assert(vstorage->LevelFiles(1).size() >=4);
+
   if (vstorage->LevelFiles(1).size() >= 4) {
     // For test, we assume the cf is splitted if l0 count >= 4,
     // instead of L0->L1 compaction
