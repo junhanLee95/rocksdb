@@ -517,6 +517,179 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
        {"Memtable search (key == median)", 2*kNumKeys},
        {"Memtable search (key > median)", 2*kNumKeys + 1}};
   
+  fprintf(stdout, "[Search in cfh\n");
+  for (auto p: GetTestKey) {
+    std::ostringstream ss;
+    ss << std::setw(8) << std::setfill('0') << p.second;
+    std::string key = ss.str();
+    std::string test_name = p.first; 
+    std::string value; 
+    Status s; 
+
+    s = db->Get(ReadOptions(), cfh, key, &value);
+   
+    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
+
+    if (s.IsNotFound())
+      fprintf(stdout, "Not Found...\n");
+    if (s.ok())
+      fprintf(stdout, "==> %s\n", value.c_str());
+  }
+  fprintf(stdout, "[Search in cfh1\n");
+  for (auto p: GetTestKey) {
+    std::ostringstream ss;
+    ss << std::setw(8) << std::setfill('0') << p.second;
+    std::string key = ss.str();
+    std::string test_name = p.first; 
+    std::string value; 
+    Status s; 
+
+    s = db->Get(ReadOptions(), cfh1, key, &value);
+   
+    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
+
+    if (s.IsNotFound())
+      fprintf(stdout, "Not Found...\n");
+    if (s.ok())
+      fprintf(stdout, "==> %s\n", value.c_str());
+  }
+  fprintf(stdout, "[Search in cfh2\n");
+  for (auto p: GetTestKey) {
+    std::ostringstream ss;
+    ss << std::setw(8) << std::setfill('0') << p.second;
+    std::string key = ss.str();
+    std::string test_name = p.first; 
+    std::string value; 
+    Status s; 
+
+    s = db->Get(ReadOptions(), cfh2, key, &value);
+   
+    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
+
+    if (s.IsNotFound())
+      fprintf(stdout, "Not Found...\n");
+    if (s.ok())
+      fprintf(stdout, "==> %s\n", value.c_str());
+  }
+ 
+  
+
+  //db->DropColumnFamily(cfh);
+  db->DropColumnFamily(cfh1);
+  db->DropColumnFamily(cfh2);
+  // db->DestroyColumnFamilyHandle(cfh); // Default column family automatically removed when the dbimpl is removed. 
+  delete db;
+}
+/*
+TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped2) {
+  // put even digits to the sstables
+  std::vector<std::string> keys;
+  for (uint64_t i = 0; i < kNumKeys; i++) {
+    keys.emplace_back(EncodeAsString(2*i));
+  }
+  std::cout << "[SplitTest] keys(even) [" << EncodeAsString(0) << ", " << EncodeAsString(2*(kNumKeys-1)) << "]"<<std::endl;
+  std::vector<std::string> keys2;
+  for (uint64_t i = kNumKeys; i < 2*kNumKeys; i++) {
+    keys2.emplace_back(EncodeAsString(2*i));
+  }
+  std::cout << "[SplitTest] keys2(even)  [" << EncodeAsString(2*kNumKeys) << ", " << EncodeAsString(2*(2*kNumKeys-1)) << "]"<<std::endl;
+  
+  std::vector<std::string> keys3;
+  for (uint64_t i = kNumKeys*2; i < 3*kNumKeys; i++) {
+    keys3.emplace_back(EncodeAsString(2*i));
+  }
+  std::cout << "[SplitTest] keys3(even)  [" << EncodeAsString(2*(kNumKeys*2)) << ", " << EncodeAsString(2*(3*kNumKeys-1)) << "]"<< std::endl;
+  std::vector<std::string> keys4;
+  for (uint64_t i = 3*kNumKeys; i < 4*kNumKeys; i++) {
+    keys4.emplace_back(EncodeAsString(2*i));
+  }
+  std::cout << "[SplitTest] keys4(even)  [" << EncodeAsString(2*(kNumKeys*3)) << ", " << EncodeAsString(2*(4*kNumKeys-1)) << "]"<<std::endl;
+  
+  // put odd digits to the sstables
+  std::vector<std::string> keys5;
+  for (uint64_t i = kNumKeys/2; i < 4*kNumKeys - kNumKeys/2; i++) {
+    keys5.emplace_back(EncodeAsString(2*i+1));
+  }
+  std::cout << "[SplitTest] keys5(odd)  [" << EncodeAsString(2*(kNumKeys/2)+1) << ", " << EncodeAsString(2*(4*kNumKeys- kNumKeys/2 - 1)+1) << "]"<<std::endl;
+
+  // Ingest the file into a db, to assign it a global sequence number.
+  Options options;
+  options.create_if_missing = true;
+
+  options.compaction_style = kCompactionStyleLevel;
+  options.num_levels = 1;
+  options.write_buffer_size = 256 << 20;
+  options.target_file_size_base = 1024*1024;
+  options.level0_file_num_compaction_trigger = 1;
+
+  std::string db_name = test::PerThreadDBPath("test_db2");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  // create column family
+  std::cout << "[SplitTest] create cf : cf0" << std::endl;
+  ColumnFamilyHandle* cfh = db->DefaultColumnFamily();
+
+
+  // Generate a SST file.
+  CreateMT(db, cfh, keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+  CreateMT(db, cfh, keys2);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+  CreateMT(db, cfh, keys3);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+  CreateMT(db, cfh, keys4);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+
+  CreateMT(db, cfh, keys5);
+
+  ASSERT_EQ(4, GetSstFileCount(db->GetName()));
+  
+  // Split
+  ColumnFamilyHandle *cfh1, *cfh2;
+  std::cout << "[SplitTest] split cf : cf0" << std::endl;
+  const char* median_key = (reinterpret_cast<ColumnFamilyHandleImpl*> (cfh))->cfd()->current()->storage_info()->GetMedianKey().ToString().c_str() ;
+  std::cout << "[SplitTest] median key : " << median_key << std::endl;
+
+  dbfull(db)->PrintLogicalColumnFamily();
+  db->SplitColumnFamily(ColumnFamilyOptions(), &cfh, &cfh1, &cfh2);
+ 
+  fprintf(stdout,"[SplitTest] cf00 : smallest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh1)->cfd()->GetSmallestKey().c_str());
+  fprintf(stdout,"[SplitTest] cf00 : largest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh1)->cfd()->GetLargestKey().c_str());
+ 
+  fprintf(stdout,"[SplitTest] cf01 : smallest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh2)->cfd()->GetSmallestKey().c_str());
+  fprintf(stdout,"[SplitTest] cf01 : largest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh2)->cfd()->GetLargestKey().c_str());
+
+
+  fprintf(stdout,"[SplitTest] wait split\n"); 
+  dbfull(db)->TEST_WaitForSplit();
+  fprintf(stdout,"[SplitTest] wait split done\n");
+  
+  for (auto c: static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd()->children_cfds) {
+    fprintf(stdout,"[childrencfd] %s : smallest key :  %s\n", c->GetName().c_str(), c->GetSmallestKey().c_str());
+    fprintf(stdout,"[childrencfd] %s : largest key : %s\n", c->GetName().c_str(), c->GetLargestKey().c_str());
+  }
+
+  std::string value1, value2, value3;
+  std::string value12, value22, value32;
+  std::string value13, value23, value33;
+
+  // pair : {TestName, key}
+  std::vector<std::pair<std::string, uint32_t>> GetTestKey 
+    = {{"SSTtable search (odd key < median)", kNumKeys/2 + 1},
+       {"SSTtable search (odd key > median)", 4*kNumKeys + kNumKeys/2 + 1},
+       {"Memtable search (odd key < median)", 4*kNumKeys - kNumKeys/2 + 1},
+       {"Memtable search (odd key > median)", 4*kNumKeys + 1},
+       {"SSTtable search (even key < median)", kNumKeys/4},
+       {"SSTtable search (even key > median)", 4*kNumKeys + kNumKeys/2},
+       {"Memtable search (even key < median)", 4*kNumKeys - 2},
+       {"Memtable search (even == median)", 4*kNumKeys},
+       {"Memtable search (even key > median)", 4*kNumKeys + 2}};
+  
   for (auto p: GetTestKey) {
     std::ostringstream ss;
     ss << std::setw(8) << std::setfill('0') << p.second;
@@ -535,55 +708,15 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
       fprintf(stdout, "==> %s\n", value.c_str());
   }
   
-  /*
-  std::string value1, value2, value3;
-  std::string value12, value22, value32;
-  std::string value13, value23, value33;
 
-  db->Get(ReadOptions(), cfh, "00001999", &value1);
-  db->Get(ReadOptions(), cfh1, "00001999",&value2);
-  db->Get(ReadOptions(), cfh2, "00001999", &value3);
-  db->Get(ReadOptions(), cfh, "00002001", &value12);
-  db->Get(ReadOptions(), cfh1, "00002001",&value22);
-  db->Get(ReadOptions(), cfh2, "00002001", &value32);
-  db->Get(ReadOptions(), cfh, "00002000", &value13);
-  db->Get(ReadOptions(), cfh1, "00002000",&value23);
-  db->Get(ReadOptions(), cfh2, "00002000", &value33);
-  
-  fprintf(stdout,"[SplitTest] cf0 : smallest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd()->GetSmallestKey().c_str());
-  fprintf(stdout,"[SplitTest] cf0 : largest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd()->GetLargestKey().c_str());
- 
-  fprintf(stdout,"[SplitTest] cf00 : smallest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh1)->cfd()->GetSmallestKey().c_str());
-  fprintf(stdout,"[SplitTest] cf00 : largest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh1)->cfd()->GetLargestKey().c_str());
- 
-  fprintf(stdout,"[SplitTest] cf01 : smallest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh2)->cfd()->GetSmallestKey().c_str());
-  fprintf(stdout,"[SplitTest] cf01 : largest key :  -> %s\n", static_cast<ColumnFamilyHandleImpl*>(cfh2)->cfd()->GetLargestKey().c_str());
-
-  fprintf(stdout,"[SplitTest] cf0 : key less than median(00001999) -> %s\n", value1.c_str());
-  fprintf(stdout,"[SplitTest] cf00 : key less than median(00001999) -> %s\n", value2.c_str());
-  fprintf(stdout,"[SplitTest] cf01 : key less than median(00001999) -> %s\n", value3.c_str());
-   
-  fprintf(stdout,"[SplitTest] cf0 : key greater than median(00002001) -> %s\n", value12.c_str());
-  fprintf(stdout,"[SplitTest] cf00 : key greater than median(00002001) -> %s\n", value22.c_str());
-  fprintf(stdout,"[SplitTest] cf01 : key greater than median(00002001) -> %s\n", value32.c_str());
-  
-  fprintf(stdout,"[SplitTest] cf0 : key median -> %s\n", value13.c_str());
-  fprintf(stdout,"[SplitTest] cf00 : key median -> %s\n", value23.c_str());
-  fprintf(stdout,"[SplitTest] cf01 : key median -> %s\n", value33.c_str());
- 
-  dbfull(db)->PrintLogicalColumnFamily();
-  auto lcf = dbfull(db)->GetLogicalColumnFamily();
-  for (auto l: lcf) {
-    fprintf(stdout, "[SplitTest] LCF[%d] %s => [%s, %s)\n", l->GetID(), l->GetName().c_str(), l->GetSmallestKey().c_str(), l->GetLargestKey().c_str());
-  }*/
 
   //db->DropColumnFamily(cfh);
-  db->DestroyColumnFamilyHandle(cfh1);
-  db->DestroyColumnFamilyHandle(cfh2);
+  db->DropColumnFamily(cfh1);
+  db->DropColumnFamily(cfh2);
   // db->DestroyColumnFamilyHandle(cfh); // Default column family automatically removed when the dbimpl is removed. 
 
   delete db;
-}
+}*/
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

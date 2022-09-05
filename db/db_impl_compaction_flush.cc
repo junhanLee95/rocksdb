@@ -2074,6 +2074,13 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
 }
 
 void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "SchedulePendingSplit: is queued? : %d\n",
+                     cfd->queued_for_split());
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "SchedulePendingSplit: need split? : %d\n",
+                     cfd->NeedsSplit());
+
   if (!cfd->queued_for_split() && cfd->NeedsSplit()) {
     AddToSplitQueue(cfd);
     ++unscheduled_splits_;
