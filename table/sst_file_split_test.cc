@@ -451,16 +451,6 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   // create column family
   std::cout << "[SplitTest] create cf : cf0" << std::endl;
   ColumnFamilyHandle* cfh = db->DefaultColumnFamily();
-  /*std::string cf_name = "cf0";
-
-  std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
-  cfo->compaction_style = kCompactionStyleLevel;
-  cfo->num_levels = 2;
-  cfo->write_buffer_size = 64 << 20; // 64 MB
-  cfo->target_file_size_base = 1024*1024; // 1MB
-  cfo->level0_file_num_compaction_trigger = 4; 
-
-  db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);*/
 
   // Generate a SST file.
   CreateMT(db, cfh, keys);
@@ -511,8 +501,8 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
 
   // pair : {TestName, key}
   std::vector<std::pair<std::string, uint32_t>> GetTestKey 
-    = {{"SSTtable search (key < median)", kNumKeys/4},
-       {"SSTtable search (key > median)", 4*kNumKeys - kNumKeys/4},
+    = {{"SSTtable search (key < median)", kNumKeys/2},
+       {"SSTtable search (key > median)", 4*kNumKeys - kNumKeys/2 - 1},
        {"Memtable search (key < median)", 2*kNumKeys - 1},
        {"Memtable search (key == median)", 2*kNumKeys},
        {"Memtable search (key > median)", 2*kNumKeys + 1}};
@@ -535,52 +525,14 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
     if (s.ok())
       fprintf(stdout, "==> %s\n", value.c_str());
   }
-  fprintf(stdout, "[Search in cfh1\n");
-  for (auto p: GetTestKey) {
-    std::ostringstream ss;
-    ss << std::setw(8) << std::setfill('0') << p.second;
-    std::string key = ss.str();
-    std::string test_name = p.first; 
-    std::string value; 
-    Status s; 
 
-    s = db->Get(ReadOptions(), cfh1, key, &value);
-   
-    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
-
-    if (s.IsNotFound())
-      fprintf(stdout, "Not Found...\n");
-    if (s.ok())
-      fprintf(stdout, "==> %s\n", value.c_str());
-  }
-  fprintf(stdout, "[Search in cfh2\n");
-  for (auto p: GetTestKey) {
-    std::ostringstream ss;
-    ss << std::setw(8) << std::setfill('0') << p.second;
-    std::string key = ss.str();
-    std::string test_name = p.first; 
-    std::string value; 
-    Status s; 
-
-    s = db->Get(ReadOptions(), cfh2, key, &value);
-   
-    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
-
-    if (s.IsNotFound())
-      fprintf(stdout, "Not Found...\n");
-    if (s.ok())
-      fprintf(stdout, "==> %s\n", value.c_str());
-  }
- 
-  
-
-  //db->DropColumnFamily(cfh);
   db->DropColumnFamily(cfh1);
   db->DropColumnFamily(cfh2);
-  // db->DestroyColumnFamilyHandle(cfh); // Default column family automatically removed when the dbimpl is removed. 
   delete db;
 }
-/*
+
+
+
 TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped2) {
   // put even digits to the sstables
   std::vector<std::string> keys;
@@ -680,15 +632,15 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped2) {
 
   // pair : {TestName, key}
   std::vector<std::pair<std::string, uint32_t>> GetTestKey 
-    = {{"SSTtable search (odd key < median)", kNumKeys/2 + 1},
-       {"SSTtable search (odd key > median)", 4*kNumKeys + kNumKeys/2 + 1},
+    = {{"Memtable search (odd key < median)", kNumKeys + 1},
+       {"Memtable search (odd key > median)", 4*kNumKeys + kNumKeys/2 + 1},
        {"Memtable search (odd key < median)", 4*kNumKeys - kNumKeys/2 + 1},
        {"Memtable search (odd key > median)", 4*kNumKeys + 1},
-       {"SSTtable search (even key < median)", kNumKeys/4},
-       {"SSTtable search (even key > median)", 4*kNumKeys + kNumKeys/2},
-       {"Memtable search (even key < median)", 4*kNumKeys - 2},
-       {"Memtable search (even == median)", 4*kNumKeys},
-       {"Memtable search (even key > median)", 4*kNumKeys + 2}};
+       {"SSTable search (even key < median)", kNumKeys/4},
+       {"SSTable search (even key > median)", 4*kNumKeys + kNumKeys/2},
+       {"SSTable search (even key < median)", 4*kNumKeys - 2},
+       {"SSTable search (even == median)", 4*kNumKeys},
+       {"SSTable search (even key > median)", 4*kNumKeys + 2}};
   
   for (auto p: GetTestKey) {
     std::ostringstream ss;
@@ -716,7 +668,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped2) {
   // db->DestroyColumnFamilyHandle(cfh); // Default column family automatically removed when the dbimpl is removed. 
 
   delete db;
-}*/
+}
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
