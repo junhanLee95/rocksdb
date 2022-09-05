@@ -817,6 +817,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
     // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
     // and 0.6MB instead of 1MB and 0.2MB)
     bool output_file_ended = false;
+    bool write_left_ended = false;
     Status input_status;
     if (sub_split->compaction->output_level() != 0 &&
         sub_split->current_output_file_size >=
@@ -825,6 +826,10 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       // status before advancing will be given to FinishSplitOutputFile().
       input_status = input->status();
       output_file_ended = true;
+      ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "SplitJob::ProcessKeyValueSplit output_file_ended(1)"
+      );
     }
     c_iter->Next();
     if (!output_file_ended && c_iter->Valid() &&
@@ -837,11 +842,19 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       // FinishSplitOutputFile().
       input_status = input->status();
       output_file_ended = true;
+      ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "SplitJob::ProcessKeyValueSplit output_file_ended(2)"
+      );
     }
     if (sub_split->write_left && cfd->user_comparator()->Compare(c_iter->user_key(), sub_split->median_key) >=0) {
       // (3) if key is greater than the median, terminates the file and switch to the next column family.
-      sub_split->write_left = false;
+      write_left_ended = true;
       output_file_ended = true;
+      ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "SplitJob::ProcessKeyValueSplit output_file_ended(3)"
+      );
     }
 
     if (output_file_ended) {
@@ -855,6 +868,9 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
                                      &range_del_out_stats, next_key);
       RecordDroppedKeys(range_del_out_stats,
                         &sub_split->split_job_stats);
+      if (write_left_ended) {
+        sub_split->write_left = false;
+      }
     }
   }
 
@@ -987,6 +1003,12 @@ Status SplitJob::FinishSplitOutputFile(
 
   ColumnFamilyData* cfd = sub_split->write_left ? sub_split->cfd_out0 : sub_split->cfd_out1;
   const Comparator* ucmp = cfd->user_comparator();
+  ROCKS_LOG_INFO(
+      db_options_.info_log,
+      "SplitJob::FinishSplitOutputFile write_left : %d\n",
+      sub_split->write_left
+  );
+
 
   // Check for iterator errors
   Status s = input_status;
