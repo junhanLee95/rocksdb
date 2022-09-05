@@ -1431,6 +1431,11 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   auto cfs = cfd->GetColumnFamilySet();
   cfd = cfs->GetLogicalColumnFamily(key);
 
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "GetImpl key : %s (ID %d)",
+                  key.ToString().c_str(),
+                  cfd->GetID());
+
   if (tracer_) {
     // TODO: This mutex should be removed later, to improve performance when
     // tracing is enabled.
@@ -1442,6 +1447,9 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
 
   // Acquire SuperVersion
   SuperVersion* sv = GetAndRefSuperVersion(cfd);
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "GetImpl sv current : %s",
+                 sv->current->DebugString(true, true).c_str());
 
   TEST_SYNC_POINT("DBImpl::GetImpl:1");
   TEST_SYNC_POINT("DBImpl::GetImpl:2");
@@ -1500,6 +1508,10 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       done = true;
       pinnable_val->PinSelf();
       RecordTick(stats_, MEMTABLE_HIT);
+
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "GetImpl: mem");
+
     } else if ((s.ok() || s.IsMergeInProgress()) &&
                sv->imm->Get(lkey, pinnable_val->GetSelf(), &s, &merge_context,
                             &max_covering_tombstone_seq, read_options, callback,
@@ -1507,6 +1519,10 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       done = true;
       pinnable_val->PinSelf();
       RecordTick(stats_, MEMTABLE_HIT);
+
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "GetImpl: imm");
+
     }
     if (!done && !s.ok() && !s.IsMergeInProgress()) {
       ReturnAndCleanupSuperVersion(cfd, sv);
@@ -1519,6 +1535,9 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
                      &max_covering_tombstone_seq, value_found, nullptr, nullptr,
                      callback, is_blob_index);
     RecordTick(stats_, MEMTABLE_MISS);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: sst");
+
   }
 
   {

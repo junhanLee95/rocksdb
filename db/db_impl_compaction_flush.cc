@@ -2656,6 +2656,12 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                          &job_context->superversion_contexts[0],
                                          *c->mutable_cf_options());
+      InstallSuperVersionAndScheduleWork(c->column_family_data()->children_cfds[0],
+                                         &job_context->superversion_contexts[0],
+                                         *c->mutable_cf_options());
+      InstallSuperVersionAndScheduleWork(c->column_family_data()->children_cfds[1],
+                                         &job_context->superversion_contexts[0],
+                                         *c->mutable_cf_options());
     }
     *made_progress = true;
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:AfterSplit",
