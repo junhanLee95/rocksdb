@@ -489,6 +489,8 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   fprintf(stdout,"[SplitTest] wait split\n"); 
   dbfull(db)->TEST_WaitForSplit();
   fprintf(stdout,"[SplitTest] wait split done\n");
+
+  dbfull(db)->PrintLogicalColumnFamily();
   
   for (auto c: static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd()->children_cfds) {
     fprintf(stdout,"[childrencfd] %s : smallest key :  %s\n", c->GetName().c_str(), c->GetSmallestKey().c_str());
@@ -621,6 +623,8 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped2) {
   dbfull(db)->TEST_WaitForSplit();
   fprintf(stdout,"[SplitTest] wait split done\n");
   
+  dbfull(db)->PrintLogicalColumnFamily();
+
   for (auto c: static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd()->children_cfds) {
     fprintf(stdout,"[childrencfd] %s : smallest key :  %s\n", c->GetName().c_str(), c->GetSmallestKey().c_str());
     fprintf(stdout,"[childrencfd] %s : largest key : %s\n", c->GetName().c_str(), c->GetLargestKey().c_str());
