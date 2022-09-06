@@ -74,7 +74,7 @@ void PartitionTreeNode::Print(
 PartitionTree::PartitionTree( 
     ColumnFamilyData* column_family_data) : root_(column_family_data) {
 
-  fprintf(stdout, "Insert New CFD %d\n", column_family_data->GetID());
+  fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
   partition_nodes_.insert({column_family_data->GetID(), &root_}); 
 }
@@ -83,7 +83,7 @@ void PartitionTree::SetRootColumnFamily (
     ColumnFamilyData* column_family_data) {
   root_.SetColumnFamily(column_family_data);
 
-  fprintf(stdout, "Insert New CFD %d\n", column_family_data->GetID());
+  fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
   partition_nodes_.insert(
     std::make_pair<uint32_t, PartitionTreeNode*>(column_family_data->GetID(), &root_));
@@ -106,7 +106,7 @@ void PartitionTree::InsertSplittedColumnFamily (
   for (auto new_cfd: new_cfds) {
     auto node = new PartitionTreeNode(new_cfd);
 
-    fprintf(stdout, "Insert New CFD[%d] %s\n", new_cfd->GetID(), new_cfd->GetName().c_str());
+    fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s\n", new_cfd->GetID(), new_cfd->GetName().c_str());
 
     if (push_back) {
       base_node->lower_level_nodes_.push_back(node);

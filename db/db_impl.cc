@@ -2431,10 +2431,8 @@ Status DBImpl::DropColumnFamilyImpl(ColumnFamilyHandle* column_family) {
       // we drop column family from a single write thread
       WriteThread::Writer w;
       write_thread_.EnterUnbatched(&w, &mutex_);
-      fprintf(stdout, "Drop Log[1]\n");
       s = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(), &edit,
                                  &mutex_);
-      fprintf(stdout, "Drop Log[2]\n");
       write_thread_.ExitUnbatched(&w);
     }
     if (s.ok()) {
