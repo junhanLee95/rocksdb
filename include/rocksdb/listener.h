@@ -90,7 +90,7 @@ enum class SplitReason : int {
   // a level 0 compaction in internal stats.
   kFlush,
   // Compaction caused by external sst file ingestion
-  kExternalSstIngestion,
+  kCompactionEfficiency,
   // total number of compaction reasons, new reasons must be added above this.
   kNumOfReasons,
 };

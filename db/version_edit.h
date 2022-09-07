@@ -277,12 +277,21 @@ class VersionEdit {
     return is_column_family_add_ || is_column_family_drop_ || is_column_family_split_;
   }
 
+  bool IsColumnFamilyAdd() {
+    return is_column_family_add_;
+  }
+
   bool IsColumnFamilySplit() {
     return is_column_family_split_;
   }
 
   void SetColumnFamily(uint32_t column_family_id) {
     column_family_ = column_family_id;
+  }
+
+  void SetColumnFamilyKeyRange(std::string lower, std::string upper) {
+    smallest_user_key_ = lower;
+    largest_user_key_ = upper;
   }
 
   // set column family ID by calling SetColumnFamily()
@@ -372,6 +381,8 @@ class VersionEdit {
   // If it's column family split,
   // it also includes column family name.
   bool is_column_family_split_;
+  std::string smallest_user_key_;
+  std::string largest_user_key_;
 
   std::string column_family_name_;
 

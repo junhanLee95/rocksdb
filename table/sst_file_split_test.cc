@@ -354,6 +354,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultiple) {
   delete db;
 }
 */
+
 TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   std::vector<std::string> keys;
   for (uint64_t i = 0; i < kNumKeys; i++) {
@@ -401,6 +402,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
 
   delete db;
 }
+
 /*
 TEST_F(SstFileSplitTest, SplitColumnFamilyMultipleOverlapped) {
   std::vector<std::string> keys;

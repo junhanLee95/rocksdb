@@ -34,13 +34,20 @@ class SplitPicker {
               const MutableCFOptions& mutable_cf_options);
   virtual ~SplitPicker();
 
+  bool SetupL0FilesIfNeeded(CompactionInputFiles& l1_files,
+                            CompactionInputFiles& l0_files);
+                            
   // Pick level and inputs for a new split.
   // Returns nullptr if there is no split to be done.
   // Otherwise returns a pointer to a heap-allocated object that
   // describes the split.  Caller should delete the result.
   Compaction* PickSplit(const std::string& cf_name,
                    VersionStorageInfo* vstorage,
+                   std::vector<FileMetaData*> metas,
                    LogBuffer* log_buffer);
+
+
+  bool HaveOverlappingKeyRanges(FileMetaData* a, FileMetaData* b);
 
   Compaction* GetSplit(VersionStorageInfo* vstorage);
 

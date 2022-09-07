@@ -291,11 +291,25 @@ void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete) {
   const auto& memlist = current_->memlist_;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
-    num_flush_not_started_--;
-    if (num_flush_not_started_ == 0) {
-        imm_flush_needed.store(false, std::memory_order_release);
+    if (m->split_in_progress_) {
+      num_flush_not_started_--;
+      if (num_flush_not_started_ == 0) {
+          imm_flush_needed.store(false, std::memory_order_release);
       }
-    current_->Remove(m, to_delete);
+      current_->SplitRemove(m, to_delete);
+    }
+  }
+}
+
+// Returns the memtables that need to be flushed.
+void MemTableList::SetSplitInProgress(void) {
+  const auto& memlist = current_->memlist_;
+  for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
+    MemTable* m = *it;
+    if (!m->flush_in_progress_) {
+      // we don't split memtables which has been flushing.
+      m->split_in_progress = true;
+    }
   }
 }
 

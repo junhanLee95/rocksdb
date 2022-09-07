@@ -215,6 +215,12 @@ class MemTableList {
   // memtables are guaranteed to be in the ascending order of created time.
   void ClearSplittedMemtables(autovector<MemTable*>* to_delete);
 
+  // all split_in_progress_ flag of the memtables that have to be splitted
+  // set to be true.
+  // We avoid splitting memtables which is not flushing.
+  // This function is called from SplitMemtable
+  void SetSplitInProgress(void);
+
   // Returns the earliest memtables that needs to be flushed. The returned
   // memtables are guaranteed to be in the ascending order of created time.
   void PickMemtablesToFlush(const uint64_t* max_memtable_id,

@@ -523,6 +523,13 @@ class DBImpl : public DB {
   // being deleted.
   uint64_t MinObsoleteSstNumberToKeep();
 
+  // Returns the list of to-split files in the version set
+  void FindSplitFiles(JobContext* job_context, bool valid);
+
+  // Split Column Family From sst split files
+  // This is called from BackgroundCallCompaction()
+  Status SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_split_files);
+
   // Returns the list of live files in 'live' and the list
   // of all files in the filesystem in 'candidate_files'.
   // If force == false and the last call was less than
@@ -958,7 +965,6 @@ class DBImpl : public DB {
                                    ColumnFamilyHandle** handle_out_0,
                                    ColumnFamilyHandle** handle_out_1);
 
-
   Status DropColumnFamilyImpl(ColumnFamilyHandle* column_family);
 
   // Delete any unneeded files and stale in-memory entries.
@@ -1078,6 +1084,8 @@ class DBImpl : public DB {
 
   Status SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, ColumnFamilyData* cfd_out1);
 
+  Status SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>& to_cfds);
+
   void SelectColumnFamiliesForAtomicFlush(autovector<ColumnFamilyData*>* cfds);
 
   // Force current memtable contents to be flushed.
@@ -1178,8 +1186,18 @@ class DBImpl : public DB {
   // column families in this request, this flush is considered complete.
   typedef std::vector<std::pair<ColumnFamilyData*, uint64_t>> FlushRequest;
 
+  // A split request specifies the column families to split as well as the
+  // file metadata to specify the key range.
+  // Note that the file must exist in Level 0 and not compacting.
+  // After completing the work for all
+  // column families in this request, this split is considered complete.
+  typedef std::vector<std::pair<ColumnFamilyData*, std::vector<FileMetaData*>>> SplitRequest;
+
   void GenerateFlushRequest(const autovector<ColumnFamilyData*>& cfds,
                             FlushRequest* req);
+
+  void GenerateSplitRequest(ColumnFamilyData* cfd, autovector<FileMetaData*> metas,
+                            SplitRequest* req);
 
   void SchedulePendingFlush(const FlushRequest& req, FlushReason flush_reason);
 
@@ -1250,9 +1268,9 @@ class DBImpl : public DB {
 
   // helper functions for adding and removing from flush & compaction queues
   void AddToCompactionQueue(ColumnFamilyData* cfd);
-  void AddToSplitQueue(ColumnFamilyData* cfd);
+  void AddToSplitQueue(SplitRequest* req);
   ColumnFamilyData* PopFirstFromCompactionQueue();
-  ColumnFamilyData* PopFirstFromSplitQueue();
+  SplitRequest PopFirstFromSplitQueue();
   FlushRequest PopFirstFromFlushQueue();
 
   // Pick the first unthrottled compaction with task token from queue.
@@ -1495,7 +1513,7 @@ class DBImpl : public DB {
   std::deque<ColumnFamilyData*> compaction_queue_;
 
   // TODO: Maybe I should add split_queue_
-  std::deque<ColumnFamilyData*> split_queue_;
+  std::deque<SplitRequest> split_queue_;
 
   // A queue to store filenames of the files to be purged
   std::deque<PurgeFileInfo> purge_queue_;

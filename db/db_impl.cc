@@ -1999,9 +1999,6 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
     s = CheckConcurrentWritesSupported(cf_options);
   }
   if (s.ok()) {
-    s = CheckConcurrentWritesSupported(cf_options);
-  }
-  if (s.ok()) {
     s = CheckCFPathsSupported(initial_db_options_, cf_options);
   }
   if (s.ok()) {

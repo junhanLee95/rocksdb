@@ -2055,6 +2055,10 @@ void VersionStorageInfo::ComputeBottommostFilesMarkedForCompaction() {
   }
 }
 
+void VersionStorageInfo::AddToFilesMarkedForSplit(FileMetaData* meta) {
+  files_marked_for_split_.push_back(meta);
+}
+
 void Version::Ref() {
   ++refs_;
 }
@@ -3171,15 +3175,32 @@ Status VersionSet::ProcessManifestWrites(
       //Slice median_key = cfd->current()->storage_info()->GetMedianKey();
       //const Slice median_key_copy = Slice(median_key.data(), median_key.size());
       //fprintf(stderr, "LogAndAplly: median key_copy : %s\n", median_key_copy.ToString().c_str());
-      std::string median_key = cfd->current()->storage_info()->GetMedianKey().ToString();
-      auto cfd_out_0 = CreateColumnFamily(*new_cf_options, writers[1].edit_list.front(), cfd->GetSmallestKey(), median_key);
+      //std::string median_key = cfd->current()->storage_info()->GetMedianKey().ToString();
+      /*auto cfd_out_0 = CreateColumnFamily(*new_cf_options, writers[1].edit_list.front(), cfd->GetSmallestKey(), median_key);
       auto cfd_out_1 = CreateColumnFamily(*new_cf_options, writers[2].edit_list.front(), median_key, cfd->GetLargestKey());
 
       // update column family tree
       cfd->children_cfds.push_back(cfd_out_0);
       cfd->children_cfds.push_back(cfd_out_1);
       // update logical column family data
-      column_family_set_->SplitLogicalColumnFamily(cfd, cfd_out_0, cfd_out_1);
+      column_family_set_->SplitLogicalColumnFamily(cfd, cfd_out_0, cfd_out_1);*/
+      bool first_writer = true;
+      std::vector<ColumnFamilyData*> cfd_outs;
+      for(auto writer: writers) {
+        if (first_writer) {
+          first_writer = false;
+          continue;
+        }
+        else {
+          auto cfd_out = CreateColumnFamily(*new_cf_options, writer.edit_list.front(), writer.edit_list.front());
+          cfd_outs.push_back(cfd_out);
+          cfd->children_cfds.push_back(cfd_out);
+        }
+      }
+
+      // update logical column family data
+      column_family_set_->SplitLogicalColumnFamily(cfd, cfd_outs);
+
     } else {
       // Each version in versions corresponds to a column family.
       // For each column family, update its log number indicating that logs
@@ -3305,12 +3326,6 @@ Status VersionSet::LogAndApply(
     else {
       // SplitColumnFamily
       is_split_column_family = true;
-      assert(edit_lists.size() == 3); // {split, create, create}
-      for (const auto& edit_list : edit_lists) {
-        for (const auto& edit : edit_list) {
-          assert(edit->IsColumnFamilyManipulation());
-        }
-      }
     }
 #endif /* ! NDEBUG */
   }
@@ -3329,11 +3344,19 @@ Status VersionSet::LogAndApply(
   }
   if (num_cfds == 1 && column_family_datas[0] != nullptr && is_split_column_family) {
     // SplitColumnFamily
-    assert(edit_lists.size() == 3 && edit_lists[0].size() == 1 &&
-           edit_lists[1].size() == 1 && edit_lists[2].size() == 1);
-    assert(edit_lists[0][0]->is_column_family_split_);
-    assert(edit_lists[1][0]->is_column_family_add_);
-    assert(edit_lists[2][0]->is_column_family_add_);
+    bool first_edit = true;
+    for (const auto& edit_list : edit_lists) {
+      assert(edit_list.size()==1);
+      for (const auto& edit : edit_list) {
+        if (first_edit) {
+          assert(edit_list[0]->is_column_family_split_);
+          first_edit = false;
+        }
+        else{
+          assert(edit_list[0]->is_column_family_add_);
+        }
+      }
+    }
     assert(new_cf_options != nullptr);
   }
 
@@ -3349,15 +3372,14 @@ Status VersionSet::LogAndApply(
       manifest_writers_.push_back(&writers[i]);
     }
   }
-  else{
-    // SplitColumnFamily
+  else{ // SplitColumnFamily
     writers.emplace_back(mu, column_family_datas[0],
                          *mutable_cf_options_list[0], edit_lists[0]);
     manifest_writers_.push_back(&writers[0]);
-    writers.emplace_back(mu, nullptr,
-                         *mutable_cf_options_list[1], edit_lists[1]);
-    writers.emplace_back(mu, nullptr,
-                         *mutable_cf_options_list[2], edit_lists[2]);
+    for (size_t i = 1 ; i < edit_lists.size(); i++) {
+      writers.emplace_back(mu, nullptr,
+                           *mutable_cf_options_list[i], edit_lists[i]);
+    }
   }
   assert(!writers.empty());
   ManifestWriter& first_writer = writers.front();
@@ -4622,6 +4644,11 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   }
 }
 
+void VersionSet::GetSplitFiles(std::vector<SplitFileInfo>* files) {
+  files = split_files_;
+  split_files_.clear();
+}
+
 void VersionSet::GetObsoleteFiles(std::vector<ObsoleteFileInfo>* files,
                                   std::vector<std::string>* manifest_filenames,
                                   uint64_t min_pending_output) {
@@ -4648,39 +4675,16 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
   // Ref() dummy version once so that later we can call Unref() to delete it
   // by avoiding calling "delete" explicitly (~Version is private)
   dummy_versions->Ref();
-  auto new_cfd = column_family_set_->CreateColumnFamily(
-      edit->column_family_name_, edit->column_family_, dummy_versions,
-      cf_options);
 
-  Version* v = new Version(new_cfd, this, env_options_,
-                           *new_cfd->GetLatestMutableCFOptions(),
-                           current_version_number_++);
-
-  // Fill level target base information.
-  v->storage_info()->CalculateBaseBytes(*new_cfd->ioptions(),
-                                        *new_cfd->GetLatestMutableCFOptions());
-  AppendVersion(new_cfd, v);
-  // GetLatestMutableCFOptions() is safe here without mutex since the
-  // cfd is not available to client
-  new_cfd->CreateNewMemtable(*new_cfd->GetLatestMutableCFOptions(),
-                             LastSequence());
-  new_cfd->SetLogNumber(edit->log_number_);
-  return new_cfd;
-}
-
-ColumnFamilyData* VersionSet::CreateColumnFamily(
-    const ColumnFamilyOptions& cf_options, VersionEdit* edit, std::string smallest, std::string largest) {
-  assert(edit->is_column_family_add_);
-
-  MutableCFOptions dummy_cf_options;
-  Version* dummy_versions =
-      new Version(nullptr, this, env_options_, dummy_cf_options);
-  // Ref() dummy version once so that later we can call Unref() to delete it
-  // by avoiding calling "delete" explicitly (~Version is private)
-  dummy_versions->Ref();
-  auto new_cfd = column_family_set_->CreateColumnFamily(
-      edit->column_family_name_, edit->column_family_, dummy_versions,
-      cf_options, smallest, largest);
+  if (edit->smallest_user_key_.empty() || edit->largest_user_key_.empty() ) {
+    auto new_cfd = column_family_set_->CreateColumnFamily(
+        edit->column_family_name_, edit->column_family_, dummy_versions,
+        cf_options);
+  } else {
+    auto new_cfd = column_family_set_->CreateColumnFamily(
+        edit->column_family_name_, edit->column_family_, dummy_versions,
+        cf_options, edit->smallest_user_key_, edit->largest_user_key_);
+  }
 
   Version* v = new Version(new_cfd, this, env_options_,
                            *new_cfd->GetLatestMutableCFOptions(),

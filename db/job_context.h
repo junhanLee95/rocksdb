@@ -118,6 +118,10 @@ struct JobContext {
            sv_have_sth;
   }
 
+  inline bool HaveSomethingToSplit() const {
+    return sst_split_files.size();
+  }
+
   // Structure to store information for candidate files to delete.
   struct CandidateFileInfo {
     std::string file_name;
@@ -144,6 +148,9 @@ struct JobContext {
 
   // a list of sst files that we need to delete
   std::vector<ObsoleteFileInfo> sst_delete_files;
+
+  // a list of sst files that we need to split
+  std::vector<SplitFileInfo> sst_split_files;
 
   // a list of log files that we need to delete
   std::vector<uint64_t> log_delete_files;

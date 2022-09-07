@@ -1332,15 +1332,28 @@ Status CompactionJob::FinishCompactionOutputFile(
 
   if (s.ok() && (current_entries > 0 || tp.num_range_deletions > 0)) {
     // Output to event logger and fire events.
+    float efficiency = (float)current_entries/current_input_entries;
     sub_compact->current_output()->table_properties =
         std::make_shared<TableProperties>(tp);
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s",
-                   cfd->GetName().c_str(), job_id_, output_number,
+                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s", cfd->GetName().c_str(), job_id_, output_number,
                    current_entries, current_input_entries,
-                   (float)current_entries/current_input_entries, current_bytes,
+                   efficiency, current_bytes,
                    meta->marked_for_compaction ? " (need compaction)" : "");
+
+    // Generate split request if necessary
+    if (efficiency < 0.3 && compact_->compaction->output_level() == 1) {
+      ROCKS_LOG_INFO(db_options_.info_log,
+                   "[%s] [JOB %d] Split table #%" PRIu64 "", cfd->GetName().c_str(), job_id_, output_number);
+
+      versions_->split_files_.push_back(
+          SplitFileInfo(meta, cfd));
+      /*
+      auto vstorage = cfd->current()->storage_info();
+      vstorage->AddToFilesMarkedForSplit(meta);*/
+    }
+
   }
   std::string fname;
   FileDescriptor output_fd;
