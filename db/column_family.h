@@ -275,7 +275,7 @@ class ColumnFamilyData {
   bool NeedsSplit() const;
 
   // REQUIRES: DB mutex held
-  Compaction* PickSplit(
+  Compaction* PickSplit( std::vector<FileMetaData*> metas,
                    LogBuffer* log_buffer);
 
   // thread-safe
@@ -359,6 +359,7 @@ class ColumnFamilyData {
   void set_queued_for_flush(bool value) { queued_for_flush_ = value; }
   void set_queued_for_compaction(bool value) { queued_for_compaction_ = value; }
   void set_queued_for_split(bool value) { queued_for_split_ = value; }
+  void set_need_split(bool value) { need_split_ = value; }
   bool queued_for_flush() { return queued_for_flush_; }
   bool queued_for_compaction() { return queued_for_compaction_; }
   bool queued_for_split() { return queued_for_split_; }
@@ -497,6 +498,10 @@ class ColumnFamilyData {
   // DBImpl::split_queue_
   bool queued_for_split_;
 
+  // If true --> this ColumnFamily requires Split
+  // If NeedsSplit is called, it returns true
+  bool need_split_;
+
   uint64_t prev_compaction_needed_bytes_;
 
   // if the database was opened with 2pc enabled
@@ -574,7 +579,7 @@ class ColumnFamilySet {
   size_t NumberOfColumnFamilies() const;
 
   bool AddLogicalColumnFamily(ColumnFamilyData* c_in); // return true if successfully update lcf vector 
-  bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFamilyData* c_out_0, ColumnFamilyData* c_out_1); // return true if successfully update lcf vector 
+  bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs); // return true if successfully update lcf vector 
   void PrintLogicalColumnFamily(void);
   std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
 

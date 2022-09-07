@@ -36,35 +36,80 @@ SplitPicker::SplitPicker(const ImmutableCFOptions& ioptions,
 
 SplitPicker::~SplitPicker() {}
 
+bool SplitPicker::SetupL0FilesIfNeeded(std::vector<FileMetaData*> l1_files, CompactionInputFiles& l0_files) {
+  bool exists = false;
+  for (FileMetadata* f: vstorage->LevelFiles(0)) {
+    for (FileMetadata* f1: l1_files) {
+      if (HaveOverlappingKeyRanges(f, f1)) {
+        l0_files.push_back(f);
+        exists = true;
+        break;
+      }
+    }
+  }
+  return exists;
+}
+
 Compaction* SplitPicker::PickSplit(const std::string& cf_name,
                               VersionStorageInfo* vstorage,
+                              std::vector<FileMetaData*> metas,
                               LogBuffer* log_buffer) {
-
+  /*
   CompactionInputFiles input_files;
-  for (int i=0; i< NumberLevels(); i++) {
-    const std::vector<FileMetaData*>& level_files =
-        vstorage->LevelFiles(i);
-    input_files.level = i;
-    int c = 0;
-    for (auto f: level_files) {
-      assert(!f->being_compacted);
-      input_files.files.push_back(f);
-      c++;
-    }
-
-    if (!input_files.empty()){
-      ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit input_files[%d] : %d", i, c);
-      inputs_.push_back(input_files); 
-    }
-
-    input_files.clear();
+  int cnt = 0;
+  for(auto m: metas) {
+    assert(!m->being_compacted);
+    input_files.level = 0;
+    input_files.files.push_back(m);
+    cnt ++;
   }
+  
+  if (!input_files.empty()){
+    ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit input_files[%d] : %d", 1, cnt);
+    inputs_.push_back(input_files); 
+  }*/
+
+  CompactionInputFiles l0_files;
+  if (SetupL0FilesIfNeeded(metas, l0_files)) {
+    ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit another inputs[%d] : %d",
+                     0, l0_files.size());
+    inputs_.push_back(l0_files);
+  }
+
 
   Compaction* c = GetSplit(vstorage);
   ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit %s", cf_name.c_str());
   TEST_SYNC_POINT_CALLBACK("SplitPicker::PickSplit:Return", c);
 
   return c;
+}
+
+
+bool SplitPicker::HaveOverlappingKeyRanges(FileMetaData* a, FileMetaData* b) {
+  Slice s_a = a->smallest.user_key();
+  Slice l_a = a->largest.user_key();
+  Slice s_b = b->smallest.user_key();
+  Slice l_b = b->largest.user_key();
+
+  if (s_a.compare(s_b) >= 0) {
+    if (s_a.compare(l_b) <= 0) {
+      // s_b <= s_a <= l_b
+      return true;
+    }
+  } else if (l_a.compare(s_b) >= 0) {
+      // s_a <= s_b <= l_a
+    return true;
+  }
+  if (l_a.compare(l_b) <= 0) {
+    if (l_a.compare(s_b) >= 0) {
+      // s_b <= l_a <= l_b
+      return true;
+    }
+  } else if (s_a.compare(l_b) <= 0) {
+    // s_a <= l_b <= l_a
+    return true;
+  }
+  return false;
 }
 
 Compaction* SplitPicker::GetSplit(VersionStorageInfo* vstorage) {
@@ -85,13 +130,10 @@ Compaction* SplitPicker::GetSplit(VersionStorageInfo* vstorage) {
 }
 
 bool SplitPicker::NeedsSplit(const VersionStorageInfo* vstorage) {
-  if (!vstorage->FilesMarkedForSplit().empty()) { // already split in progress
-    ROCKS_LOG_INFO(ioptions_.info_log,
-                     "NeedsSplit: already split in progress");
-
-
-    return false;
-  }
+  ROCKS_LOG_INFO(ioptions_.info_log,
+                 "NeedsSplit: %d files marked", vstorage->FilesMarkedForSplit().size());
+  return vstorage->FilesMarkedForSplit().size() > 0;
+  /*
   assert(vstorage->num_levels()==2);
   ROCKS_LOG_INFO(ioptions_.info_log,
                      "NeedsSplit: level0 file count : %d", (int)vstorage->LevelFiles(0).size());
@@ -104,6 +146,7 @@ bool SplitPicker::NeedsSplit(const VersionStorageInfo* vstorage) {
     return true;
   }
   return false;
+  */
 }
 
 /*

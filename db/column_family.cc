@@ -1021,9 +1021,10 @@ bool ColumnFamilyData::NeedsSplit() const {
 }
 
 Compaction* ColumnFamilyData::PickSplit(
+     std::vector<FileMetaData*> metas,
      LogBuffer* log_buffer) {
   auto* result = split_picker_->PickSplit(
-      GetName(), current_->storage_info(), log_buffer);
+      GetName(), current_->storage_info(),  metas, log_buffer);
   if (result != nullptr) {
     result->SetInputVersion(current_);
   }
@@ -1440,7 +1441,7 @@ bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
 }
 
 // under a DB mutex AND write thread
-bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFamilyData* c_out_0, ColumnFamilyData* c_out_1) {
+bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs) {
   // find c_in
   int l = 0;
   int r = logical_column_family_data_.size();
@@ -1462,9 +1463,11 @@ bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, ColumnFam
   }
 
   if (m != -1) { // found
-    logical_column_family_data_.erase(logical_column_family_data_.begin() + m);
-    logical_column_family_data_.insert(logical_column_family_data_.begin() + m, c_out_0);
-    logical_column_family_data_.insert(logical_column_family_data_.begin() + m + 1, c_out_1);
+    //logical_column_family_data_.erase(logical_column_family_data_.begin() + m);
+    for (auto c: c_outs) {
+      logical_column_family_data_.insert(logical_column_family_data_.begin() + m, c);
+      m++;
+    }
     return true;
   } else { // not found
     return false;

@@ -37,6 +37,213 @@ uint64_t DBImpl::MinObsoleteSstNumberToKeep() {
   return std::numeric_limits<uint64_t>::max();
 }
 
+void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
+  mutex_.AssertHeld();
+  assert(valid);
+  versions_->GetSplitFiles(&job_context->sst_split_files);
+}
+
+Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_split_files) {
+  assert(!sst_split_files.empty());
+  Status s;
+  Status persistent_options_status;
+  ColumnFamilyData* cfd = sst_split_files[0].cfd;
+  ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
+  size_t split_cnt = sst_split_files.size();
+
+  s = CheckCompressionSupported(cf_options);
+  if (s.ok() && immutable_db_options_.allow_concurrent_memtable_write) {
+    s = CheckConcurrentWritesSupported(cf_options);
+  }
+  if (s.ok()) {
+    s = CheckCFPathsSupported(initial_db_options_, cf_options);
+  }
+  if (s.ok()) {
+    for (auto& cf_path: cf_options.cf_paths) {
+      s = env_->CreateDirIfMissing(cf_path.path);
+      if (!s.ok()) {
+        break;
+      }
+    }
+  }
+  if (!s.ok()) {
+    return s;
+  }
+
+  // 1.call LogAndApply to create column family
+  std::vector<SuperVersionContext> superversion_contexts;
+  autovector<autovector<VersionEdit*>> edit_lists;
+  autovector<const MutableCFOptions*> mutable_cf_options_list;
+  autovector<std::string> cf_name_list;
+  autovector<ColumnFamilyData*> column_family_datas;
+  column_family_datas.push_back(cfd);
+
+  // put parent first
+  autovector<VersionEdit*> edits_in;
+  VersionEdit edit_in;
+  edit_in.SplitColumnFamily(cfd->GetName());
+  edit_in.SetColumnFamily(cfd->GetID());
+  edits_in.push_back(&edit_in);
+  edit_lists.push_back(&edits_in);
+
+  // now put children
+  for (size_t i = 0; i < split_cnt; i++) {
+    superversion_contexts.emplace_back(SuperVersionContext(true));
+    std::string cf_out_name_i = cfd->GetName() + std::to_string(i);
+    cf_name_list.emplace_back(cf_out_name_i);
+  }
+
+  for (size_t i = 0; i < split_cnt; i++) {
+    SplitFileInfo f = sst_split_files[i];
+    autovector<VersionEdit*> edits_out;
+    VersionEdit edit_out;
+
+    Slice smallest = f.metadata.smallest->user_key();
+    Slice largest = f.metadata.largest->user_key();
+    uint32_t new_id = versions_->GetColumnFamilySet()->GetNextColumnFamilyID();
+
+    edit_out.AddColumnFamily(cf_name_list[i]);
+    edit_out.SetColumnFamily(new_id);
+    edit_out.SetLogNumber(logfile_number_);
+    edit_out.SetColumnFamilyKeyRang(smallest, largest);
+
+    edits_out.push_back(&edit_out);
+    edit_lists.push_back(&edits_out);
+  }
+
+  for (size_t i = 0; i < split_cnt; i++) {
+    mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+  }
+
+  uint32_t num_entries = split_cnt;
+  for (auto& edits: edit_lists) {
+    assert(edits.size() == 1);
+    edits[0]->MarkAtomicGroup(--num_entries);
+  }
+  assert(num_entries == 0);
+
+  // LogAndApply will both write the creation in MANIFEST and create
+  // ColumnFamilyData object
+  {
+    WriteThread::Writer w;
+    write_thread_.EnterUnbatched(&w, &mutex_);
+
+    s = versions_->LogAndApply(column_family_datas, mutable_cf_options_list,
+                               edit_lists, &mutex_, directories_.GetDbDir(), false,
+                               &cf_options);
+    write_thread_.ExitUnbatched(&w);
+  }
+
+  // Add Directories if the CF creation is successful
+  for (size_t i = 0; i < split_cnt; i++) {
+    if (s.ok()) {
+      auto* cfd_out_i = versions_->GetColumnFamilySet()
+                                 ->GetColumnFamily(cf_name_list[i]);
+      assert(cfd_out_i != nullptr);
+      s = cfd_out_i->AddDirectories();
+    }
+  }
+
+  // Install Superversion to new CFs
+  
+  if (s.ok()) {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "Split column family [%s] (ID %u)",
+                 cfd->GetName().c_str(),
+                 (unsigned) cfd->GetID());
+
+    single_column_family_mode_ = false;
+
+    for (size_t i = 0; i < split_cnt; i++) {
+      auto* cfd_out_i = versions_->GetColumnFamilySet()
+                                 ->GetColumnFamily(cf_name_list[i]);
+      assert(cfd_out_i != nullptr);
+      column_family_datas.push_back(cfd_out_i);
+      InstallSuperVersionAndScheduleWork(cfd_out_i, &superversion_contexts[i],
+                                         *cfd_out_i->GetLatestMutableCFOptions());
+
+      if (!cfd_out_i->mem()->IsSnapshotSupported()) {
+        is_snapshot_supported_ = false;
+      }
+      
+      cfd_out_i->set_initialized();
+
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "Create column family [%s] (ID %u)",
+                     cfd_out_i->GetName().c_str(),
+                     (unsigned) cfd_out_i->GetID());
+    } else {
+      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                 "Split column family [%s] (ID %u) FAILED -- %s",
+                 cfd->GetName().c_str(),
+                 (unsigned) cfd->GetID(),
+                 s.ToString().c_str());
+    }
+  } // InstrumentedMutexLock l(&mutex_)
+
+  // Clean SuperVersionContext
+  for (auto sv: superverion_contexts) {
+    sv.Clean();
+  }
+
+  // This is outside the mutex
+  if (s.ok()) {
+    for (size_t i = 0; i < split_cnt; i ++) {
+      NewThreadStatusInfo(
+          reinterpret_cast<ColumnFamilyHandleImpl*>(column_family_datas[i]));
+    }
+  }
+
+  // 2.split memtables
+  WriteContext context;
+  {
+    InstrumentedMutexLock l(&mutex);
+
+    if (!cfd->mem()->IsEmpty()) {
+      cfd->Ref();
+      s = SwitchMemtable(cfd, &context);
+      cfd->Unref();
+    }
+
+    if (s.ok()) {
+      cfd->Ref();
+      s = SplitMemtables(cfd, column_family_datas);
+      InstallSuperversionAndScheduleWork(cfd, &context_in.superversion_context,
+                                        *cfd->GetLatestMutableCFOptions());
+      cfd->Unref();
+    } else {
+      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                 "Switching Memtable of cf [%s] (ID %u) FAILED -- %s",
+                 cfd->GetName().c_str(),
+                 (unsigned) cfd->GetID(),
+                 s.ToString().c_str());
+    }
+
+    if (s.ok()) {
+     ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                 "Split Memtable of cf [%s] (ID %u)",
+                 cfd->GetName().c_str(),
+                 (unsigned) cfd->GetID(),
+                 s.ToString().c_str());
+    } else {
+      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                 "Split Memtable of cf [%s] (ID %u) FAILED -- %s",
+                 cfd->GetName().c_str(),
+                 (unsigned) cfd->GetID(),
+                 s.ToString().c_str());
+    }
+  } // InstrumentedMutexLock l(&mutex_)
+
+  // now we prepare sst split
+  auto vstorage = cfd->current()->storage_info();
+  for (auto sst_split_file: sst_split_files) {
+    FileMetaData* meta = sst_split_file->metadata;
+    vstorage->AddToFilesMarkedForSplit(meta);
+  }
+  
+  return Status::OK();
+}
+
 // * Returns the list of live files in 'sst_live'
 // If it's doing full scan:
 // * Returns the list of all files in the filesystem in

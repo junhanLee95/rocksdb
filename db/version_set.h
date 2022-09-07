@@ -152,6 +152,10 @@ class VersionStorageInfo {
   // REQUIRES: DB mutex held
   void ComputeBottommostFilesMarkedForCompaction();
 
+  // REQUIRES: DB mutex held
+  void AddToFilesMarkedForSplit(FileMetaData* meta);
+
+
   // Generate level_files_brief_ from files_
   void GenerateLevelFilesBrief();
   // Sort all files for this version based on their file size and
@@ -298,7 +302,7 @@ class VersionStorageInfo {
 
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
   // REQUIRES: DB mutex held during access
-  const autovector<std::pair<int, FileMetaData*>>& FilesMarkedForSplit()
+  const autovector<FileMetaData*>& FilesMarkedForSplit()
       const {
     assert(finalized_);
     return files_marked_for_split_;
@@ -476,7 +480,7 @@ class VersionStorageInfo {
   // This vector contains list of files marked for split and also not
   // currently being compacted/splitted. It is protected by DB mutex. It is calculated in
   // ComputeCompactionScore()
-  autovector<std::pair<int, FileMetaData*>> files_marked_for_split_;
+  autovector<FileMetaData*> files_marked_for_split_;
 
   // This vector contains list of files marked for compaction and also not
   // currently being compacted. It is protected by DB mutex. It is calculated in
@@ -724,6 +728,23 @@ class Version {
   // No copying allowed
   Version(const Version&);
   void operator=(const Version&);
+};
+
+struct SplitFileInfo {
+  FileMetaData* metadata;
+  ColumnFamilyData* cfd;
+
+  SplitFileInfo() noexcept : metadata(nullptr), cfd(nullptr) {}
+  SplitFileInfo(FileMetaData* f, ColumnFamilyData* c)
+      : metadata(f), cfd(c) {}
+
+  SplitFileInfo(const SplitFileInfo&) = delete;
+  SplitFileInfo& operator=(const SplitFileInfo&) = delete;
+
+  SplitFileInfo(SplitFileInfo&& rhs) noexcept :
+    SplitFileInfo() {
+      *this = std::move(rhs);
+  }
 };
 
 struct ObsoleteFileInfo {
@@ -983,6 +1004,8 @@ class VersionSet {
   // This function doesn't support leveldb SST filenames
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData> *metadata);
 
+  void GetSplitFiles(std::vector<SplitFileInfo>* files);
+
   void GetObsoleteFiles(std::vector<ObsoleteFileInfo>* files,
                         std::vector<std::string>* manifest_filenames,
                         uint64_t min_pending_output);
@@ -1028,9 +1051,6 @@ class VersionSet {
 
   ColumnFamilyData* CreateColumnFamily(const ColumnFamilyOptions& cf_options,
                                        VersionEdit* edit);
-
-  ColumnFamilyData* CreateColumnFamily(const ColumnFamilyOptions& cf_options,
-                                       VersionEdit* edit, std::string smallest, std::string largest);
 
   // REQUIRES db mutex
   Status ApplyOneVersionEditToBuilder(
@@ -1093,6 +1113,7 @@ class VersionSet {
   // Current size of manifest file
   uint64_t manifest_file_size_;
 
+  std::vector<SplitFileInfo> split_files_;
   std::vector<ObsoleteFileInfo> obsolete_files_;
   std::vector<std::string> obsolete_manifests_;
 

@@ -393,12 +393,18 @@ class MemTable {
 
   void SetFlushCompleted(bool completed) { flush_completed_ = completed; }
 
+  void SetSplitCompleted(bool completed) { split_completed_ = completed; }
+
   uint64_t GetFileNumber() const { return file_number_; }
 
   void SetFileNumber(uint64_t file_num) { file_number_ = file_num; }
 
   void SetFlushInProgress(bool in_progress) {
     flush_in_progress_ = in_progress;
+  }
+
+  void SetSplitInProgress(bool in_progress) {
+    split_in_progress_ = in_progress;
   }
 
  private:
@@ -430,6 +436,10 @@ class MemTable {
   bool flush_in_progress_; // started the flush
   bool flush_completed_;   // finished the flush
   uint64_t file_number_;    // filled up after flush is complete
+
+  // These are used to manage memtable split
+  bool split_in_progress_; // started the split
+  bool split_completed_;   // finished the split
 
   // The updates to be applied to the transaction log when this
   // memtable is flushed to storage.

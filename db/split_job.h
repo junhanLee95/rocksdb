@@ -57,7 +57,7 @@ class VersionSet;
 
 class SplitJob {
  public:
-  SplitJob(int job_id, Compaction* compaction,
+  SplitJob(int job_id, Compaction* compaction, std::vector<FileMetaData*> metas,
                 const ImmutableDBOptions& db_options,
                 const EnvOptions env_options, VersionSet* versions,
                 const std::atomic<bool>* shutting_down,
@@ -105,10 +105,11 @@ class SplitJob {
       const Status& input_status, SubsplitState* sub_compact,
       CompactionRangeDelAggregator* range_del_agg,
       CompactionIterationStats* range_del_out_stats,
-      const Slice* next_table_min_key = nullptr);
+      const Slice* next_table_min_key = nullptr,
+      bool is_child);
   Status InstallSplitResults(const MutableCFOptions& mutable_cf_options);
   void RecordSplitIOStats();
-  Status OpenSplitOutputFile(SubsplitState* sub_compact);
+  Status OpenSplitOutputFile(SubsplitState* sub_compact, bool is_child);
   void CleanupSplit();
   void UpdateSplitJobStats(
     const InternalStats::CompactionStats& stats) const;
@@ -127,6 +128,7 @@ class SplitJob {
   struct SplitState;
   SplitState* split_;
   SplitJobStats* split_job_stats_;
+  size_t children_cnt_;
   InternalStats::CompactionStats compaction_stats_;
 
   // DBImpl state

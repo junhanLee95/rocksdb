@@ -1577,6 +1577,14 @@ void DBImpl::GenerateFlushRequest(const autovector<ColumnFamilyData*>& cfds,
   }
 }
 
+void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
+                                  autovector<FileMetaData*> metas,
+                                  SplitRequest* req) {
+  assert(req != nullptr);
+  req->reserve(1);
+  req->emplace_back(cfd, metas);
+}
+
 Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
                              const FlushOptions& flush_options,
                              FlushReason flush_reason, bool writes_stopped) {
@@ -2010,20 +2018,26 @@ DBImpl::FlushRequest DBImpl::PopFirstFromFlushQueue() {
   return flush_req;
 }
 
-void DBImpl::AddToSplitQueue(ColumnFamilyData* cfd) {
+void DBImpl::AddToSplitQueue(SplitRequest* req) {
+  auto cfd = req[0].first;
   assert(!cfd->queued_for_split());
   cfd->Ref();
-  split_queue_.push_back(cfd);
+  split_queue_.push_back(req);
   cfd->set_queued_for_split(true);
 }
 
-ColumnFamilyData* DBImpl::PopFirstFromSplitQueue() {
+DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   assert(!split_queue_.empty());
-  auto cfd = *split_queue_.begin();
+  SplitRequest split_req = split_queue_.front();
+  auto cfd = split_req.first;
+  //assert(unscheduled_splits_ >= static_cast<int>(split_req.size()));
+  //unscheduled_splits_ -= static_cast<int>(split_req.size());
+  unscheduled_splits_ -= 1;
   split_queue_.pop_front();
   assert(cfd->queued_for_split());
   cfd->set_queued_for_split(false);
-  return cfd;
+  // TODO: need to unset split reason?
+  return split_req;
 }
 
 ColumnFamilyData* DBImpl::PickCompactionFromQueue(
@@ -2067,15 +2081,21 @@ void DBImpl::SchedulePendingFlush(const FlushRequest& flush_req,
 }
 
 void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
-  if (!cfd->queued_for_compaction() && cfd->NeedsCompaction()) {
+  if (!cfd->queued_for_compaction() && cfd->NeedsCompaction()
+      && !cfd->NeedsSplit()) {
     AddToCompactionQueue(cfd);
     ++unscheduled_compactions_;
   }
 }
 
 void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
-  if (!cfd->queued_for_split() && cfd->NeedsSplit()) {
-    AddToSplitQueue(cfd);
+  if (!cfd->queued_for_split() && cfd->NeedsSplit()
+      && !cfd->queued_for_compaction()) {
+    SplitRequest split_req;
+    GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
+    assert(!split_req.empty());
+
+    AddToSplitQueue(&split_req);
     ++unscheduled_splits_;
   }
 }
@@ -2474,6 +2494,16 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
 
     ReleaseFileNumberFromPendingOutputs(pending_outputs_inserted_elem);
 
+    // split column family if necessary, this is done outside the mutex
+    FindSplitFiles(&job_context, s.ok());
+    TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
+
+    if (job_context.HaveSomethingToSplit()) {
+     mutex_.Unlock();
+     SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
+     mutex_.Lock();
+    }
+
     // If compaction failed, we want to delete all temporary files that we might
     // have created (they might not be all recorded in job_context in case of a
     // failure). Thus, we force full scan in FindObsoleteFiles()
@@ -2539,6 +2569,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
   TEST_SYNC_POINT("DBImpl::BackgroundSplit:Start");
 
   std::unique_ptr<Compaction> c;
+  std::vector<FileMetaData*> metas;
 
   SplitJobStats split_job_stats;
   Status status;
@@ -2569,12 +2600,15 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
   bool sfm_reserved_compact_space = false;
 
   if (!split_queue_.empty()) {
-    auto cfd = PopFirstFromSplitQueue();
-    if (cfd == nullptr) {
+    SplitRequest split_req = PopFirstFromSplitQueue();
+    if (split_req.empty()) {
       // Can't find any executable task from the split queue.
       ++unscheduled_splits_;
       return Status::Busy();
     }
+
+    auto cfd =  split_req[0].first;
+    metas = split_req[0].second;
 
     // We unreference here because the following code will take a Ref() on
     // this cfd if it is going to use it (Compaction class holds a
@@ -2599,7 +2633,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       // until we make a copy in the following code
       //auto* mutable_cf_options = cfd->GetLatestMutableCFOptions();
       TEST_SYNC_POINT("DBImpl::BackgroundSplit():BeforePickSplit");
-      c.reset(cfd->PickSplit(/**mutable_cf_options, */log_buffer));
+      c.reset(cfd->PickSplit(metas, log_buffer));
       TEST_SYNC_POINT("DBImpl::BackgroundSplit():AfterPickSplit");
 
       // update statistics
@@ -2625,7 +2659,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
                        &earliest_write_conflict_snapshot, &snapshot_checker);
     assert(is_snapshot_supported_ || snapshots_.empty());
     SplitJob split_job(
-        job_context->job_id, c.get(), immutable_db_options_,
+        job_context->job_id, c.get(), metas, immutable_db_options_,
         env_options_for_compaction_, versions_.get(), &shutting_down_,
         preserve_deletes_seqnum_.load(), log_buffer, directories_.GetDbDir(),
         GetDataDir(c->column_family_data(), c->output_path_id()), stats_,
@@ -3370,6 +3404,9 @@ void DBImpl::InstallSuperVersionAndScheduleWork(
   // Whenever we install new SuperVersion, we might need to issue new flushes or
   // compactions.
   SchedulePendingCompaction(cfd);
+
+  SchedulePendingSplit(cfd);
+
   MaybeScheduleFlushOrCompaction();
 
   // Update max_total_in_memory_state_
