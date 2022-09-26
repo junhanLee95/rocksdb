@@ -113,7 +113,7 @@ struct SplitJob::SubsplitState {
   const Compaction* compaction;
   std::vector<ColumnFamilyData*> children_cfds;
   Slice median_key;
-  int child_idx;
+  size_t child_idx;
   std::unique_ptr<CompactionIterator> c_iter;
 
   // The boundaries of the key-range this compaction is interested in. No two
@@ -128,7 +128,7 @@ struct SplitJob::SubsplitState {
   struct Output {
     FileMetaData meta;
     bool finished;
-    int child_idx;
+    size_t child_idx;
     std::shared_ptr<const TableProperties> table_properties;
   };
 
@@ -136,8 +136,8 @@ struct SplitJob::SubsplitState {
   std::vector<Output> parent_outputs;
   std::vector<Output> child_outputs;
   std::unique_ptr<WritableFileWriter> outfile;
-  std::unique_ptr<TableBuilder> child_builder;
   std::unique_ptr<TableBuilder> parent_builder;
+  std::unique_ptr<TableBuilder> child_builder;
   Output* child_current_output() {
     if (child_outputs.empty()) {
       // This subcompaction's output could be empty if compaction was aborted
@@ -190,14 +190,14 @@ struct SplitJob::SubsplitState {
         start(_start),
         end(_end),
         outfile(nullptr),
-        child_builder(nullptr),
         parent_builder(nullptr),
-        child_current_output_file_size(0),
+        child_builder(nullptr),
         parent_current_output_file_size(0),
+        child_current_output_file_size(0),
         total_bytes(0),
         num_input_records(0),
-        child_num_output_records(0),
         parent_num_output_records(0),
+        child_num_output_records(0),
         approx_size(size),
         grandparent_index(0),
         overlapped_bytes(0),
@@ -213,12 +213,13 @@ struct SplitJob::SubsplitState {
     start = std::move(o.start);
     end = std::move(o.end);
     status = std::move(o.status);
-    outputs = std::move(o.outputs);
+    parent_outputs = std::move(o.parent_outputs);
+    child_outputs = std::move(o.child_outputs);
     outfile = std::move(o.outfile);
-    child_builder = std::move(o.child_builder);
     parent_builder = std::move(o.parent_builder);
-    child_current_output_file_size = std::move(o.child_current_output_file_size);
+    child_builder = std::move(o.child_builder);
     parent_current_output_file_size = std::move(o.parent_current_output_file_size);
+    child_current_output_file_size = std::move(o.child_current_output_file_size);
     total_bytes = std::move(o.total_bytes);
     num_input_records = std::move(o.num_input_records);
     child_num_output_records = std::move(o.child_num_output_records);
@@ -296,13 +297,15 @@ struct SplitJob::SplitState {
   size_t NumOutputFiles() {
     size_t total = 0;
     for (auto& s : sub_split_states) {
-      total += s.outputs.size();
+      total += s.parent_outputs.size();
+      total += s.child_outputs.size();
     }
     return total;
   }
 
   Slice SmallestUserKey() {
-    for (const auto& sub_split_state : sub_split_states) {
+    for (auto it = sub_split_states.rbegin(); it < sub_split_states.rend();
+         ++it) {
       Slice p;
       Slice c;
       if (!it->parent_outputs.empty() && it->parent_current_output()->finished) {
@@ -343,7 +346,8 @@ void SplitJob::AggregateStatistics() {
   for (SubsplitState& sc : split_->sub_split_states) {
     split_->total_bytes += sc.total_bytes;
     split_->num_input_records += sc.num_input_records;
-    split_->num_output_records += sc.num_output_records;
+    split_->num_output_records += sc.parent_num_output_records;
+    split_->num_output_records += sc.child_num_output_records;
   }
   if (split_job_stats_) {
     for (SubsplitState& sc : split_->sub_split_states) {
@@ -639,7 +643,7 @@ Status SplitJob::Run() {
   return status;
 }
 
-Status SplitJob::Install(const MutableCFOptions& mutable_cf_options) {
+Status SplitJob::Install(void) {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_INSTALL);
   db_mutex_->AssertHeld();
@@ -649,7 +653,7 @@ Status SplitJob::Install(const MutableCFOptions& mutable_cf_options) {
       split_->compaction->output_level(), thread_pri_, compaction_stats_);
 
   if (status.ok()) {
-    status = InstallSplitResults(mutable_cf_options);
+    status = InstallSplitResults();
   }
   VersionStorageInfo::LevelSummaryStorage tmp;
   auto vstorage = cfd->current()->storage_info();
@@ -835,7 +839,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
     // returns true.
     const Slice& key = c_iter->key();
     const Slice& value = c_iter->value();
-    bool is_child; // determine whether we should add items to child cfd or not
+    bool is_child = false; // determine whether we should add items to child cfd or not
 
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
@@ -911,8 +915,8 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
     // and 0.6MB instead of 1MB and 0.2MB)
     bool output_file_ended = false;
     bool child_file_ended = false;
-    uint64_t current_output_file_size = is_child ? sub_split->child_current_output_size :
-                                                   sub_split->parent_current_output_size;
+    uint64_t current_output_file_size = is_child ? sub_split->child_current_output_file_size :
+                                                   sub_split->parent_current_output_file_size;
     Status input_status;
     if (sub_split->compaction->output_level() != 0 &&
         current_output_file_size >=
@@ -927,7 +931,9 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
         sub_split->compaction->output_level() != 0 &&
         sub_split->ShouldStopBefore(c_iter->key(),
                                     current_output_file_size) &&
-        sub_split->builder != nullptr) {
+        (sub_split->parent_builder != nullptr ||
+        sub_split->child_builder != nullptr)
+       ) {
       // (2) this key belongs to the next file. For historical reasons, the
       // iterator status after advancing will be given to
       // FinishSplitOutputFile().
@@ -948,7 +954,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       CompactionIterationStats range_del_out_stats;
       status =
           FinishSplitOutputFile(input_status, sub_split, &range_del_agg,
-                                     &range_del_out_stats, next_key, nullptr, is_child);
+                               &range_del_out_stats, next_key, is_child);
       RecordDroppedKeys(range_del_out_stats,
                         &sub_split->split_job_stats);
       if (child_file_ended) {
@@ -1000,7 +1006,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
   if (sub_split->parent_builder != nullptr) {
     CompactionIterationStats range_del_out_stats;
     Status s = FinishSplitOutputFile(status, sub_split, &range_del_agg,
-                                          &range_del_out_stats, nullptr, false);
+                                     &range_del_out_stats, nullptr, false);
     if (status.ok()) {
       status = s;
     }
@@ -1009,7 +1015,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
   if (sub_split->child_builder != nullptr) {
     CompactionIterationStats range_del_out_stats;
     Status s = FinishSplitOutputFile(status, sub_split, &range_del_agg,
-                                          &range_del_out_stats, nullptr, true);
+                                     &range_del_out_stats, nullptr, true);
     if (status.ok()) {
       status = s;
     }
@@ -1093,13 +1099,13 @@ Status SplitJob::FinishSplitOutputFile(
   ColumnFamilyData* cfd;
 
   if (is_child) {
-    assert(sub_split->child_outfile);
+    assert(sub_split->outfile);
     assert(sub_split->child_builder != nullptr);
     assert(sub_split->child_current_output() != nullptr);
     output_number = sub_split->child_current_output()->meta.fd.GetNumber();
-    cfd = sub_split->children_cfds[sub_split->idx];
+    cfd = sub_split->children_cfds[sub_split->child_idx];
   } else {
-    assert(sub_split->parent_outfile);
+    assert(sub_split->outfile);
     assert(sub_split->parent_builder != nullptr);
     assert(sub_split->parent_current_output() != nullptr);
     output_number = sub_split->parent_current_output()->meta.fd.GetNumber();
@@ -1284,12 +1290,9 @@ Status SplitJob::FinishSplitOutputFile(
     }
   }
   
-  const uint64_t current_entries;
-  if (is_child) {
-    current_entries = sub_split->child_builder->NumEntries();
-  } else {
-    current_entries = sub_split->parent_builder->NumEntries();
-  }
+  const uint64_t current_entries = is_child ? sub_split->child_builder->NumEntries() :
+                                 sub_split->parent_builder->NumEntries();             
+  
   if (s.ok()) {
     if (is_child) {
       s = sub_split->child_builder->Finish();
@@ -1298,9 +1301,9 @@ Status SplitJob::FinishSplitOutputFile(
     }
   } else {
     if (is_child) {
-      s = sub_split->child_builder->Abandon();
+      sub_split->child_builder->Abandon();
     } else {
-      s = sub_split->parent_builder->Abandon();
+      sub_split->parent_builder->Abandon();
     }
   }
 
@@ -1326,7 +1329,7 @@ Status SplitJob::FinishSplitOutputFile(
     s = sub_split->outfile->Close();
   }
 
-  s = sub_split->outfile.reset();
+  sub_split->outfile.reset();
 
   TableProperties tp;
   if (s.ok()) {
@@ -1360,8 +1363,14 @@ Status SplitJob::FinishSplitOutputFile(
 
   if (s.ok() && (current_entries > 0 || tp.num_range_deletions > 0)) {
     // Output to event logger and fire events.
-    sub_split->current_output()->table_properties =
-        std::make_shared<TableProperties>(tp);
+    if (is_child) {
+      sub_split->child_current_output()->table_properties =
+          std::make_shared<TableProperties>(tp);
+    } else {
+      sub_split->parent_current_output()->table_properties =
+          std::make_shared<TableProperties>(tp);
+    }
+    
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
                    " keys, %" PRIu64 " bytes%s",
@@ -1404,15 +1413,16 @@ Status SplitJob::FinishSplitOutputFile(
 
   if (is_child) {
     sub_split->child_builder.reset();
+    sub_split->child_current_output_file_size = 0;
   } else {
     sub_split->parent_builder.reset();
+    sub_split->parent_current_output_file_size = 0;
   }
 
-  sub_split->current_output_file_size = 0;
   return s;
 }
 
-Status SplitJob::InstallSplitResults(const MutableCFOptions& mutable_cf_options) {
+Status SplitJob::InstallSplitResults() {
   db_mutex_->AssertHeld();
 
   auto* compaction = split_->compaction;
@@ -1442,7 +1452,7 @@ Status SplitJob::InstallSplitResults(const MutableCFOptions& mutable_cf_options)
 
   ColumnFamilyData* cfd_in = split_->compaction->column_family_data();
     column_family_datas.push_back(cfd_in);
-  for(auto child_cfd: split_->children_cfds) {
+  for (auto& child_cfd: split_->sub_split_states[0].children_cfds) {
     column_family_datas.push_back(child_cfd);
   }
 
@@ -1470,9 +1480,11 @@ Status SplitJob::InstallSplitResults(const MutableCFOptions& mutable_cf_options)
     }
   }
   // trivial move
+  std::vector<FileMetaData*> metas = split_->metas;
   assert(metas.size() == children_cnt_);
-  for (size_t idx = 0; idx < metas.size(); i++) {
-    e_out[idx].AddFile(2, metas[idx]);
+  for (size_t idx = 0; idx < metas.size(); idx++) {
+    const FileMetaData* meta_idx = const_cast<const FileMetaData*>(metas[idx]);
+    e_out[idx].AddFile(2, *meta_idx);
   }
 
   edit_in.push_back(&e_in);
@@ -1482,12 +1494,13 @@ Status SplitJob::InstallSplitResults(const MutableCFOptions& mutable_cf_options)
 
   edit_lists.push_back(edit_in);
   for(size_t idx = 0; idx < metas.size(); idx++) {
-    edit_lists.push_back(&edit_out[idx]);
+    edit_lists.push_back(edit_out[idx]);
   }
 
-
-  for (int i=0; i<children_cnt_; i++) {
-    mutable_cf_options_list.push_back(std::move(&mutable_cf_options));
+  autovector<const MutableCFOptions*> mutable_cf_options_list;
+  mutable_cf_options_list.push_back(cfd_in->GetLatestMutableCFOptions());
+  for (auto& child_cfd: split_->sub_split_states[0].children_cfds) {
+    mutable_cf_options_list.push_back(child_cfd->GetLatestMutableCFOptions());
   }
 
   int num_entries = (int)edit_lists.size();
@@ -1496,15 +1509,13 @@ Status SplitJob::InstallSplitResults(const MutableCFOptions& mutable_cf_options)
     edits[0]->MarkAtomicGroup(--num_entries);
   }
 
-  const ColumnFamilyOptions cf_options = (const ColumnFamilyOptions)cfd_in->GetLatestCFOptions();
-
   return versions_->LogAndApply(column_family_datas,
                                 mutable_cf_options_list,
                                 edit_lists,
                                 db_mutex_,
                                 db_directory_,
                                 false,
-                                &cf_options);
+                                nullptr);
 }
 
 void SplitJob::RecordSplitIOStats() {
@@ -1578,8 +1589,11 @@ Status SplitJob::OpenSplitOutputFile(
       FileDescriptor(file_number, sub_split->compaction->output_path_id(), 0);
   out.finished = false;
   out.child_idx = sub_split->child_idx;
-
-  sub_split->outputs.push_back(out);
+  if (is_child) {
+    sub_split->child_outputs.push_back(out);
+  } else {
+    sub_split->parent_outputs.push_back(out);
+  }
   writable_file->SetIOPriority(Env::IO_LOW);
   writable_file->SetWriteLifeTimeHint(write_hint_);
   writable_file->SetPreallocationBlockSize(static_cast<size_t>(
@@ -1645,14 +1659,25 @@ void SplitJob::CleanupSplit() {
   for (SubsplitState& sub_split : split_->sub_split_states) {
     const auto& sub_status = sub_split.status;
 
-    if (sub_split.builder != nullptr) {
+    if (sub_split.parent_builder != nullptr) {
       // May happen if we get a shutdown call in the middle of compaction
-      sub_split.builder->Abandon();
-      sub_split.builder.reset();
+      sub_split.parent_builder->Abandon();
+      sub_split.parent_builder.reset();
+    } else if (sub_split.child_builder != nullptr) {
+      // May happen if we get a shutdown call in the middle of compaction
+      sub_split.child_builder->Abandon();
+      sub_split.child_builder.reset();
     } else {
       assert(!sub_status.ok() || sub_split.outfile == nullptr);
     }
-    for (const auto& out : sub_split.outputs) {
+    for (const auto& out : sub_split.parent_outputs) {
+      // If this file was inserted into the table cache then remove
+      // them here because this compaction was not committed.
+      if (!sub_status.ok()) {
+        TableCache::Evict(table_cache_.get(), out.meta.fd.GetNumber());
+      }
+    }
+    for (const auto& out : sub_split.child_outputs) {
       // If this file was inserted into the table cache then remove
       // them here because this compaction was not committed.
       if (!sub_status.ok()) {
@@ -1694,20 +1719,34 @@ void SplitJob::UpdateSplitStats() {
   }
 
   for (const auto& sub_split : split_->sub_split_states) {
-    size_t num_output_files = sub_split.outputs.size();
-    if (sub_split.builder != nullptr) {
+    size_t child_num_output_files = sub_split.child_outputs.size();
+    if (sub_split.child_builder != nullptr) {
       // An error occurred so ignore the last output.
-      assert(num_output_files > 0);
-      --num_output_files;
+      assert(child_num_output_files > 0);
+      --child_num_output_files;
     }
+    size_t parent_num_output_files = sub_split.parent_outputs.size();
+    if (sub_split.parent_builder != nullptr) {
+      // An error occurred so ignore the last output
+      assert(parent_num_output_files > 0);
+      --parent_num_output_files;
+    }
+    size_t num_output_files = child_num_output_files + parent_num_output_files;
     compaction_stats_.num_output_files += static_cast<int>(num_output_files);
 
-    for (const auto& out : sub_split.outputs) {
+    for (const auto& out : sub_split.child_outputs) {
       compaction_stats_.bytes_written += out.meta.fd.file_size;
     }
-    if (sub_split.num_input_records > sub_split.num_output_records) {
+    for (const auto& out : sub_split.parent_outputs) {
+      compaction_stats_.bytes_written += out.meta.fd.file_size;
+    }
+   
+    size_t total_num_output_records = sub_split.parent_num_output_records +
+                                      sub_split.child_num_output_records;
+
+    if (sub_split.num_input_records > total_num_output_records) {
       compaction_stats_.num_dropped_records +=
-          sub_split.num_input_records - sub_split.num_output_records;
+          sub_split.num_input_records - total_num_output_records;
     }
   }
 }

@@ -36,12 +36,13 @@ SplitPicker::SplitPicker(const ImmutableCFOptions& ioptions,
 
 SplitPicker::~SplitPicker() {}
 
-bool SplitPicker::SetupL0FilesIfNeeded(std::vector<FileMetaData*> l1_files, CompactionInputFiles& l0_files) {
+bool SplitPicker::SetupL0FilesIfNeeded(VersionStorageInfo* vstorage,
+std::vector<FileMetaData*> metas, CompactionInputFiles& l0_files) {
   bool exists = false;
-  for (FileMetadata* f: vstorage->LevelFiles(0)) {
-    for (FileMetadata* f1: l1_files) {
+  for (FileMetaData* f: vstorage->LevelFiles(0)) {
+    for (FileMetaData* f1: metas) {
       if (HaveOverlappingKeyRanges(f, f1)) {
-        l0_files.push_back(f);
+        l0_files.files.push_back(f);
         exists = true;
         break;
       }
@@ -70,7 +71,7 @@ Compaction* SplitPicker::PickSplit(const std::string& cf_name,
   }*/
 
   CompactionInputFiles l0_files;
-  if (SetupL0FilesIfNeeded(metas, l0_files)) {
+  if (SetupL0FilesIfNeeded(vstorage, metas, l0_files)) {
     ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit another inputs[%d] : %d",
                      0, l0_files.size());
     inputs_.push_back(l0_files);
@@ -131,8 +132,7 @@ Compaction* SplitPicker::GetSplit(VersionStorageInfo* vstorage) {
 
 bool SplitPicker::NeedsSplit(const VersionStorageInfo* vstorage) {
   ROCKS_LOG_INFO(ioptions_.info_log,
-                 "NeedsSplit: %d files marked", vstorage->FilesMarkedForSplit().size());
-  return vstorage->FilesMarkedForSplit().size() > 0;
+                 "NeedsSplit: %ld files marked", vstorage->FilesMarkedForSplit().size()); return vstorage->FilesMarkedForSplit().size() > 0;
   /*
   assert(vstorage->num_levels()==2);
   ROCKS_LOG_INFO(ioptions_.info_log,

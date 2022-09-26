@@ -308,7 +308,7 @@ void MemTableList::SetSplitInProgress(void) {
     MemTable* m = *it;
     if (!m->flush_in_progress_) {
       // we don't split memtables which has been flushing.
-      m->split_in_progress = true;
+      m->split_in_progress_ = true;
     }
   }
 }

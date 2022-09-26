@@ -726,6 +726,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   if (status.ok()) {
     status = InstallCompactionResults(mutable_cf_options);
   }
+  ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply(2)");
   VersionStorageInfo::LevelSummaryStorage tmp;
   auto vstorage = cfd->current()->storage_info();
   const auto& stats = compaction_stats_;
@@ -1346,9 +1347,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     if (efficiency < 0.3 && compact_->compaction->output_level() == 1) {
       ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Split table #%" PRIu64 "", cfd->GetName().c_str(), job_id_, output_number);
-
-      versions_->split_files_.push_back(
-          SplitFileInfo(meta, cfd));
+      versions_->AddSplitFile(meta, cfd);
       /*
       auto vstorage = cfd->current()->storage_info();
       vstorage->AddToFilesMarkedForSplit(meta);*/
@@ -1421,12 +1420,14 @@ Status CompactionJob::InstallCompactionResults(
 
   // Add compaction inputs
   compaction->AddInputDeletions(compact_->compaction->edit());
+  ROCKS_LOG_INFO(db_options_.info_log, "[JH] AddInputDeletions");
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
     }
   }
+  ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply");
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),
                                 db_mutex_, db_directory_);

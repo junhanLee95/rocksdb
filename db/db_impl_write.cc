@@ -1472,21 +1472,22 @@ Status DBImpl::SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, 
 
 // REQUIRES: mutex_ is held
 // REQUIERS: this thread is currently at the front of the writer queue
-Status SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>& to_cfds) {
+Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>& to_cfds) {
   mutex_.AssertHeld();
   assert(from_cfd->mem()->IsEmpty()); // we already switched all mutable memtables into imm list
-  assert(!cfd->imm()->HasFlushRequested());
+  assert(!from_cfd->imm()->HasFlushRequested());
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "SplitMemtables: start");
 
   // set from_cfd imms to be splitted
-  cfd->imm()->SetSplitInProgress();
+  from_cfd->imm()->SetSplitInProgress();
 
   size_t to_size = to_cfds.size();
   size_t from_imm_size = from_cfd->imm()->GetMemTableListSize();
 
-  for (size_t i = 0; i < from_imm_size; i++) {
-    MemTable* from_imm = from_cfd->imm()->GetMemTableFromList(i);
+  for (size_t from = 0; from < from_imm_size; from++) {
+    MemTable* from_imm = from_cfd->imm()->GetMemTableFromList(from);
+    auto factory = std::make_shared<SkipListFactory>();
 
     ReadOptions ro;
     Arena arena;
@@ -1495,36 +1496,32 @@ Status SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>&
     options.memtable_factory = factory;
     ImmutableCFOptions ioptions(options);
     InternalKeyComparator cmp(BytewiseComparator());
-    auto factory = std::make_shared<SkipListFactory>();
  
     // prepare contexts and memtables for to_cfds
-    std::vector<WriteContext> contexts;
+    std::vector<WriteContext*> contexts;
     std::vector<MemTable*> new_mems;
     std::vector<SequenceNumber> seqs;
-    for (size_t i = 0; i < to_size; i++) {
+    for (size_t to = 0; to < to_size; to++) {
       // contexts
-      WriteContext context;
-      contexts.push_back(context);
+      contexts.push_back(new WriteContext());
       // memtables
       WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
       MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
-                                   kMaxSequenceNumber, to_cfds[i]->GetID());
+                                   kMaxSequenceNumber, to_cfds[to]->GetID());
       new_mems.push_back(mem);
       seqs.push_back(1);
       mem->Ref();
     }
     // prepare for from_cfd
-    WriteContext context;
-    contexts.push_back(context);
+    contexts.push_back(new WriteContext());
     WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
     MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
-                                 kMaxSequenceNumber, to_cfds[i]->GetID());
+                                 kMaxSequenceNumber, from_cfd->GetID());
     new_mems.push_back(mem);
     mem->Ref();
 
-    int target_idx = 0;
     InternalIterator* mem_iter = from_imm->NewIterator(ro, &arena);
-    for (mem_iter->SeekToFirst(), mem_iter->Valid(); mem_iter->Next()) {
+    for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
       Slice key = mem_iter->key();
       Slice value = mem_iter->value();
       ParsedInternalKey ikey;
@@ -1541,11 +1538,11 @@ Status SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>&
       // select memtables to put item
       std::string user_key_str = user_key.ToString();
       size_t select = to_size; // from_cfd for the default
-      for (size_t i = 0; i < to_size; i++) {
-        std::string smallest_i = to_cfds[i]->GetSmallestKey();
-        std::string largest_i = to_cfds[i]->GetLargestKey();
-        if (user_key.compare(smallest_i) >= 0 && user_key.compare(largest_i) <= 0) {
-          select = i;
+      for (size_t to = 0; to < to_size; to++) {
+        std::string smallest_to = to_cfds[to]->GetSmallestKey();
+        std::string largest_to = to_cfds[to]->GetLargestKey();
+        if (user_key.compare(smallest_to) >= 0 && user_key.compare(largest_to) <= 0) {
+          select = to;
           break;
         }
       }
@@ -1570,19 +1567,19 @@ Status SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>&
       }
 
       // add new_mems to to_cfds
-      for (size_t i = 0; i < to_size; i++) {
-        if (!new_mems[i]->IsEmpty()) {
-          to_cfds[i]->imm()->Add(new_mems[i], &contexts[i]->memtables_to_free_);
-          InstallSuperVersionAndScheduleWork(to_cfds[i], &contexts[i].superversion_context,
-                                              *to_cfds[i]->GetLatestMutableCFOptions());
+      for (size_t to = 0; to < to_size; to++) {
+        if (!new_mems[to]->IsEmpty()) {
+          to_cfds[to]->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
+          InstallSuperVersionAndScheduleWork(to_cfds[to], &contexts[to]->superversion_context,
+                                              *to_cfds[to]->GetLatestMutableCFOptions());
         } else{
-          delete new_mems[i];
+          delete new_mems[to];
         }
       }
       // add last mem to from_cfd
       if (!new_mems[to_size]->IsEmpty()) {
         from_cfd->imm()->Add(new_mems[to_size], &contexts[to_size]->memtables_to_free_);
-        InstallSuperVersionAndScheduleWork(to_cfds[to_size], &contexts[to_size].superversion_context,
+        InstallSuperVersionAndScheduleWork(to_cfds[to_size], &contexts[to_size]->superversion_context,
                                            *to_cfds[to_size]->GetLatestMutableCFOptions());
       } else {
         delete new_mems[to_size];
@@ -1591,7 +1588,14 @@ Status SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>&
       // delete existing imms in from_cfd
       from_cfd->imm()->ClearSplittedMemtables(&contexts[to_size]->memtables_to_free_);
     }
+
+    // clear write contexts
+    for (auto& context: contexts) {
+      delete context;
+    }
   }
+
+  return Status::OK();
 }
 
 // REQUIRES: mutex_ is held
