@@ -1582,7 +1582,11 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
                                   SplitRequest* req) {
   assert(req != nullptr);
   req->reserve(1);
-  req->emplace_back(cfd, metas);
+  std::vector<FileMetaData*> std_metas;
+  for (auto& meta: metas) {
+    std_metas.push_back(meta);
+  }
+  req->emplace_back(cfd, std_metas);
 }
 
 Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
@@ -2018,8 +2022,8 @@ DBImpl::FlushRequest DBImpl::PopFirstFromFlushQueue() {
   return flush_req;
 }
 
-void DBImpl::AddToSplitQueue(SplitRequest* req) {
-  auto cfd = req[0].first;
+void DBImpl::AddToSplitQueue(SplitRequest& req) {
+  auto cfd = req.front().first;
   assert(!cfd->queued_for_split());
   cfd->Ref();
   split_queue_.push_back(req);
@@ -2029,7 +2033,7 @@ void DBImpl::AddToSplitQueue(SplitRequest* req) {
 DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   assert(!split_queue_.empty());
   SplitRequest split_req = split_queue_.front();
-  auto cfd = split_req.first;
+  ColumnFamilyData* cfd = split_req.front().first;
   //assert(unscheduled_splits_ >= static_cast<int>(split_req.size()));
   //unscheduled_splits_ -= static_cast<int>(split_req.size());
   unscheduled_splits_ -= 1;
@@ -2095,7 +2099,7 @@ void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
     GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
     assert(!split_req.empty());
 
-    AddToSplitQueue(&split_req);
+    AddToSplitQueue(split_req);
     ++unscheduled_splits_;
   }
 }
@@ -2500,6 +2504,9 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
 
     if (job_context.HaveSomethingToSplit()) {
      mutex_.Unlock();
+     ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                     "[JH]Have Something to Split");
+
      SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
      mutex_.Lock();
     }
@@ -2607,8 +2614,8 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       return Status::Busy();
     }
 
-    auto cfd =  split_req[0].first;
-    metas = split_req[0].second;
+    auto cfd =  split_req.front().first;
+    metas = split_req.front().second;
 
     // We unreference here because the following code will take a Ref() on
     // this cfd if it is going to use it (Compaction class holds a
@@ -2678,7 +2685,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
     TEST_SYNC_POINT("DBImpl::BackgroundSplit:NonTrivial:AfterRun");
     mutex_.Lock();
 
-    status = split_job.Install(*c->mutable_cf_options());
+    status = split_job.Install();
     if (status.ok()) {
       InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                          &job_context->superversion_contexts[0],
@@ -3405,7 +3412,7 @@ void DBImpl::InstallSuperVersionAndScheduleWork(
   // compactions.
   SchedulePendingCompaction(cfd);
 
-  SchedulePendingSplit(cfd);
+  //SchedulePendingSplit(cfd);
 
   MaybeScheduleFlushOrCompaction();
 

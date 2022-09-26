@@ -2867,6 +2867,7 @@ Status VersionSet::ProcessManifestWrites(
   assert(!writers.empty());
   ManifestWriter& first_writer = writers.front();
   ManifestWriter* last_writer = &first_writer;
+  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites");
 
   assert(!manifest_writers_.empty());
   assert(manifest_writers_.front() == &first_writer);
@@ -2978,6 +2979,7 @@ Status VersionSet::ProcessManifestWrites(
     }
   }
 
+  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2)");
 #ifndef NDEBUG
   // Verify that version edits of atomic groups have correct
   // remaining_entries_.
@@ -3017,6 +3019,7 @@ Status VersionSet::ProcessManifestWrites(
   uint64_t new_manifest_file_size = 0;
   Status s;
 
+  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(3)");
   assert(pending_manifest_file_number_ == 0);
   if (!descriptor_log_ ||
       manifest_file_size_ > db_options_->max_manifest_file_size) {
@@ -3036,6 +3039,7 @@ Status VersionSet::ProcessManifestWrites(
           column_family_set_->GetMaxColumnFamily());
     }
   }
+  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(4)");
 
   {
     EnvOptions opt_env_opts = env_->OptimizeForManifestWrite(env_options_);
@@ -3055,6 +3059,7 @@ Status VersionSet::ProcessManifestWrites(
             mutable_cf_options_ptrs[i]->prefix_extractor.get());
       }
     }
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(5)");
 
     // This is fine because everything inside of this block is serialized --
     // only one thread can be here at the same time
@@ -3079,12 +3084,14 @@ Status VersionSet::ProcessManifestWrites(
         s = WriteSnapshot(descriptor_log_.get());
       }
     }
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(6)");
 
     if (!first_writer.edit_list.front()->IsColumnFamilyManipulation()) {
       for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
         versions[i]->PrepareApply(*mutable_cf_options_ptrs[i], true);
       }
     }
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(7)");
 
     // Write new records to MANIFEST log
     if (s.ok()) {
@@ -3122,6 +3129,7 @@ Status VersionSet::ProcessManifestWrites(
                         s.ToString().c_str());
       }
     }
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(8)");
 
     // If we just created a new descriptor file, install it by writing a
     // new CURRENT file that points to it.
@@ -3130,6 +3138,7 @@ Status VersionSet::ProcessManifestWrites(
                          db_directory);
       TEST_SYNC_POINT("VersionSet::ProcessManifestWrites:AfterNewManifest");
     }
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(9)");
 
     if (s.ok()) {
       // find offset in manifest file where this version is stored.
@@ -3142,11 +3151,14 @@ Status VersionSet::ProcessManifestWrites(
       TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:2");
     }
 
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(1L)");
     LogFlush(db_options_->info_log);
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2L)");
     TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifestDone");
     mu->Lock();
   }
 
+    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(10)");
   // Append the old manifest file to the obsolete_manifest_ list to be deleted
   // by PurgeObsoleteFiles later.
   if (s.ok() && new_descriptor_log) {
@@ -3154,6 +3166,7 @@ Status VersionSet::ProcessManifestWrites(
         DescriptorFileName("", manifest_file_number_));
   }
 
+  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(11)");
   // Install the new versions
   if (s.ok()) {
     if (first_writer.edit_list.front()->is_column_family_add_) {
@@ -3184,15 +3197,15 @@ Status VersionSet::ProcessManifestWrites(
       cfd->children_cfds.push_back(cfd_out_1);
       // update logical column family data
       column_family_set_->SplitLogicalColumnFamily(cfd, cfd_out_0, cfd_out_1);*/
-      bool first_writer = true;
+      bool create_cf = false; // fisrt writer does not create column family
       std::vector<ColumnFamilyData*> cfd_outs;
       for(auto writer: writers) {
-        if (first_writer) {
-          first_writer = false;
+        if (!create_cf) {
+          create_cf = true;
           continue;
         }
         else {
-          auto cfd_out = CreateColumnFamily(*new_cf_options, writer.edit_list.front(), writer.edit_list.front());
+          auto cfd_out = CreateColumnFamily(*new_cf_options, writer.edit_list.front());
           cfd_outs.push_back(cfd_out);
           cfd->children_cfds.push_back(cfd_out);
         }
@@ -3329,12 +3342,12 @@ Status VersionSet::LogAndApply(
     }
 #endif /* ! NDEBUG */
   }
-  /*
+  
   for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
       fprintf(stdout, "%s\n", edit->DebugString(true).c_str());
     }
-  }*/
+  }
 
   int num_cfds = static_cast<int>(column_family_datas.size());
   if (num_cfds == 1 && column_family_datas[0] == nullptr) {
@@ -3349,11 +3362,11 @@ Status VersionSet::LogAndApply(
       assert(edit_list.size()==1);
       for (const auto& edit : edit_list) {
         if (first_edit) {
-          assert(edit_list[0]->is_column_family_split_);
+          assert(edit->is_column_family_split_);
           first_edit = false;
         }
         else{
-          assert(edit_list[0]->is_column_family_add_);
+          assert(edit->is_column_family_add_);
         }
       }
     }
@@ -4645,8 +4658,14 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 }
 
 void VersionSet::GetSplitFiles(std::vector<SplitFileInfo>* files) {
-  files = split_files_;
+  for (auto& f: split_files_) {
+    files->push_back(std::move(f));
+  }
   split_files_.clear();
+}
+
+void VersionSet::AddSplitFile(FileMetaData* meta, ColumnFamilyData* cfd) {
+  split_files_.push_back(SplitFileInfo(meta, cfd));
 }
 
 void VersionSet::GetObsoleteFiles(std::vector<ObsoleteFileInfo>* files,
@@ -4675,16 +4694,17 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
   // Ref() dummy version once so that later we can call Unref() to delete it
   // by avoiding calling "delete" explicitly (~Version is private)
   dummy_versions->Ref();
-
+  ColumnFamilyData* new_cfd = nullptr;
   if (edit->smallest_user_key_.empty() || edit->largest_user_key_.empty() ) {
-    auto new_cfd = column_family_set_->CreateColumnFamily(
+    new_cfd = column_family_set_->CreateColumnFamily(
         edit->column_family_name_, edit->column_family_, dummy_versions,
         cf_options);
   } else {
-    auto new_cfd = column_family_set_->CreateColumnFamily(
+    new_cfd = column_family_set_->CreateColumnFamily(
         edit->column_family_name_, edit->column_family_, dummy_versions,
         cf_options, edit->smallest_user_key_, edit->largest_user_key_);
   }
+  assert(new_cfd != nullptr);
 
   Version* v = new Version(new_cfd, this, env_options_,
                            *new_cfd->GetLatestMutableCFOptions(),

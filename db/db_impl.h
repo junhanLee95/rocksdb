@@ -528,7 +528,7 @@ class DBImpl : public DB {
 
   // Split Column Family From sst split files
   // This is called from BackgroundCallCompaction()
-  Status SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_split_files);
+  Status SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_split_files);
 
   // Returns the list of live files in 'live' and the list
   // of all files in the filesystem in 'candidate_files'.
@@ -1268,7 +1268,7 @@ class DBImpl : public DB {
 
   // helper functions for adding and removing from flush & compaction queues
   void AddToCompactionQueue(ColumnFamilyData* cfd);
-  void AddToSplitQueue(SplitRequest* req);
+  void AddToSplitQueue(SplitRequest& req);
   ColumnFamilyData* PopFirstFromCompactionQueue();
   SplitRequest PopFirstFromSplitQueue();
   FlushRequest PopFirstFromFlushQueue();

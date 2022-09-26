@@ -745,6 +745,22 @@ struct SplitFileInfo {
     SplitFileInfo() {
       *this = std::move(rhs);
   }
+
+  SplitFileInfo& operator=(SplitFileInfo&& rhs) noexcept {
+    metadata = std::move(rhs.metadata);
+    cfd = std::move(rhs.cfd);
+    rhs.metadata = nullptr;
+    rhs.cfd = nullptr;
+
+    return *this;
+  }
+
+  void DeleteInfo() {
+    delete metadata;
+    delete cfd;
+    metadata = nullptr;
+    cfd = nullptr;
+  }
 };
 
 struct ObsoleteFileInfo {
@@ -1005,6 +1021,8 @@ class VersionSet {
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData> *metadata);
 
   void GetSplitFiles(std::vector<SplitFileInfo>* files);
+
+  void AddSplitFile(FileMetaData* meta, ColumnFamilyData* cfd);
 
   void GetObsoleteFiles(std::vector<ObsoleteFileInfo>* files,
                         std::vector<std::string>* manifest_filenames,

@@ -43,7 +43,7 @@ void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
   versions_->GetSplitFiles(&job_context->sst_split_files);
 }
 
-Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_split_files) {
+Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_split_files) {
   assert(!sst_split_files.empty());
   Status s;
   Status persistent_options_status;
@@ -84,7 +84,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_spli
   edit_in.SplitColumnFamily(cfd->GetName());
   edit_in.SetColumnFamily(cfd->GetID());
   edits_in.push_back(&edit_in);
-  edit_lists.push_back(&edits_in);
+  edit_lists.push_back(edits_in);
 
   // now put children
   for (size_t i = 0; i < split_cnt; i++) {
@@ -94,21 +94,20 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_spli
   }
 
   for (size_t i = 0; i < split_cnt; i++) {
-    SplitFileInfo f = sst_split_files[i];
     autovector<VersionEdit*> edits_out;
     VersionEdit edit_out;
 
-    Slice smallest = f.metadata.smallest->user_key();
-    Slice largest = f.metadata.largest->user_key();
+    Slice smallest = sst_split_files[i].metadata->smallest.user_key();
+    Slice largest = sst_split_files[i].metadata->largest.user_key();
     uint32_t new_id = versions_->GetColumnFamilySet()->GetNextColumnFamilyID();
 
     edit_out.AddColumnFamily(cf_name_list[i]);
     edit_out.SetColumnFamily(new_id);
     edit_out.SetLogNumber(logfile_number_);
-    edit_out.SetColumnFamilyKeyRang(smallest, largest);
+    edit_out.SetColumnFamilyKeyRange(smallest.ToString(), largest.ToString());
 
     edits_out.push_back(&edit_out);
-    edit_lists.push_back(&edits_out);
+    edit_lists.push_back(edits_out);
   }
 
   for (size_t i = 0; i < split_cnt; i++) {
@@ -172,32 +171,32 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_spli
                      "Create column family [%s] (ID %u)",
                      cfd_out_i->GetName().c_str(),
                      (unsigned) cfd_out_i->GetID());
-    } else {
+    }
+  } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                  "Split column family [%s] (ID %u) FAILED -- %s",
                  cfd->GetName().c_str(),
                  (unsigned) cfd->GetID(),
                  s.ToString().c_str());
-    }
+  
   } // InstrumentedMutexLock l(&mutex_)
 
   // Clean SuperVersionContext
-  for (auto sv: superverion_contexts) {
+  for (auto& sv: superversion_contexts) {
     sv.Clean();
   }
 
   // This is outside the mutex
   if (s.ok()) {
     for (size_t i = 0; i < split_cnt; i ++) {
-      NewThreadStatusInfo(
-          reinterpret_cast<ColumnFamilyHandleImpl*>(column_family_datas[i]));
+      NewThreadStatusCfInfo(column_family_datas[i]);
     }
   }
 
   // 2.split memtables
   WriteContext context;
   {
-    InstrumentedMutexLock l(&mutex);
+    InstrumentedMutexLock l(&mutex_);
 
     if (!cfd->mem()->IsEmpty()) {
       cfd->Ref();
@@ -208,8 +207,6 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_spli
     if (s.ok()) {
       cfd->Ref();
       s = SplitMemtables(cfd, column_family_datas);
-      InstallSuperversionAndScheduleWork(cfd, &context_in.superversion_context,
-                                        *cfd->GetLatestMutableCFOptions());
       cfd->Unref();
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
@@ -223,8 +220,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_spli
      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                  "Split Memtable of cf [%s] (ID %u)",
                  cfd->GetName().c_str(),
-                 (unsigned) cfd->GetID(),
-                 s.ToString().c_str());
+                 (unsigned) cfd->GetID());
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                  "Split Memtable of cf [%s] (ID %u) FAILED -- %s",
@@ -236,9 +232,10 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo> sst_spli
 
   // now we prepare sst split
   auto vstorage = cfd->current()->storage_info();
-  for (auto sst_split_file: sst_split_files) {
-    FileMetaData* meta = sst_split_file->metadata;
+  for (auto& sst_split_file: sst_split_files) {
+    FileMetaData* meta = sst_split_file.metadata;
     vstorage->AddToFilesMarkedForSplit(meta);
+    sst_split_file.DeleteInfo(); // free info
   }
   
   return Status::OK();

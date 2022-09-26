@@ -34,7 +34,8 @@ class SplitPicker {
               const MutableCFOptions& mutable_cf_options);
   virtual ~SplitPicker();
 
-  bool SetupL0FilesIfNeeded(CompactionInputFiles& l1_files,
+  bool SetupL0FilesIfNeeded(VersionStorageInfo* vstorage,
+                            std::vector<FileMetaData*> metas,
                             CompactionInputFiles& l0_files);
                             
   // Pick level and inputs for a new split.
