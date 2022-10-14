@@ -57,6 +57,14 @@ class SstFileSplitTest : public testing::Test {
     }*/
   }
 
+  void CreateMTBatch(DB* db, ColumnFamilyHandle* cfh, const std::vector<std::string>& keys) {
+    WriteBatch batch;
+    for (size_t i = 0; i < keys.size(); i ++) {
+      batch.Put(cfh, Slice(keys[i]), Slice(keys[i]));
+    }
+    db->Write(WriteOptions(), &batch);
+  }
+
   void CreateFile(const std::string& file_name,
                   const std::vector<std::string>& keys, int level) {
     SstFileWriter writer(soptions_, options_);
@@ -159,7 +167,8 @@ class SstFileSplitTest : public testing::Test {
 
 const uint64_t kNumKeys = 1000*1000;
 
-
+// two L1, empty L0, empty MemTables in cf_anon
+/*
 TEST_F(SstFileSplitTest, SplitColumnFamilyBackground) {
   std::vector<std::string> keys;
   for (uint64_t i = 0; i < kNumKeys; i++) {
@@ -202,11 +211,133 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground) {
   dbfull(db)->TEST_WaitForCompact();
 
   std::cout << "After compaction: sst count : " << GetSstFileCount(db->GetName()) << std::endl;
+  std::vector<std::string> families;
+  db->ListColumnFamilies(options, db_name, &families);
+  int cf_id = 0;
+  for (std::string name: families) {
+    std::cout << "cf[" << cf_id << "] : " << name << std::endl;
+    cf_id++;
+  }
 
-  db->DestroyColumnFamilyHandle(cfh);
+  dbfull(db)->DestroyLogicalColumnFamilies();
+
+  std::cout << "===========After Destroy LCF========" << std::endl;
+  db->ListColumnFamilies(options, db_name, &families);
+  cf_id = 0;
+  for (std::string name: families) {
+    std::cout << "cf[" << cf_id << "] : " << name << std::endl;
+    cf_id++;
+  }
+
+  dbfull(db)->PrintLogicalColumnFamily();
 
   delete db;
+} */
+
+// two L1, empty L0, one MemTables in cf_anon
+TEST_F(SstFileSplitTest, SplitColumnFamilyBackground2) {
+  std::vector<std::string> keys;
+  for (uint64_t i = 0; i < kNumKeys; i++) {
+    keys.emplace_back(EncodeAsString(i));
+  }
+
+  Options options;
+  options.create_if_missing = true;
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh;
+  std::string cf_name = "cf_anon";
+
+  std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
+  cfo->compaction_style = kCompactionStyleLevel;
+  cfo->num_levels = 2;
+  cfo->write_buffer_size = 64 << 20; // 64MB
+  cfo->level0_file_num_compaction_trigger = 4;
+  cfo->target_file_size_base = 4*1024*1024; // 4MB
+  cfo->report_bg_io_stats = true;
+
+  db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);
+
+  CreateMT(db, cfh, keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+  
+  CreateMT(db, cfh, keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+
+  CreateMT(db, cfh, keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+
+  CreateMT(db, cfh, keys);
+  db->Flush(FlushOptions(), cfh);
+
+  CreateMTBatch(db, cfh, keys);
+  dbfull(db)->TEST_WaitForCompact();
+
+  std::cout << "After compaction: sst count : " << GetSstFileCount(db->GetName()) << std::endl;
+
+  dbfull(db)->DestroyLogicalColumnFamilies();
+  delete db;
 }
+
+// two L1(which consists of odd keys),
+// empty L0, one MemTables(which consists of even keys) in cf_anon.
+TEST_F(SstFileSplitTest, SplitColumnFamilyBackground3) {
+  std::vector<std::string> odd_keys;
+  std::vector<std::string> even_keys;
+  for (uint64_t i = 0; i < kNumKeys; i++) {
+    odd_keys.emplace_back(EncodeAsString(2*i+1));
+    even_keys.emplace_back(EncodeAsString(2*i));
+  }
+
+  Options options;
+  options.create_if_missing = true;
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh;
+  std::string cf_name = "cf_anon";
+
+  std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
+  cfo->compaction_style = kCompactionStyleLevel;
+  cfo->num_levels = 2;
+  cfo->write_buffer_size = 64 << 20; // 64MB
+  cfo->level0_file_num_compaction_trigger = 4;
+  cfo->target_file_size_base = 4*1024*1024; // 4MB
+  cfo->report_bg_io_stats = true;
+
+  db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);
+
+  CreateMT(db, cfh, odd_keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+  
+  CreateMT(db, cfh, odd_keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+
+  CreateMT(db, cfh, odd_keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForCompact();
+
+  CreateMT(db, cfh, odd_keys);
+  db->Flush(FlushOptions(), cfh);
+
+  CreateMTBatch(db, cfh, even_keys);
+  dbfull(db)->TEST_WaitForCompact();
+
+  std::cout << "After compaction: sst count : " << GetSstFileCount(db->GetName()) << std::endl;
+
+  dbfull(db)->DestroyLogicalColumnFamilies();
+  delete db;
+}
+
+
 
 
 }  // namespace rocksdb

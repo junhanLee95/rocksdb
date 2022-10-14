@@ -1502,23 +1502,23 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
     std::vector<MemTable*> new_mems;
     std::vector<SequenceNumber> seqs;
     for (size_t to = 0; to < to_size; to++) {
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "SplitMemtables: to=%ld, to_size=%ld\n", to, to_size);
       // contexts
       contexts.push_back(new WriteContext());
       // memtables
       WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
+      fprintf(stdout, "to : %ld, cf id : %u\n", to, to_cfds[to]->GetID());
       MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
                                    kMaxSequenceNumber, to_cfds[to]->GetID());
+      to_cfds[to]->SetImmMemtable(mem);
+      fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
       new_mems.push_back(mem);
       seqs.push_back(1);
       mem->Ref();
     }
-    // prepare for from_cfd
-    contexts.push_back(new WriteContext());
-    WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
-    MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
-                                 kMaxSequenceNumber, from_cfd->GetID());
-    new_mems.push_back(mem);
-    mem->Ref();
+
+    assert(new_mems.size() == to_size);
 
     InternalIterator* mem_iter = from_imm->NewIterator(ro, &arena);
     for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
@@ -1537,15 +1537,25 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
 
       // select memtables to put item
       std::string user_key_str = user_key.ToString();
-      size_t select = to_size; // from_cfd for the default
-      for (size_t to = 0; to < to_size; to++) {
+      size_t select = 0; // from_cfd for the default
+      for (size_t to = 1; to < to_size; to++) {
+
         std::string smallest_to = to_cfds[to]->GetSmallestKey();
         std::string largest_to = to_cfds[to]->GetLargestKey();
-        if (user_key.compare(smallest_to) >= 0 && user_key.compare(largest_to) <= 0) {
+
+        fprintf(stdout, "SplitMemtables: cf[%s] range : [%s,%s]\n",
+                to_cfds[to]->GetName().c_str(),
+                smallest_to.c_str(), largest_to.c_str());
+
+        if (user_key_str.compare(smallest_to) >= 0 && user_key_str.compare(largest_to) <= 0) {
           select = to;
           break;
         }
       }
+
+      fprintf(stdout, "SplitMemtables: %s goes to cf[%u]-%s\n",
+                      user_key_str.c_str(), to_cfds[select]->GetID(),
+                      to_cfds[select]->GetName().c_str());
 
       switch (type) {
         case kTypeValue:
@@ -1565,29 +1575,24 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
                   type);
         }
       }
-
-      // add new_mems to to_cfds
-      for (size_t to = 0; to < to_size; to++) {
-        if (!new_mems[to]->IsEmpty()) {
-          to_cfds[to]->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
-          InstallSuperVersionAndScheduleWork(to_cfds[to], &contexts[to]->superversion_context,
-                                              *to_cfds[to]->GetLatestMutableCFOptions());
-        } else{
-          delete new_mems[to];
-        }
-      }
-      // add last mem to from_cfd
-      if (!new_mems[to_size]->IsEmpty()) {
-        from_cfd->imm()->Add(new_mems[to_size], &contexts[to_size]->memtables_to_free_);
-        InstallSuperVersionAndScheduleWork(to_cfds[to_size], &contexts[to_size]->superversion_context,
-                                           *to_cfds[to_size]->GetLatestMutableCFOptions());
-      } else {
-        delete new_mems[to_size];
-      }
-
-      // delete existing imms in from_cfd
-      from_cfd->imm()->ClearSplittedMemtables(&contexts[to_size]->memtables_to_free_);
     }
+
+    // delete existing imms in from_cfd
+    from_cfd->imm()->ClearSplittedMemtables(&contexts[to_size]->memtables_to_free_,
+                                            new_mems[0]->GetID());
+
+    // add new_mems to to_cfds
+    for (size_t to = 0; to < to_size; to++) {
+      if (!new_mems[to]->IsEmpty()) {
+        to_cfds[to]->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
+        InstallSuperVersionAndScheduleWork(to_cfds[to], &contexts[to]->superversion_context,
+                                            *to_cfds[to]->GetLatestMutableCFOptions());
+      } else{
+        new_mems[to]->Unref();
+        delete new_mems[to];
+      }
+    }
+
 
     // clear write contexts
     for (auto& context: contexts) {

@@ -253,6 +253,11 @@ class ColumnFamilyData {
     new_mem->SetID(memtable_id);
     mem_ = new_mem;
   }
+  
+  void SetImmMemtable(MemTable* new_mem) {
+    uint64_t memtable_id = last_memtable_id_.fetch_add(1) + 1;
+    new_mem->SetID(memtable_id);  
+  }
 
   // calculate the oldest log needed for the durability of this column family
   uint64_t OldestLogToKeep();
@@ -579,6 +584,7 @@ class ColumnFamilySet {
   size_t NumberOfColumnFamilies() const;
 
   bool AddLogicalColumnFamily(ColumnFamilyData* c_in); // return true if successfully update lcf vector 
+  void DestroyLogicalColumnFamily(void); // clear lcf vector
   bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs); // return true if successfully update lcf vector 
   void PrintLogicalColumnFamily(void);
   std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);

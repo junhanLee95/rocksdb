@@ -183,6 +183,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       last_batch_group_size_(0),
       unscheduled_flushes_(0),
       unscheduled_compactions_(0),
+      unscheduled_splits_(0),
       bg_bottom_compaction_scheduled_(0),
       bg_compaction_scheduled_(0),
       num_running_compactions_(0),
@@ -2198,7 +2199,7 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
 
       WriteContext context_in;
       autovector<MemTable*> imms;
-      cfd_in0->imm()->ClearSplittedMemtables(&context_in.memtables_to_free_);
+      cfd_in0->imm()->ClearSplittedMemtables(&context_in.memtables_to_free_, UINT_MAX);
       InstallSuperVersionAndScheduleWork(cfd_in0, &context_in.superversion_context,
                                         *cfd_in0->GetLatestMutableCFOptions());
       cfd_in0->Unref();
@@ -2243,6 +2244,27 @@ void DBImpl::PrintLogicalColumnFamily(void) {
     auto column_family_set = versions_->GetColumnFamilySet();
     column_family_set->PrintLogicalColumnFamily();
   }
+  return;
+}
+
+void DBImpl::DestroyLogicalColumnFamilies(void) {
+  std::vector<ColumnFamilyData*> lcf;
+  std::cout << "DLCF[1]"<< std::endl;
+  auto column_family_set = versions_->GetColumnFamilySet();
+  std::cout << "DLCF[2]"<< std::endl;
+  lcf = column_family_set->GetLogicalColumnFamily();
+  std::cout << "DLCF[3]"<< std::endl;
+  for (auto& cfd: lcf) {
+    std::cout << "DLCF[*]"<< std::endl;
+    uint32_t cfd_id = cfd->GetID();
+    std::string cfd_name = cfd->GetName();
+    std::cout << "Destroy cf[" << cfd_id << "] : " << cfd_name << std::endl;
+    ColumnFamilyHandle* cfh = GetColumnFamilyHandle(cfd_id);
+    std::cout << "Destroy cfh : " << cfh->GetName() << std::endl;
+    DropColumnFamily(cfh);
+  }
+  std::cout << "DLCF[4]"<< std::endl;
+  column_family_set->DestroyLogicalColumnFamily();
   return;
 }
 

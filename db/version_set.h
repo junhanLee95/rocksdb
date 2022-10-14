@@ -757,9 +757,9 @@ struct SplitFileInfo {
 
   void DeleteInfo() {
     delete metadata;
-    delete cfd;
+    //delete cfd;
     metadata = nullptr;
-    cfd = nullptr;
+    //cfd = nullptr;
   }
 };
 

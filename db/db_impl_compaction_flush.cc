@@ -1585,6 +1585,8 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
   std::vector<FileMetaData*> std_metas;
   for (auto& meta: metas) {
     std_metas.push_back(meta);
+    fprintf(stdout,"GenerateSplitReq: push meta s: %s\n", meta->smallest.DebugString(false).c_str());
+    fprintf(stdout,"GenerateSplitReq: push meta l: %s\n", meta->largest.DebugString(false).c_str());
   }
   req->emplace_back(cfd, std_metas);
 }
@@ -1926,6 +1928,7 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "unscheduled_splits_ : %d", unscheduled_splits_);
   if (/*bg_split_ && */ unscheduled_splits_ > 0) {
+      fprintf(stdout, "schedule split\n");
       bg_split_scheduled_++;
       unscheduled_splits_--;
       SplitThreadArg* fta = new SplitThreadArg;
@@ -2026,6 +2029,7 @@ void DBImpl::AddToSplitQueue(SplitRequest& req) {
   auto cfd = req.front().first;
   assert(!cfd->queued_for_split());
   cfd->Ref();
+  fprintf(stdout,"AddToSplitQueue add\n");
   split_queue_.push_back(req);
   cfd->set_queued_for_split(true);
 }
@@ -2093,8 +2097,12 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
 }
 
 void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
+  fprintf(stdout, "split queued : %d\n", cfd->queued_for_split() );
+  fprintf(stdout, "split need : %d\n", cfd->NeedsSplit() );
+  fprintf(stdout, "comp queued : %d\n", cfd->queued_for_compaction() );
   if (!cfd->queued_for_split() && cfd->NeedsSplit()
       && !cfd->queued_for_compaction()) {
+    fprintf(stdout, "schedule pending split\n");
     SplitRequest split_req;
     GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
     assert(!split_req.empty());
@@ -2284,8 +2292,10 @@ void DBImpl::BackgroundCallSplit(Env::Priority thread_pri) {
 
     assert(thread_pri == Env::Priority::LOW &&
            bg_split_scheduled_);
+    fprintf(stdout, "BackgroundSplit\n");
     Status s = BackgroundSplit(&made_progress, &job_context, &log_buffer,
                                thread_pri);
+    fprintf(stdout, "BackgroundSplit\n");
     TEST_SYNC_POINT("BackgroundCallSplit:1");
 
     if (s.IsBusy()) {
@@ -2504,9 +2514,9 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
 
     if (job_context.HaveSomethingToSplit()) {
      mutex_.Unlock();
-     ROCKS_LOG_ERROR(immutable_db_options_.info_log,
-                     "[JH]Have Something to Split");
-
+     ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                    "[JH]Have Something to Split");
+     fprintf(stdout, "[JH]Have Something to Split\n");
      SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
      mutex_.Lock();
     }
@@ -2577,6 +2587,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
 
   std::unique_ptr<Compaction> c;
   std::vector<FileMetaData*> metas;
+  ColumnFamilyData* cfd;
 
   SplitJobStats split_job_stats;
   Status status;
@@ -2606,6 +2617,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
   // InternalKey* manual_end = &manual_end_storage;
   bool sfm_reserved_compact_space = false;
 
+  fprintf(stdout, "BackgroundSplit(2)\n");
   if (!split_queue_.empty()) {
     SplitRequest split_req = PopFirstFromSplitQueue();
     if (split_req.empty()) {
@@ -2613,8 +2625,9 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       ++unscheduled_splits_;
       return Status::Busy();
     }
+    fprintf(stdout, "BackgroundSplit(22)\n");
 
-    auto cfd =  split_req.front().first;
+    cfd =  split_req.front().first;
     metas = split_req.front().second;
 
     // We unreference here because the following code will take a Ref() on
@@ -2628,6 +2641,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       delete cfd;
       return Status::OK();
     }
+    fprintf(stdout, "BackgroundSplit(23)\n");
 
     // Pick up latest mutable CF Options and use it throughout the
     // split job
@@ -2649,9 +2663,10 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
     }
   }
 
+  fprintf(stdout, "BackgroundSplit(3)\n");
   if (!c) {
-    // Nothing to do
     ROCKS_LOG_BUFFER(log_buffer, "Split nothing to do");
+    fprintf(stdout, "Split nothing to do\n");
   } else {
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:BeforeSplit",
                              c->column_family_data());
@@ -2675,22 +2690,29 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
         &event_logger_, c->mutable_cf_options()->paranoid_file_checks,
         c->mutable_cf_options()->report_bg_io_stats, dbname_,
         &split_job_stats, thread_pri);
+
+    fprintf(stdout, "BackgroundSplit(4)\n");
     split_job.Prepare();
+    fprintf(stdout, "BackgroundSplit(5)\n");
 
     NotifyOnSplitBegin(c->column_family_data(), c.get(), status,
                             split_job_stats, job_context->job_id);
 
     mutex_.Unlock();
+    fprintf(stdout, "BackgroundSplit(6)\n");
     split_job.Run();
+    fprintf(stdout, "BackgroundSplit(7)\n");
     TEST_SYNC_POINT("DBImpl::BackgroundSplit:NonTrivial:AfterRun");
     mutex_.Lock();
 
     status = split_job.Install();
+    fprintf(stdout, "BackgroundSplit(8)\n");
     if (status.ok()) {
       InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                          &job_context->superversion_contexts[0],
                                          *c->mutable_cf_options());
     }
+    fprintf(stdout, "BackgroundSplit(9)\n");
     *made_progress = true;
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:AfterSplit",
                              c->column_family_data());
@@ -2713,10 +2735,12 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
                            split_job_stats, job_context->job_id);
   }
 
+  fprintf(stdout, "Split status : %s\n", status.ToString().c_str());
   if (status.ok()) {
     // Done
-    ROCKS_LOG_INFO(c->immutable_cf_options()->info_log,
-                     "Split column family finish");
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "[%s] Split column family finish", cfd->GetName().c_str());
+    fprintf(stdout, "Split column family finish\n");
   } else if (status.IsShutdownInProgress()) {
     // Ignore compaction errors found during shutting down
   } else {
@@ -2726,7 +2750,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
     if (c != nullptr &&/* !is_manual &&*/ !error_handler_.IsBGWorkStopped()) {
       // Put this cfd back in the compaction queue so we can retry after some
       // time
-      auto cfd = c->column_family_data();
+      cfd = c->column_family_data();
       assert(cfd != nullptr);
       // Since this compaction failed, we need to recompute the score so it
       // takes the original input files into account
