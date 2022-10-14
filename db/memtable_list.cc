@@ -286,12 +286,15 @@ bool MemTableList::IsFlushPending() const {
   return false;
 }
 
-void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete) {
+void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete,
+                                          uint64_t max_memtable_id) {
   InstallNewVersion();
   const auto& memlist = current_->memlist_;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
     if (m->split_in_progress_) {
+      fprintf(stdout, "m id : %lu, max : %lu\n", m->GetID(), max_memtable_id);
+      assert (m->GetID() < max_memtable_id);
       num_flush_not_started_--;
       if (num_flush_not_started_ == 0) {
           imm_flush_needed.store(false, std::memory_order_release);
