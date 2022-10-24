@@ -1405,6 +1405,9 @@ size_t ColumnFamilySet::NumberOfColumnFamilies() const {
 
 // under a DB mutex AND write thread
 bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
+
+  return c_in != nullptr;
+  /*
   // find c_in
   int l = 0;
   int r = logical_column_family_data_.size();
@@ -1439,7 +1442,7 @@ bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
     return true;
   } else { // not found
     return false;
-  }
+  }*/
 }
 
 void ColumnFamilySet::DestroyLogicalColumnFamily(void) {
@@ -1448,6 +1451,11 @@ void ColumnFamilySet::DestroyLogicalColumnFamily(void) {
 
 // under a DB mutex AND write thread
 bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs) {
+  partition_tree_->InsertSplittedColumnFamily(c_in, c_outs);
+  return true;
+  
+  /*
+>>>>>>> lcf_partition_tree
   // find c_in
   int l = 0;
   int r = logical_column_family_data_.size();
@@ -1478,19 +1486,28 @@ bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vect
   } else { // not found
     return false;
   }
+  */
 }
 
 void ColumnFamilySet::PrintLogicalColumnFamily(void) {
   fprintf(stdout, "=======PrintLogicalColumnFamily=======\n");
-  for (auto c: logical_column_family_data_) {
+
+  partition_tree_->PrintAll();
+  
+  /*
+  for (auto c: partition_tree_->) {
     fprintf(stdout, "LCF[%d] %s => [%s, %s)\n", c->GetID(), c->GetName().c_str()
                                               , c->GetSmallestKey().c_str(), c->GetLargestKey().c_str());
-  }
+  }*/
   fprintf(stdout, "======================================\n");
 }
-
+/*
 std::vector<ColumnFamilyData*> ColumnFamilySet::GetLogicalColumnFamily(void) {
   return logical_column_family_data_;
+}*/
+
+ColumnFamilyData* ColumnFamilySet::GetLogicalColumnFamily(const Slice &key) {
+  return partition_tree_->SearchColumnFamily(key);
 }
 
 // under a DB mutex AND write thread
@@ -1512,6 +1529,7 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   dummy_cfd_->prev_ = new_cfd;
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
+    partition_tree_ = new PartitionTree(new_cfd);
   }
   return new_cfd;
 }
@@ -1538,6 +1556,7 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   dummy_cfd_->prev_ = new_cfd;
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
+    partition_tree_ = new PartitionTree(new_cfd);
   }
   return new_cfd;
 }
@@ -1590,6 +1609,10 @@ MemTable* ColumnFamilyMemTablesImpl::GetMemTable() const {
 ColumnFamilyHandle* ColumnFamilyMemTablesImpl::GetColumnFamilyHandle() {
   assert(current_ != nullptr);
   return &handle_;
+}
+
+ColumnFamilyData* ColumnFamilyMemTablesImpl::SeekLogicalColumnFamily(const Slice &key) {
+  return column_family_set_->GetLogicalColumnFamily(key);
 }
 
 uint32_t GetColumnFamilyID(ColumnFamilyHandle* column_family) {

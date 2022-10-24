@@ -25,6 +25,9 @@
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "util/thread_local.h"
+
+#include "db/partition_tree.h"
+
 namespace rocksdb {
 
 class Version;
@@ -43,6 +46,7 @@ class LogBuffer;
 class InstrumentedMutex;
 class InstrumentedMutexLock;
 struct SuperVersionContext;
+class PartitionTree;
 
 extern const double kIncSlowdownRatio;
 
@@ -331,6 +335,8 @@ class ColumnFamilyData {
     return &int_tbl_prop_collector_factories_;
   }
 
+  ColumnFamilySet* GetColumnFamilySet() { return column_family_set_; }
+
   SuperVersion* GetSuperVersion() { return super_version_; }
   // thread-safe
   // Return a already referenced SuperVersion to be used safely.
@@ -587,7 +593,7 @@ class ColumnFamilySet {
   void DestroyLogicalColumnFamily(void); // clear lcf vector
   bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs); // return true if successfully update lcf vector 
   void PrintLogicalColumnFamily(void);
-  std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
+  //std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
 
   ColumnFamilyData* CreateColumnFamily(const std::string& name, uint32_t id,
                                        Version* dummy_version,
@@ -608,6 +614,7 @@ class ColumnFamilySet {
 
   Cache* get_table_cache() { return table_cache_; }
 
+  ColumnFamilyData* GetLogicalColumnFamily(const Slice &key);
  private:
   friend class ColumnFamilyData;
   // helper function that gets called from cfd destructor
@@ -624,7 +631,8 @@ class ColumnFamilySet {
   std::unordered_map<std::string, uint32_t> column_families_;
   std::unordered_map<uint32_t, ColumnFamilyData*> column_family_data_;
   int comp_smallest_key (ColumnFamilyData* c1, ColumnFamilyData* c2) { return c1->GetSmallestKey().compare(c2->GetSmallestKey()); };
-  std::vector<ColumnFamilyData*> logical_column_family_data_;
+  //std::vector<ColumnFamilyData*> logical_column_family_data_;
+  PartitionTree* partition_tree_;
 
   uint32_t max_column_family_;
   ColumnFamilyData* dummy_cfd_;
@@ -678,6 +686,8 @@ class ColumnFamilyMemTablesImpl : public ColumnFamilyMemTables {
   // REQUIRES: use this function of DBImpl::column_family_memtables_ should be
   //           under a DB mutex OR from a write thread
   virtual ColumnFamilyData* current() override { return current_; }
+
+  virtual ColumnFamilyData* SeekLogicalColumnFamily(const Slice &key) override;
 
  private:
   ColumnFamilySet* column_family_set_;

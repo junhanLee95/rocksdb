@@ -189,6 +189,8 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       num_running_compactions_(0),
       bg_flush_scheduled_(0),
       num_running_flushes_(0),
+      bg_split_scheduled_(0),
+      num_running_splits_(0),
       bg_purge_scheduled_(0),
       disable_delete_obsolete_files_(0),
       pending_purge_obsolete_files_(0),
@@ -1425,6 +1427,15 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
+  // Dohyun Kim: Partition Tree Search (NO Mutex)
+  auto cfs = cfd->GetColumnFamilySet();
+  cfd = cfs->GetLogicalColumnFamily(key);
+
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "GetImpl key : %s (ID %d)",
+                  key.ToString().c_str(),
+                  cfd->GetID());
+
   if (tracer_) {
     // TODO: This mutex should be removed later, to improve performance when
     // tracing is enabled.
@@ -1436,6 +1447,9 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
 
   // Acquire SuperVersion
   SuperVersion* sv = GetAndRefSuperVersion(cfd);
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "GetImpl sv current : %s",
+                 sv->current->DebugString(true, true).c_str());
 
   TEST_SYNC_POINT("DBImpl::GetImpl:1");
   TEST_SYNC_POINT("DBImpl::GetImpl:2");
@@ -1494,6 +1508,10 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       done = true;
       pinnable_val->PinSelf();
       RecordTick(stats_, MEMTABLE_HIT);
+
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "GetImpl: mem");
+
     } else if ((s.ok() || s.IsMergeInProgress()) &&
                sv->imm->Get(lkey, pinnable_val->GetSelf(), &s, &merge_context,
                             &max_covering_tombstone_seq, read_options, callback,
@@ -1501,6 +1519,10 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       done = true;
       pinnable_val->PinSelf();
       RecordTick(stats_, MEMTABLE_HIT);
+
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "GetImpl: imm");
+
     }
     if (!done && !s.ok() && !s.IsMergeInProgress()) {
       ReturnAndCleanupSuperVersion(cfd, sv);
@@ -1513,6 +1535,9 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
                      &max_covering_tombstone_seq, value_found, nullptr, nullptr,
                      callback, is_blob_index);
     RecordTick(stats_, MEMTABLE_MISS);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: sst");
+
   }
 
   {
@@ -2142,13 +2167,10 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "Created column family [%s] (ID %u)",
                      out0_name.c_str(), (unsigned)cfd0->GetID());
-
       *handle_out1 = new ColumnFamilyHandleImpl(cfd1, this, &mutex_);
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "Created column family [%s] (ID %u)",
                      out1_name.c_str(), (unsigned)cfd1->GetID());
-
-
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                       "Splitting column family [%s] FAILED -- %s",
@@ -2268,6 +2290,8 @@ void DBImpl::DestroyLogicalColumnFamilies(void) {
   return;
 }
 
+/*
+>>>>>>> lcf_partition_tree
 std::vector<ColumnFamilyData*> DBImpl::GetLogicalColumnFamily(void) {
   std::vector<ColumnFamilyData*> lcf;
   {
@@ -2276,7 +2300,7 @@ std::vector<ColumnFamilyData*> DBImpl::GetLogicalColumnFamily(void) {
     lcf = column_family_set->GetLogicalColumnFamily();
   }
   return lcf;
-}
+}*/
 
 
 Status DBImpl::CreateColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
@@ -2426,10 +2450,8 @@ Status DBImpl::DropColumnFamilyImpl(ColumnFamilyHandle* column_family) {
       // we drop column family from a single write thread
       WriteThread::Writer w;
       write_thread_.EnterUnbatched(&w, &mutex_);
-      fprintf(stdout, "Drop Log[1]\n");
       s = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(), &edit,
                                  &mutex_);
-      fprintf(stdout, "Drop Log[2]\n");
       write_thread_.ExitUnbatched(&w);
     }
     if (s.ok()) {

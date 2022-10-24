@@ -1195,7 +1195,6 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
                   bool* is_blob) {
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
-
   assert(status->ok() || status->IsMergeInProgress());
 
   if (key_exists != nullptr) {
@@ -1260,6 +1259,8 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
     switch (get_context.State()) {
       case GetContext::kNotFound:
         // Keep searching in other files
+        ROCKS_LOG_INFO(info_log_,
+                     "VersionGetImpl: notfound");
         break;
       case GetContext::kMerge:
         // TODO: update per-level perfcontext user_key_return_count for kMerge
@@ -1273,6 +1274,8 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
           RecordTick(db_statistics_, GET_HIT_L2_AND_UP);
         }
         PERF_COUNTER_BY_LEVEL_ADD(user_key_return_count, 1, fp.GetHitFileLevel());
+        ROCKS_LOG_INFO(info_log_,
+                     "VersionGetImpl: found");
         return;
       case GetContext::kDeleted:
         // Use empty error message for speed

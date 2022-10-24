@@ -925,6 +925,10 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       // status before advancing will be given to FinishSplitOutputFile().
       input_status = input->status();
       output_file_ended = true;
+      ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "SplitJob::ProcessKeyValueSplit output_file_ended(1)"
+      );
     }
     c_iter->Next();
     if (!output_file_ended && c_iter->Valid() &&
@@ -939,6 +943,10 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       // FinishSplitOutputFile().
       input_status = input->status();
       output_file_ended = true;
+      ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "SplitJob::ProcessKeyValueSplit output_file_ended(2)"
+      );
     }
     if (is_child && !child_largest.empty() && cfd->user_comparator()->Compare(c_iter->user_key(), child_largest) >=0) {
       // (3) if key is greater than the child's largest key, terminates the file and switch to the next column family.
@@ -1113,6 +1121,12 @@ Status SplitJob::FinishSplitOutputFile(
   }
   assert(output_number != 0);
   const Comparator* ucmp = cfd->user_comparator();
+  ROCKS_LOG_INFO(
+      db_options_.info_log,
+      "SplitJob::FinishSplitOutputFile write_left : %d\n",
+      sub_split->write_left
+  );
+
 
   // Check for iterator errors
   Status s = input_status;

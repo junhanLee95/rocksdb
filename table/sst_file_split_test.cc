@@ -7,6 +7,8 @@
 
 #include <inttypes.h>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 
 #include "db/db_impl.h"
 #include "rocksdb/db.h"
@@ -336,8 +338,6 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground3) {
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
 }
-
-
 
 
 }  // namespace rocksdb

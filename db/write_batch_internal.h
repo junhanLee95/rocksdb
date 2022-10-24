@@ -33,6 +33,7 @@ class ColumnFamilyMemTables {
   virtual MemTable* GetMemTable() const = 0;
   virtual ColumnFamilyHandle* GetColumnFamilyHandle() = 0;
   virtual ColumnFamilyData* current() { return nullptr; }
+  virtual ColumnFamilyData* SeekLogicalColumnFamily(const Slice &key) = 0; 
 };
 
 class ColumnFamilyMemTablesDefault : public ColumnFamilyMemTables {
@@ -53,6 +54,10 @@ class ColumnFamilyMemTablesDefault : public ColumnFamilyMemTables {
   }
 
   ColumnFamilyHandle* GetColumnFamilyHandle() override { return nullptr; }
+
+  ColumnFamilyData* SeekLogicalColumnFamily(const Slice &key) {
+    return (key.size() == 0) ? current() : nullptr;
+  }
 
  private:
   bool ok_;
