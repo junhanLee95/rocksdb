@@ -37,7 +37,7 @@ class PartitionTreeNode {
 class PartitionTree {
  public:
 
-  PartitionTreeNode root_;
+  PartitionTreeNode* root_ = nullptr;
   std::unordered_map<uint32_t, PartitionTreeNode*> partition_nodes_;
 
   PartitionTree() {};

@@ -76,21 +76,23 @@ void PartitionTreeNode::Print(
 // PartitionTree function.
 
 PartitionTree::PartitionTree( 
-    ColumnFamilyData* column_family_data) : root_(column_family_data) {
-
+    ColumnFamilyData* column_family_data) {
+  root_ = new PartitionTreeNode(column_family_data);
+  if (column_family_data != nullptr) {
+      column_family_data->SetPartitionTreeNode(root_);  
+  }
   fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
-  partition_nodes_.insert({column_family_data->GetID(), &root_}); 
+  partition_nodes_.insert({column_family_data->GetID(), root_}); 
 }
 
 void PartitionTree::SetRootColumnFamily (
     ColumnFamilyData* column_family_data) {
-  root_.SetColumnFamily(column_family_data);
+  root_->SetColumnFamily(column_family_data);
 
   fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
-  partition_nodes_.insert(
-    std::make_pair<uint32_t, PartitionTreeNode*>(column_family_data->GetID(), &root_));
+  partition_nodes_.insert({column_family_data->GetID(), root_});
 }
 
 void PartitionTree::InsertSplittedColumnFamily (
@@ -128,7 +130,7 @@ void PartitionTree::InsertSplittedColumnFamily (
 }
 
 ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
-  PartitionTreeNode *cnode = &root_; // current node
+  PartitionTreeNode *cnode = root_; // current node
   PartitionTreeNode *nnode = nullptr; // next node
 
   while (true) {
@@ -149,7 +151,7 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
 
 std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Slice &key) {
   std::vector<ColumnFamilyData*> search_cfds; // cfds to return
-  PartitionTreeNode *cnode = &root_; // current node
+  PartitionTreeNode *cnode = root_; // current node
   PartitionTreeNode *nnode = nullptr; // next node
 
   search_cfds.push_back(cnode->cfd_);
@@ -171,7 +173,7 @@ std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Sli
 }
   
 void PartitionTree::PrintAll() {
-  root_.Print("0", true);
+  root_->Print("0", true);
 }
  
 }

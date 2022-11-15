@@ -743,10 +743,15 @@ INSTANTIATE_TEST_CASE_P(
 TEST_P(ColumnFamilyTest, AddDrop) {
   Open();
   CreateColumnFamilies({"one", "two", "three"});
+  fprintf(stdout, "[JH]1\n");
   ASSERT_EQ("NOT_FOUND", Get(1, "fodor"));
+  fprintf(stdout, "[JH]2\n");
   ASSERT_EQ("NOT_FOUND", Get(2, "fodor"));
+  fprintf(stdout, "[JH]3\n");
   DropColumnFamilies({2});
+  fprintf(stdout, "[JH]4\n");
   ASSERT_EQ("NOT_FOUND", Get(1, "fodor"));
+  fprintf(stdout, "[JH]5\n");
   CreateColumnFamilies({"four"});
   ASSERT_EQ("NOT_FOUND", Get(3, "fodor"));
   ASSERT_OK(Put(1, "fodor", "mirko"));
