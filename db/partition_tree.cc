@@ -52,6 +52,10 @@ PartitionTreeNode *PartitionTreeNode::SearchNextNode (
   return nullptr;
 }
 
+PartitionTreeNode* PartitionTreeNode::GetParentNode(void) {
+  return parent_node_;
+}
+
 void PartitionTreeNode::Print(
     std::string TreeID, 
     bool recursive) {
@@ -103,13 +107,19 @@ void PartitionTree::InsertSplittedColumnFamily (
 
   // Note: We assume that the vector new_cfds already sorted 
   // with respect to its key range. 
+
   for (auto new_cfd: new_cfds) {
     auto node = new PartitionTreeNode(new_cfd);
+    if (new_cfd != nullptr) {
+      new_cfd->SetPartitionTreeNode(node);  
+    }
 
     fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s\n", new_cfd->GetID(), new_cfd->GetName().c_str());
 
     if (push_back) {
       base_node->lower_level_nodes_.push_back(node);
+      //JH: Set parent node
+      node->parent_node_ = base_node;
       continue;
     } 
 
@@ -130,11 +140,34 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
     cnode = nnode; 
   }
 
-  /*
+  
   fprintf(stdout, "CFD[%s] Search... %s < [%s] < %s\n", 
     cnode->cfd_->GetName().c_str(), get_lmost_key(cnode).c_str(), key.data(), get_rmost_key(cnode).c_str());
-  */
+  
   return cnode->cfd_;
+}
+
+std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Slice &key) {
+  std::vector<ColumnFamilyData*> search_cfds; // cfds to return
+  PartitionTreeNode *cnode = &root_; // current node
+  PartitionTreeNode *nnode = nullptr; // next node
+
+  search_cfds.push_back(cnode->cfd_);
+  while (true) {
+    nnode = cnode->SearchNextNode(key);
+
+    if (nnode == nullptr) 
+      break; 
+
+    cnode = nnode; 
+    search_cfds.push_back(cnode->cfd_);
+  }
+
+  
+  fprintf(stdout, "CFD[%s] Search... %s < [%s] < %s\n", 
+    cnode->cfd_->GetName().c_str(), get_lmost_key(cnode).c_str(), key.data(), get_rmost_key(cnode).c_str());
+  
+  return search_cfds;
 }
   
 void PartitionTree::PrintAll() {

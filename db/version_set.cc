@@ -3184,7 +3184,11 @@ Status VersionSet::ProcessManifestWrites(
         delete first_writer.cfd;
       }
     } else if (first_writer.edit_list.front()->is_column_family_split_) {
-      assert(batch_edits.size() == 3);
+
+      for (auto& e : batch_edits) {
+        fprintf(stderr, "[JH] %s\n", e->DebugString(true).c_str());
+      }
+      //assert(batch_edits.size() == 3);
       assert(new_cf_options != nullptr);
       ColumnFamilyData* cfd = first_writer.cfd;
       // create column family for second & third writer

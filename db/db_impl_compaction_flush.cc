@@ -1930,7 +1930,6 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   if (/*bg_split_ && */ unscheduled_splits_ > 0) {
       fprintf(stdout, "schedule split\n");
       bg_split_scheduled_++;
-      unscheduled_splits_--;
       SplitThreadArg* fta = new SplitThreadArg;
       fta->db_ = this;
       fta->thread_pri_ = Env::Priority::LOW;

@@ -21,12 +21,15 @@ class PartitionTreeNode {
   ColumnFamilyData *cfd_ = nullptr;
 
   std::vector<PartitionTreeNode*> lower_level_nodes_;
+  PartitionTreeNode *parent_node_ = nullptr;
   
   PartitionTreeNode() {};
   PartitionTreeNode(ColumnFamilyData*); 
 
   void SetColumnFamily(ColumnFamilyData*);
   PartitionTreeNode *SearchNextNode(const Slice &key);
+
+  PartitionTreeNode *GetParentNode(void);
 
   void Print(std::string TreeID, bool recursive);
 };
@@ -44,6 +47,7 @@ class PartitionTree {
   void SetRootColumnFamily(ColumnFamilyData*);
   void InsertSplittedColumnFamily (ColumnFamilyData *base_cfd, const std::vector<ColumnFamilyData*> &new_cfds);
   ColumnFamilyData *SearchColumnFamily (const Slice &key); 
+  std::vector<ColumnFamilyData*> SearchAllColumnFamilies (const Slice &key); 
   
   void PrintAll();
 };

@@ -1041,6 +1041,14 @@ std::string ColumnFamilyData::GetLargestKey() {
   return largest_user_key_;
 }
 
+void ColumnFamilyData::SetPartitionTreeNode(PartitionTreeNode* node) {
+  partition_tree_node_ = node;  
+}
+
+PartitionTreeNode* ColumnFamilyData::GetPartitionTreeNode(void) {
+  return partition_tree_node_;
+}
+
 Compaction* ColumnFamilyData::PickCompaction(
     const MutableCFOptions& mutable_options,
     LogBuffer* log_buffer) {
@@ -1445,9 +1453,6 @@ bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
   }*/
 }
 
-void ColumnFamilySet::DestroyLogicalColumnFamily(void) {
-  logical_column_family_data_.clear();
-}
 
 // under a DB mutex AND write thread
 bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs) {
@@ -1509,6 +1514,17 @@ std::vector<ColumnFamilyData*> ColumnFamilySet::GetLogicalColumnFamily(void) {
 ColumnFamilyData* ColumnFamilySet::GetLogicalColumnFamily(const Slice &key) {
   return partition_tree_->SearchColumnFamily(key);
 }
+
+std::vector<ColumnFamilyData*> ColumnFamilySet::GetAllLogicalColumnFamilies(const Slice &key) {
+  return partition_tree_->SearchAllColumnFamilies(key);
+}
+
+ColumnFamilyData* ColumnFamilySet::GetParentColumnFamily(ColumnFamilyData* cfd) {
+  PartitionTreeNode* nnode = cfd->GetPartitionTreeNode();
+  PartitionTreeNode* pnode = nnode->GetParentNode();
+  return pnode->cfd_;
+}
+
 
 // under a DB mutex AND write thread
 ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(

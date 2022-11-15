@@ -1123,7 +1123,7 @@ Status SplitJob::FinishSplitOutputFile(
   const Comparator* ucmp = cfd->user_comparator();
   ROCKS_LOG_INFO(
       db_options_.info_log,
-      "SplitJob::FinishSplitOutputFile child_idx : %d\n",
+      "SplitJob::FinishSplitOutputFile child_idx : %ld\n",
       sub_split->child_idx
   );
 

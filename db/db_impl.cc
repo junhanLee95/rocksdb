@@ -1428,8 +1428,18 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   auto cfd = cfh->cfd();
 
   // Dohyun Kim: Partition Tree Search (NO Mutex)
+  // JH: GetLogicalColumnFamily is replaced with GetAllLogicalColumnFamilies;
+  // to implement inter-cfd point lookup
   auto cfs = cfd->GetColumnFamilySet();
+  std::vector<ColumnFamilyData*> cfds = cfs->GetAllLogicalColumnFamilies(key);
   cfd = cfs->GetLogicalColumnFamily(key);
+
+  for (ColumnFamilyData* c: cfds) {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "GetImpl cfd stack : %s (ID %d)",
+                  key.ToString().c_str(),
+                  c->GetID());
+  }
 
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "GetImpl key : %s (ID %d)",
@@ -1552,8 +1562,44 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       RecordTick(stats_, BYTES_READ, size);
       PERF_COUNTER_ADD(get_read_bytes, size);
     }
+    else {
+      // JH: if not found, we look up its parent column family
+      cfd = cfs->GetParentColumnFamily(cfd);
+      while(cfd != nullptr) {
+        Status s_parent;
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: lookup parent node : %s (ID %d)"
+                   , cfd->GetName().c_str()
+                   , cfd->GetID());
+        sv = GetAndRefSuperVersion(cfd);
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "GetImpl sv current : %s",
+                 sv->current->DebugString(true, true).c_str());
+        sv->current->Get(read_options, lkey, pinnable_val, &s_parent, &merge_context,
+                     &max_covering_tombstone_seq, value_found, nullptr, nullptr,
+                     callback, is_blob_index);
+
+        // clean after lookup the current version
+        ReturnAndCleanupSuperVersion(cfd, sv);
+
+        if (s_parent.ok()) {
+          // found
+          s = s_parent;
+          ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: sst found");  
+          break;
+        } else {
+          cfd = cfs->GetParentColumnFamily(cfd);
+        }
+      }
+      if (!s.ok()) {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: sst not found");  
+      }
+    }
     RecordInHistogram(stats_, BYTES_PER_READ, size);
   }
+
   return s;
 }
 
@@ -2270,9 +2316,16 @@ void DBImpl::PrintLogicalColumnFamily(void) {
 }
 
 void DBImpl::DestroyLogicalColumnFamilies(void) {
-  std::vector<ColumnFamilyData*> lcf;
-  std::cout << "DLCF[1]"<< std::endl;
-  auto column_family_set = versions_->GetColumnFamilySet();
+  for (auto cfd: *versions_->GetColumnFamilySet()) {
+    uint32_t cfd_id = cfd->GetID();
+    std::string cfd_name = cfd->GetName();
+    std::cout << "Destroy cf[" << cfd_id << "] : " << cfd_name << std::endl;
+    ColumnFamilyHandle* cfh = GetColumnFamilyHandle(cfd_id);  
+    std::cout << "Destroy cfh : " << cfh->GetName() << std::endl;
+    DropColumnFamily(cfh);
+  }
+  /*auto column_family_set = versions_->GetColumnFamilySet();
+  
   std::cout << "DLCF[2]"<< std::endl;
   lcf = column_family_set->GetLogicalColumnFamily();
   std::cout << "DLCF[3]"<< std::endl;
@@ -2285,8 +2338,7 @@ void DBImpl::DestroyLogicalColumnFamilies(void) {
     std::cout << "Destroy cfh : " << cfh->GetName() << std::endl;
     DropColumnFamily(cfh);
   }
-  std::cout << "DLCF[4]"<< std::endl;
-  column_family_set->DestroyLogicalColumnFamily();
+  std::cout << "DLCF[4]"<< std::endl;*/
   return;
 }
 

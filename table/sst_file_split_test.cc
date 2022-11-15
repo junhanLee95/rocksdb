@@ -59,6 +59,18 @@ class SstFileSplitTest : public testing::Test {
     }*/
   }
 
+  void CreateMTD(DB* db,  const std::vector<std::string>& keys) {
+    for (size_t i = 0; i < keys.size(); i ++) {
+      db->Put(WriteOptions(), Slice(keys[i]), Slice(keys[i]));
+    }
+
+    /*for (size_t i = 0; i + 2 < keys.size(); i += 3) {
+      db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(keys[i]));
+      db->Merge(WriteOptions(), cfh, Slice(keys[i+1]), Slice(keys[i]));
+      db->Delete(WriteOptions(), cfh, Slice(keys[i+2]));
+    }*/
+  }
+
   void CreateMTBatch(DB* db, ColumnFamilyHandle* cfh, const std::vector<std::string>& keys) {
     WriteBatch batch;
     for (size_t i = 0; i < keys.size(); i ++) {
@@ -235,7 +247,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground) {
 
   delete db;
 } */
-
+/*
 // two L1, empty L0, one MemTables in cf_anon
 TEST_F(SstFileSplitTest, SplitColumnFamilyBackground2) {
   std::vector<std::string> keys;
@@ -261,21 +273,27 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground2) {
   cfo->report_bg_io_stats = true;
 
   db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);
-
+  std::cout << "cfh : " << cfh->GetName().c_str() << std::endl;
   CreateMT(db, cfh, keys);
   db->Flush(FlushOptions(), cfh);
-  dbfull(db)->TEST_WaitForCompact();
+  dbfull(db)->TEST_WaitForFlushMemTable(cfh);
   
   CreateMT(db, cfh, keys);
   db->Flush(FlushOptions(), cfh);
-  dbfull(db)->TEST_WaitForCompact();
+  dbfull(db)->TEST_WaitForFlushMemTable(cfh);
 
   CreateMT(db, cfh, keys);
   db->Flush(FlushOptions(), cfh);
-  dbfull(db)->TEST_WaitForCompact();
+  dbfull(db)->TEST_WaitForFlushMemTable(cfh);
 
   CreateMT(db, cfh, keys);
   db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForFlushMemTable(cfh);
+
+  CreateMT(db, cfh, keys);
+  db->Flush(FlushOptions(), cfh);
+  dbfull(db)->TEST_WaitForFlushMemTable(cfh);
+
 
   CreateMTBatch(db, cfh, keys);
   dbfull(db)->TEST_WaitForCompact();
@@ -284,10 +302,11 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground2) {
 
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
-}
+}*/
 
 // two L1(which consists of odd keys),
 // empty L0, one MemTables(which consists of even keys) in cf_anon.
+/*
 TEST_F(SstFileSplitTest, SplitColumnFamilyBackground3) {
   std::vector<std::string> odd_keys;
   std::vector<std::string> even_keys;
@@ -309,7 +328,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground3) {
   cfo->compaction_style = kCompactionStyleLevel;
   cfo->num_levels = 2;
   cfo->write_buffer_size = 64 << 20; // 64MB
-  cfo->level0_file_num_compaction_trigger = 4;
+  cfo->level0_file_num_compaction_trigger = 3;
   cfo->target_file_size_base = 4*1024*1024; // 4MB
   cfo->report_bg_io_stats = true;
 
@@ -337,8 +356,79 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground3) {
 
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
-}
+}*/
 
+// Parent(default) has one L1, which is composed of odd keys
+// Child(default0) has one memtable, which is composed of even keys
+// We verify all the keys we put can be acquired by db->Get() call
+TEST_F(SstFileSplitTest, ParentOneL1ChildOneMem) {
+  std::vector<std::string> odd_keys;
+  std::vector<std::string> even_keys;
+  for (uint64_t i = 0; i < kNumKeys; i++) {
+    odd_keys.emplace_back(EncodeAsString(2*i+1));
+    even_keys.emplace_back(EncodeAsString(2*i));
+  }
+
+  Options options;
+  options.create_if_missing = true;
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, even_keys);
+
+
+  // pair : {TestName, key}
+  std::vector<std::pair<std::string, uint32_t>> GetTestKey 
+    = {{"Parent Node search (odd key)", kNumKeys + 1},
+       {"Parent Node search (odd key)", kNumKeys + kNumKeys/2 + 1},
+       {"Parent Node search (odd key)", kNumKeys - kNumKeys/2 + 1},
+       {"Parent search (odd key)", kNumKeys + 1},
+       {"Child Node search (even key)", kNumKeys/4},
+       {"Child Node search (even key)", kNumKeys + kNumKeys/2},
+       {"Child Node search (even key)", kNumKeys - 2},
+       {"Child Node search (even key)", kNumKeys},
+       {"Child Node search (even key)", kNumKeys + 2}};
+  
+  for (auto p: GetTestKey) {
+    std::ostringstream ss;
+    ss << std::setw(8) << std::setfill('0') << p.second;
+    std::string key = ss.str();
+    std::string test_name = p.first; 
+    std::string value; 
+    Status s; 
+
+    s = db->Get(ReadOptions(), key, &value);
+   
+    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
+
+    if (s.IsNotFound())
+      fprintf(stdout, "Not Found...\n");
+    if (s.ok())
+      fprintf(stdout, "==> %s\n", value.c_str());
+  }
+
+  std::cout << "After compaction: sst count : " << GetSstFileCount(db->GetName()) << std::endl;
+
+  dbfull(db)->DestroyLogicalColumnFamilies();
+  delete db;
+}
 
 }  // namespace rocksdb
 

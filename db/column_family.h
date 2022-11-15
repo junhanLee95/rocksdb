@@ -47,6 +47,7 @@ class InstrumentedMutex;
 class InstrumentedMutexLock;
 struct SuperVersionContext;
 class PartitionTree;
+class PartitionTreeNode;
 
 extern const double kIncSlowdownRatio;
 
@@ -291,6 +292,10 @@ class ColumnFamilyData {
   std::string GetSmallestKey();
   std::string GetLargestKey();
 
+  // for partition tree node
+  void SetPartitionTreeNode(PartitionTreeNode* node);
+  PartitionTreeNode* GetPartitionTreeNode(void);
+
   // Check if the passed range overlap with any running compactions.
   // REQUIRES: DB mutex held
   bool RangeOverlapWithCompaction(const Slice& smallest_user_key,
@@ -437,6 +442,7 @@ class ColumnFamilyData {
   const std::string name_;
   std::string smallest_user_key_; // active if split is enabled
   std::string largest_user_key_;  // active if split is enabled
+  PartitionTreeNode* partition_tree_node_;  // active if split is enabled
   Version* dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;         // == dummy_versions->prev_
 
@@ -615,6 +621,8 @@ class ColumnFamilySet {
   Cache* get_table_cache() { return table_cache_; }
 
   ColumnFamilyData* GetLogicalColumnFamily(const Slice &key);
+  std::vector<ColumnFamilyData*> GetAllLogicalColumnFamilies(const Slice &key);
+  ColumnFamilyData* GetParentColumnFamily(ColumnFamilyData* cfd);
  private:
   friend class ColumnFamilyData;
   // helper function that gets called from cfd destructor
