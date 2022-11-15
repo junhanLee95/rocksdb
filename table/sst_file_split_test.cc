@@ -361,7 +361,7 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground3) {
 // Parent(default) has one L1, which is composed of odd keys
 // Child(default0) has one memtable, which is composed of even keys
 // We verify all the keys we put can be acquired by db->Get() call
-TEST_F(SstFileSplitTest, ParentOneL1ChildOneMem) {
+TEST_F(SstFileSplitTest, GetParentOneL1ChildOneMem) {
   std::vector<std::string> odd_keys;
   std::vector<std::string> even_keys;
   for (uint64_t i = 0; i < kNumKeys; i++) {
