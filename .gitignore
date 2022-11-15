@@ -87,3 +87,5 @@ tp2/
 fbcode/
 fbcode
 buckifier/*.pyc
+
+git-commit-template.txt
