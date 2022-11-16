@@ -89,3 +89,4 @@ fbcode
 buckifier/*.pyc
 
 git-commit-template.txt
+output.txt

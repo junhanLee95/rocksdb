@@ -1506,6 +1506,10 @@ void ColumnFamilySet::PrintLogicalColumnFamily(void) {
   }*/
   fprintf(stdout, "======================================\n");
 }
+
+bool ColumnFamilySet::AllowColumnFamilySplit(void) {
+  return db_options_->allow_column_family_split;
+}
 /*
 std::vector<ColumnFamilyData*> ColumnFamilySet::GetLogicalColumnFamily(void) {
   return logical_column_family_data_;
@@ -1547,7 +1551,9 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   dummy_cfd_->prev_ = new_cfd;
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
-    partition_tree_ = new PartitionTree(new_cfd);
+    if (db_options_->allow_column_family_split) {
+      partition_tree_ = new PartitionTree(new_cfd);
+    }
   }
   return new_cfd;
 }
@@ -1574,7 +1580,9 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   dummy_cfd_->prev_ = new_cfd;
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
-    partition_tree_ = new PartitionTree(new_cfd);
+    if (db_options_->allow_column_family_split) {
+      partition_tree_ = new PartitionTree(new_cfd);
+    }
   }
   return new_cfd;
 }
@@ -1630,7 +1638,9 @@ ColumnFamilyHandle* ColumnFamilyMemTablesImpl::GetColumnFamilyHandle() {
 }
 
 ColumnFamilyData* ColumnFamilyMemTablesImpl::SeekLogicalColumnFamily(const Slice &key) {
-  return column_family_set_->GetLogicalColumnFamily(key);
+  bool allow_column_family_split = column_family_set_->AllowColumnFamilySplit();
+
+  return allow_column_family_split ? column_family_set_->GetLogicalColumnFamily(key) : nullptr;
 }
 
 uint32_t GetColumnFamilyID(ColumnFamilyHandle* column_family) {

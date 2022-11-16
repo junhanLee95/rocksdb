@@ -371,6 +371,7 @@ TEST_F(SstFileSplitTest, GetParentOneL1ChildOneMem) {
 
   Options options;
   options.create_if_missing = true;
+  options.allow_column_family_split = true;
   std::string db_name = test::PerThreadDBPath("test_db");
   DB* db;
   ASSERT_OK(DB::Open(options, db_name, &db));

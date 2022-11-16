@@ -1426,25 +1426,28 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
 
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
+  ColumnFamilySet* cfs = cfd->GetColumnFamilySet();
 
   // Dohyun Kim: Partition Tree Search (NO Mutex)
   // JH: GetLogicalColumnFamily is replaced with GetAllLogicalColumnFamilies;
   // to implement inter-cfd point lookup
-  auto cfs = cfd->GetColumnFamilySet();
-  std::vector<ColumnFamilyData*> cfds = cfs->GetAllLogicalColumnFamilies(key);
-  cfd = cfs->GetLogicalColumnFamily(key);
+  if (immutable_db_options_.allow_column_family_split) {
+    std::vector<ColumnFamilyData*> cfds = cfs->GetAllLogicalColumnFamilies(key);
+    cfd = cfs->GetLogicalColumnFamily(key);
+  
+    for (ColumnFamilyData* c: cfds) {
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl cfd stack : %s (ID %d)",
+                    key.ToString().c_str(),
+                    c->GetID());
+    }
 
-  for (ColumnFamilyData* c: cfds) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "GetImpl cfd stack : %s (ID %d)",
-                  key.ToString().c_str(),
-                  c->GetID());
+                   "GetImpl key : %s (ID %d)",
+                   key.ToString().c_str(),
+                   cfd->GetID());  
   }
-
-  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "GetImpl key : %s (ID %d)",
-                  key.ToString().c_str(),
-                  cfd->GetID());
+  
 
   if (tracer_) {
     // TODO: This mutex should be removed later, to improve performance when
@@ -1562,7 +1565,7 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       RecordTick(stats_, BYTES_READ, size);
       PERF_COUNTER_ADD(get_read_bytes, size);
     }
-    else {
+    else if (immutable_db_options_.allow_column_family_split) {
       // JH: if not found, we look up its parent column family
       fprintf(stdout, "[JH] lookup cfd parent\n");
       cfd = cfs->GetParentColumnFamily(cfd);

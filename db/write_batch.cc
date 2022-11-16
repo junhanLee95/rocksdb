@@ -1178,9 +1178,13 @@ class MemTableInserter : public WriteBatch::Handler {
     }
   }
 
-  bool SeekToColumnFamilyByKey(const Slice &key, Status* s) {
+  bool SeekToColumnFamilyByKey(uint32_t column_family_id, const Slice &key, Status* s) {
     auto cfd = cf_mems_->SeekLogicalColumnFamily(key);
-    return SeekToColumnFamily(cfd->GetID(), s);
+    if (cfd == nullptr) { /* allow_column_family_split is false*/
+      return SeekToColumnFamily(column_family_id, s);
+    } else {
+      return SeekToColumnFamily(cfd->GetID(), s);
+    }
   }
 
   bool SeekToColumnFamily(uint32_t column_family_id, Status* s) {
@@ -1233,8 +1237,8 @@ class MemTableInserter : public WriteBatch::Handler {
     }
 
     Status seek_status;
-    //if (UNLIKELY(!SeekToColumnFamily(column_family_id, &seek_status))) {
-    if (UNLIKELY(!SeekToColumnFamilyByKey(key, &seek_status))) {
+    //fprintf(stdout, "PutCFImpl: %d\n", allow_column_family_split);
+    if (UNLIKELY(!SeekToColumnFamilyByKey(column_family_id, key, &seek_status))) {
       bool batch_boundry = false;
       if (rebuilding_trx_ != nullptr) {
         assert(!write_after_commit_);

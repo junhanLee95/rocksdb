@@ -1343,8 +1343,10 @@ Status CompactionJob::FinishCompactionOutputFile(
                    efficiency, current_bytes,
                    meta->marked_for_compaction ? " (need compaction)" : "");
 
+    // JH: If db allows column family split,
     // Generate split request if necessary
-    if (efficiency < 0.3 && compact_->compaction->output_level() == 1) {
+    if ( db_options_.allow_column_family_split &&
+         efficiency < 0.3 && compact_->compaction->output_level() == 1) {
       ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Split table #%" PRIu64 "", cfd->GetName().c_str(), job_id_, output_number);
       versions_->AddSplitFile(meta, cfd);

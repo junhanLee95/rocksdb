@@ -599,6 +599,7 @@ class ColumnFamilySet {
   void DestroyLogicalColumnFamily(void); // clear lcf vector
   bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs); // return true if successfully update lcf vector 
   void PrintLogicalColumnFamily(void);
+  bool AllowColumnFamilySplit(void);
   //std::vector<ColumnFamilyData*> GetLogicalColumnFamily(void);
 
   ColumnFamilyData* CreateColumnFamily(const std::string& name, uint32_t id,

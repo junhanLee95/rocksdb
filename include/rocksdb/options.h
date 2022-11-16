@@ -512,6 +512,9 @@ struct DBOptions {
   // Dynamically changeable through SetDBOptions() API.
   uint64_t delete_obsolete_files_period_micros = 6ULL * 60 * 60 * 1000000;
 
+  // Allow the column family to be splitted to configure logical column family. Default: false
+  bool allow_column_family_split = false;
+
   // Maximum number of concurrent background jobs (compactions and flushes).
   //
   // Default: 2
