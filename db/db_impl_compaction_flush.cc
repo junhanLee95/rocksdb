@@ -1927,7 +1927,8 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   }
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "unscheduled_splits_ : %d", unscheduled_splits_);
-  if (/*bg_split_ && */ unscheduled_splits_ > 0) {
+  if (immutable_db_options_.allow_column_family_split &&
+      unscheduled_splits_ > 0) {
       fprintf(stdout, "schedule split\n");
       bg_split_scheduled_++;
       SplitThreadArg* fta = new SplitThreadArg;
@@ -2508,18 +2509,21 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
     ReleaseFileNumberFromPendingOutputs(pending_outputs_inserted_elem);
 
     // split column family if necessary, this is done outside the mutex
-    FindSplitFiles(&job_context, s.ok());
-    TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
-
-    if (job_context.HaveSomethingToSplit()) {
-     mutex_.Unlock();
-     ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                    "[JH]Have Something to Split");
-     fprintf(stdout, "[JH]Have Something to Split\n");
-     SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
-     mutex_.Lock();
+    if (immutable_db_options_.allow_column_family_split) {
+      FindSplitFiles(&job_context, s.ok());
+      TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
+  
+      if (job_context.HaveSomethingToSplit()) {
+        mutex_.Unlock();
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                      "[JH]Have Something to Split");
+       fprintf(stdout, "[JH]Have Something to Split\n");
+       SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
+       mutex_.Lock();
     }
 
+     
+    }
     // If compaction failed, we want to delete all temporary files that we might
     // have created (they might not be all recorded in job_context in case of a
     // failure). Thus, we force full scan in FindObsoleteFiles()

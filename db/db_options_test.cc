@@ -397,6 +397,19 @@ TEST_F(DBOptionsTest, SetOptionsMayTriggerCompaction) {
   ASSERT_EQ("0,1", FilesPerLevel());
 }
 
+TEST_F(DBOptionsTest, SetAllowColumnFamilySplit) {
+  Options options;
+  options.create_if_missing = true;
+  options.allow_column_family_split = false;   // default value
+  options.env = env_;
+  Reopen(options);
+  ASSERT_EQ(options.allow_column_family_split, dbfull()->GetDBOptions().allow_column_family_split);
+  options.allow_column_family_split = true;   // change options
+  Reopen(options);
+  ASSERT_EQ(options.allow_column_family_split, dbfull()->GetDBOptions().allow_column_family_split);
+
+}
+
 TEST_F(DBOptionsTest, SetBackgroundCompactionThreads) {
   Options options;
   options.create_if_missing = true;

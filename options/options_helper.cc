@@ -134,6 +134,8 @@ DBOptions BuildDBOptions(const ImmutableDBOptions& immutable_db_options,
   options.atomic_flush = immutable_db_options.atomic_flush;
   options.avoid_unnecessary_blocking_io =
       immutable_db_options.avoid_unnecessary_blocking_io;
+  options.allow_column_family_split =
+      immutable_db_options.allow_column_family_split;
 
   return options;
 }
@@ -1622,7 +1624,10 @@ std::unordered_map<std::string, OptionTypeInfo>
         {"avoid_unnecessary_blocking_io",
          {offsetof(struct DBOptions, avoid_unnecessary_blocking_io),
           OptionType::kBoolean, OptionVerificationType::kNormal, false,
-          offsetof(struct ImmutableDBOptions, avoid_unnecessary_blocking_io)}}
+          offsetof(struct ImmutableDBOptions, avoid_unnecessary_blocking_io)}},
+        {"allow_column_family_split",
+         {offsetof(struct DBOptions, allow_column_family_split),
+          OptionType::kBoolean, OptionVerificationType::kNormal, false, 0}}
       };
 
 std::unordered_map<std::string, BlockBasedTableOptions::IndexType>

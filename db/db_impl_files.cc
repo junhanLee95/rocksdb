@@ -39,6 +39,7 @@ uint64_t DBImpl::MinObsoleteSstNumberToKeep() {
 
 void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
   mutex_.AssertHeld();
+	assert(immutable_db_options_.allow_column_family_split);
   assert(valid);
   versions_->GetSplitFiles(&job_context->sst_split_files);
 }
