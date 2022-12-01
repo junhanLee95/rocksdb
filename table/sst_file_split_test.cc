@@ -358,6 +358,93 @@ TEST_F(SstFileSplitTest, SplitColumnFamilyBackground3) {
   delete db;
 }*/
 
+// Parent(default) is splitted to create Child(default0)
+// We call flush on Parent(default) to verify flush is successful after split.
+TEST_F(SstFileSplitTest, FlushParentAferSplit) {
+  std::vector<std::string> odd_keys;
+  std::vector<std::string> even_keys;
+  for (uint64_t i = 0; i < kNumKeys; i++) {
+    odd_keys.emplace_back(EncodeAsString(2*i+1));
+    even_keys.emplace_back(EncodeAsString(2*i));
+  }
+  FlushOptions foptions;
+  foptions.allow_write_stall = true;
+
+  Options options;
+  options.create_if_missing = true;
+  options.allow_column_family_split = true;
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, odd_keys);
+  db->Flush(FlushOptions());
+  dbfull(db)->TEST_WaitForFlushMemTable();
+ 
+  CreateMTD(db, even_keys);
+  db->Flush(foptions);
+  
+  CreateMTD(db, even_keys);
+  db->Flush(foptions);
+ 
+  CreateMTD(db, even_keys);
+  db->Flush(foptions);
+  
+  CreateMTD(db, even_keys);
+  db->Flush(foptions);
+ 
+
+
+
+  // pair : {TestName, key}
+  std::vector<std::pair<std::string, uint32_t>> GetTestKey 
+    = {{"Parent Node search (odd key)", kNumKeys + 1},
+       {"Parent Node search (odd key)", kNumKeys + kNumKeys/2 + 1},
+       {"Parent Node search (odd key)", kNumKeys - kNumKeys/2 + 1},
+       {"Parent search (odd key)", kNumKeys + 1},
+       {"Child Node search (even key)", kNumKeys/4},
+       {"Child Node search (even key)", kNumKeys + kNumKeys/2},
+       {"Child Node search (even key)", kNumKeys - 2},
+       {"Child Node search (even key)", kNumKeys},
+       {"Child Node search (even key)", kNumKeys + 2}};
+  
+  for (auto p: GetTestKey) {
+    std::ostringstream ss;
+    ss << std::setw(8) << std::setfill('0') << p.second;
+    std::string key = ss.str();
+    std::string test_name = p.first; 
+    std::string value; 
+    Status s; 
+
+    s = db->Get(ReadOptions(), key, &value);
+   
+    fprintf(stdout, "[SplitTest] [%s] Key [%s] ", test_name.c_str(), key.c_str());
+
+    if (s.IsNotFound())
+      fprintf(stdout, "Not Found...\n");
+    if (s.ok())
+      fprintf(stdout, "==> %s\n", value.c_str());
+  }
+
+  std::cout << "After compaction: sst count : " << GetSstFileCount(db->GetName()) << std::endl;
+
+  dbfull(db)->DestroyLogicalColumnFamilies();
+  delete db;
+}
+
+/*
 // Parent(default) has one L1, which is composed of odd keys
 // Child(default0) has one memtable, which is composed of even keys
 // We verify all the keys we put can be acquired by db->Get() call
@@ -429,7 +516,7 @@ TEST_F(SstFileSplitTest, GetParentOneL1ChildOneMem) {
 
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
-}
+}*/
 
 }  // namespace rocksdb
 

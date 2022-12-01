@@ -2102,7 +2102,7 @@ void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
   fprintf(stdout, "comp queued : %d\n", cfd->queued_for_compaction() );
   if (!cfd->queued_for_split() && cfd->NeedsSplit()
       && !cfd->queued_for_compaction()) {
-    fprintf(stdout, "schedule pending split\n");
+    fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
     SplitRequest split_req;
     GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
     assert(!split_req.empty());

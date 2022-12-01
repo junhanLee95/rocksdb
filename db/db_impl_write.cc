@@ -1584,6 +1584,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
     // add new_mems to to_cfds
     for (size_t to = 0; to < to_size; to++) {
       if (!new_mems[to]->IsEmpty()) {
+        new_mems[to]->SetNextLogNumber(logfile_number_);
         to_cfds[to]->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
         InstallSuperVersionAndScheduleWork(to_cfds[to], &contexts[to]->superversion_context,
                                             *to_cfds[to]->GetLatestMutableCFOptions());

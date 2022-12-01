@@ -251,6 +251,7 @@ void MemTableListVersion::Remove(MemTable* m,
 void MemTableListVersion::SplitRemove(MemTable* m,
                                  autovector<MemTable*>* to_delete) {
   fprintf(stdout, "refs : %d\n", (int)(refs_));
+  fprintf(stdout, "memlist size : %ld\n", memlist_.size());
   //assert(refs_ == 0);  // only when refs_ == 1 is MemTableListVersion mutable
   memlist_.remove(m);
 
