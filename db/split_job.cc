@@ -702,9 +702,9 @@ Status SplitJob::Install(void) {
 
   auto stream = event_logger_->LogToBuffer(log_buffer_);
   stream << "job" << job_id_ << "event"
-         << "compaction_finished"
-         << "compaction_time_micros" << compaction_stats_.micros
-         << "compaction_time_cpu_micros" << compaction_stats_.cpu_micros
+         << "split_finished"
+         << "split_time_micros" << compaction_stats_.micros
+         << "split_time_cpu_micros" << compaction_stats_.cpu_micros
          << "output_level" << split_->compaction->output_level()
          << "num_output_files" << split_->NumOutputFiles()
          << "total_output_size" << split_->total_bytes << "num_input_records"
