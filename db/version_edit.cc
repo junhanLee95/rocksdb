@@ -89,6 +89,7 @@ void VersionEdit::Clear() {
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
   is_column_family_split_ = 0;
+  is_split_move_ = false;
   column_family_name_.clear();
   is_in_atomic_group_ = false;
   remaining_entries_ = 0;

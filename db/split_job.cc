@@ -1306,8 +1306,8 @@ Status SplitJob::FinishSplitOutputFile(
   
   const uint64_t current_entries = is_child ? sub_split->child_builder->NumEntries() :
                                  sub_split->parent_builder->NumEntries();             
-  
-  if (s.ok()) {
+  std::cout << "current_entries : " << current_entries << std::endl;
+  if (current_entries != 0 && s.ok()) {
     if (is_child) {
       s = sub_split->child_builder->Finish();
     } else {
@@ -1335,11 +1335,11 @@ Status SplitJob::FinishSplitOutputFile(
   sub_split->total_bytes += current_bytes;
 
   // Finish and check for file errors
-  if (s.ok()) {
+  if (current_entries != 0 && s.ok()) {
     StopWatch sw(env_, stats_, COMPACTION_OUTFILE_SYNC_MICROS);
     s = sub_split->outfile->Sync(db_options_.use_fsync);
   }
-  if (s.ok()) {
+  if (current_entries != 0 && s.ok()) {
     s = sub_split->outfile->Close();
   }
 
@@ -1362,6 +1362,7 @@ Status SplitJob::FinishSplitOutputFile(
         TableFileName(sub_split->compaction->immutable_cf_options()->cf_paths,
                       meta->fd.GetNumber(), meta->fd.GetPathId());
     env_->DeleteFile(fname);
+    std::cout << "pop back " << fname << std::endl;
 
     // Also need to remove the file from outputs, or it will be added to the
     // VersionEdit.
@@ -1480,6 +1481,7 @@ Status SplitJob::InstallSplitResults() {
   for (size_t which = 0; which < split_->compaction->num_input_levels(); which++) {
     for (size_t i = 0; i < split_->compaction->num_input_files(which); i++) {
       e_in.DeleteFile(split_->compaction->level(which), split_->compaction->input(which, i)->fd.GetNumber());
+      e_in.SetSplitMove(true);
     }
   }
 
@@ -1487,10 +1489,12 @@ Status SplitJob::InstallSplitResults() {
   for (const auto& sub_split : split_->sub_split_states) {
     for (const auto& out : sub_split.parent_outputs) {
       e_in.AddFile(compaction->output_level(), out.meta);
+      e_in.SetSplitMove(true);
     }
     for (const auto& out : sub_split.parent_outputs) {
       int idx = out.child_idx;
       e_out[idx].AddFile(compaction->output_level(), out.meta);
+      e_out[idx].SetSplitMove(true);
     }
   }
   // trivial move
@@ -1499,6 +1503,7 @@ Status SplitJob::InstallSplitResults() {
   for (size_t idx = 0; idx < metas.size(); idx++) {
     const FileMetaData* meta_idx = const_cast<const FileMetaData*>(metas[idx]);
     e_out[idx].AddFile(2, *meta_idx);
+    e_out[idx].SetSplitMove(true);
   }
 
   edit_in.push_back(&e_in);

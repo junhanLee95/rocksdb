@@ -2871,7 +2871,8 @@ Status VersionSet::ProcessManifestWrites(
   ManifestWriter& first_writer = writers.front();
   ManifestWriter* last_writer = &first_writer;
   ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites");
-
+  std::cout << "ProcessManifestWrites - writers cnt : " << writers.size() << std::endl;
+  std::cout << "ProcessManifestWrites - manifest_writers cnt : " << manifest_writers_.size() << std::endl;
   assert(!manifest_writers_.empty());
   assert(manifest_writers_.front() == &first_writer);
 
@@ -2960,18 +2961,40 @@ Status VersionSet::ProcessManifestWrites(
         builder = builder_guards.back()->version_builder();
       }
       assert(builder != nullptr);  // make checker happy
-      for (const auto& e : last_writer->edit_list) {
-        if (e->is_in_atomic_group_) {
-          if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
-              (batch_edits.back()->is_in_atomic_group_ &&
-               batch_edits.back()->remaining_entries_ == 0)) {
-            group_start = batch_edits.size();
+
+      if (first_writer.edit_list.front()->is_split_move_) { // Split
+        // Group commits for ColumnFamilySplit
+        for (auto writer: writers) {
+          for (const auto& e : writer.edit_list) {
+            if (e->is_in_atomic_group_) {
+              if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
+                  (batch_edits.back()->is_in_atomic_group_ &&
+                   batch_edits.back()->remaining_entries_ == 0)) {
+                group_start = batch_edits.size();
+              }
+            } else if (group_start != std::numeric_limits<size_t>::max()) {
+              group_start = std::numeric_limits<size_t>::max();
+            }
+            std::cout << "help\n";
+            LogAndApplyHelper(writer.cfd, builder, e, mu);
+            batch_edits.push_back(e);
           }
-        } else if (group_start != std::numeric_limits<size_t>::max()) {
-          group_start = std::numeric_limits<size_t>::max();
         }
-        LogAndApplyHelper(last_writer->cfd, builder, e, mu);
-        batch_edits.push_back(e);
+      } else { //Flush Or Compaction
+        for (const auto& e : last_writer->edit_list) {
+          if (e->is_in_atomic_group_) {
+            if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
+                (batch_edits.back()->is_in_atomic_group_ &&
+                 batch_edits.back()->remaining_entries_ == 0)) {
+              group_start = batch_edits.size();
+            }
+          } else if (group_start != std::numeric_limits<size_t>::max()) {
+            group_start = std::numeric_limits<size_t>::max();
+          }
+          std::cout << "help\n";
+          LogAndApplyHelper(last_writer->cfd, builder, e, mu);
+          batch_edits.push_back(e);
+        }
       }
     }
     for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
@@ -3186,7 +3209,7 @@ Status VersionSet::ProcessManifestWrites(
     } else if (first_writer.edit_list.front()->is_column_family_split_) {
 
       for (auto& e : batch_edits) {
-        fprintf(stderr, "[JH] %s\n", e->DebugString(true).c_str());
+        fprintf(stderr, "[JH] %s\n", e->DebugString(false).c_str());
       }
       //assert(batch_edits.size() == 3);
       assert(new_cf_options != nullptr);
@@ -3351,7 +3374,7 @@ Status VersionSet::LogAndApply(
   
   for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
-      fprintf(stdout, "%s\n", edit->DebugString(true).c_str());
+      fprintf(stdout, "%s\n", edit->DebugString().c_str());
     }
   }
 
@@ -3370,10 +3393,16 @@ Status VersionSet::LogAndApply(
       for (const auto& edit : edit_list) {
         if (first_edit) {
           assert(edit->is_column_family_split_);
+          if(edit->is_column_family_split_ == false) {
+            return Status::ShutdownInProgress();
+          }
           first_edit = false;
         }
         else{
           assert(edit->is_column_family_add_);
+          if(edit->is_column_family_add_ == false) {
+            return Status::ShutdownInProgress();
+          }
         }
       }
     }
@@ -3485,7 +3514,7 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   // last_allocated_sequence_ as the last sequence.
   edit->SetLastSequence(db_options_->two_write_queues ? last_allocated_sequence_
                                                       : last_sequence_);
-
+  std::cout << edit->DebugString() << std::endl;
   builder->Apply(edit);
 }
 

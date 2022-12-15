@@ -122,6 +122,8 @@ void PartitionTree::InsertSplittedColumnFamily (
       base_node->lower_level_nodes_.push_back(node);
       //JH: Set parent node
       node->parent_node_ = base_node;
+      //JH: Add child node to partition_nodes_ map
+      partition_nodes_.insert({new_cfd->GetID(), node});
       continue;
     } 
 
@@ -143,8 +145,8 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
   }
 
   
-  fprintf(stdout, "CFD[%s] Search... %s < [%s] < %s\n", 
-    cnode->cfd_->GetName().c_str(), get_lmost_key(cnode).c_str(), key.data(), get_rmost_key(cnode).c_str());
+  /*fprintf(stdout, "CFD[%s] Search... %s < [%s] < %s\n", 
+    cnode->cfd_->GetName().c_str(), get_lmost_key(cnode).c_str(), key.data(), get_rmost_key(cnode).c_str());*/
   
   return cnode->cfd_;
 }
@@ -165,9 +167,9 @@ std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Sli
     search_cfds.push_back(cnode->cfd_);
   }
 
-  
+  /*
   fprintf(stdout, "CFD[%s] Search... %s < [%s] < %s\n", 
-    cnode->cfd_->GetName().c_str(), get_lmost_key(cnode).c_str(), key.data(), get_rmost_key(cnode).c_str());
+    cnode->cfd_->GetName().c_str(), get_lmost_key(cnode).c_str(), key.data(), get_rmost_key(cnode).c_str());*/
   
   return search_cfds;
 }

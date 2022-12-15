@@ -1586,6 +1586,10 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
       if (!new_mems[to]->IsEmpty()) {
         new_mems[to]->SetNextLogNumber(logfile_number_);
         to_cfds[to]->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "[%s] SplitMemtables: New memtable created with log file: #%" PRIu64
+                 ". Immutable memtables: %d.\n",
+                 to_cfds[to]->GetName().c_str(), logfile_number_, to_cfds[to]->imm()->NumNotFlushed());
         InstallSuperVersionAndScheduleWork(to_cfds[to], &contexts[to]->superversion_context,
                                             *to_cfds[to]->GetLatestMutableCFOptions());
       } else{

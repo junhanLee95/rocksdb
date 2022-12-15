@@ -151,6 +151,7 @@ enum class FlushReason : int {
   kAutoCompaction = 0x09,
   kManualFlush = 0x0a,
   kErrorRecovery = 0xb,
+  kSplitMemtable = 0xc,
 };
 
 enum class BackgroundErrorReason {

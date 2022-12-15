@@ -49,6 +49,7 @@ std::vector<FileMetaData*> metas, CompactionInputFiles& l0_files) {
 
       if (HaveOverlappingKeyRanges(f, f1)) {
         l0_files.files.push_back(f);
+        l0_files.level = 0;
         exists = true;
         break;
       }
@@ -78,6 +79,7 @@ Compaction* SplitPicker::PickSplit(const std::string& cf_name,
 
   CompactionInputFiles l0_files;
   if (SetupL0FilesIfNeeded(vstorage, metas, l0_files)) {
+    std::cout << "PickSplit input level : " << l0_files.level << std::endl;
     ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit another inputs[%d] : %d",
                      0, l0_files.size());
     inputs_.push_back(l0_files);

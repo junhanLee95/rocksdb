@@ -41,6 +41,9 @@ void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
   mutex_.AssertHeld();
 	assert(immutable_db_options_.allow_column_family_split);
   assert(valid);
+  if(!valid) {
+    return ;  
+  }
   versions_->GetSplitFiles(&job_context->sst_split_files);
 }
 
@@ -235,10 +238,25 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     }
 
     if (s.ok()) {
-     ROCKS_LOG_INFO(immutable_db_options_.info_log,
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "Split Memtable of cf [%s] (ID %u)",
                  cfd->GetName().c_str(),
                  (unsigned) cfd->GetID());
+      // atomically flush splitted immutable memtables.
+      assert(immutable_db_options_.atomic_flush);
+
+      for(auto to_cfd: column_family_datas) {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "cf [%s] (ID %u) imm count : %d",
+                 to_cfd->GetName().c_str(),
+                 (unsigned) to_cfd->GetID(),
+                 to_cfd->imm()->NumNotFlushed());
+      }
+      AssignAtomicFlushSeq(column_family_datas);
+      FlushRequest flush_req;
+      GenerateFlushRequest(column_family_datas, &flush_req);
+      SchedulePendingFlush(flush_req, FlushReason::kSplitMemtable);
+      MaybeScheduleFlushOrCompaction();
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                  "Split Memtable of cf [%s] (ID %u) FAILED -- %s",
@@ -260,7 +278,6 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
   fprintf(stdout, "Split sst(2)\n");
   
   SchedulePendingSplit(cfd);
-
   return Status::OK();
 }
 

@@ -270,6 +270,10 @@ class VersionEdit {
     deleted_files_.insert({level, file});
   }
 
+  void SetSplitMove(bool s) {
+    is_split_move_ = s;  
+  }
+
   // Number of edits
   size_t NumEntries() { return new_files_.size() + deleted_files_.size(); }
 
@@ -381,6 +385,7 @@ class VersionEdit {
   // If it's column family split,
   // it also includes column family name.
   bool is_column_family_split_;
+  bool is_split_move_;
   std::string smallest_user_key_;
   std::string largest_user_key_;
 

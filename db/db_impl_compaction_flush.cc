@@ -1837,6 +1837,9 @@ Status DBImpl::WaitForFlushMemTables(
     // Number of column families that have finished flush.
     int num_finished = 0;
     for (int i = 0; i < num; ++i) {
+      fprintf(stdout, "[%s] numnotflushed : %d\n",
+              cfds[i]->GetName().c_str(),
+              cfds[i]->imm()->NumNotFlushed());
       if (cfds[i]->IsDropped()) {
         ++num_dropped;
       } else if (cfds[i]->imm()->NumNotFlushed() == 0 ||
@@ -1928,6 +1931,8 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "unscheduled_splits_ : %d", unscheduled_splits_);
   if (immutable_db_options_.allow_column_family_split &&
+      bg_flush_scheduled_ == 0 &&
+      bg_compaction_scheduled_ == 0 &&
       unscheduled_splits_ > 0) {
       fprintf(stdout, "schedule split\n");
       bg_split_scheduled_++;

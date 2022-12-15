@@ -1346,9 +1346,12 @@ Status CompactionJob::FinishCompactionOutputFile(
     // JH: If db allows column family split,
     // Generate split request if necessary
     if ( db_options_.allow_column_family_split &&
-         efficiency < 0.3 && compact_->compaction->output_level() == 1) {
+         efficiency < 0.6 && compact_->compaction->output_level() == 1) {
       ROCKS_LOG_INFO(db_options_.info_log,
-                   "[%s] [JOB %d] Split table #%" PRIu64 "", cfd->GetName().c_str(), job_id_, output_number);
+                   "[%s] [JOB %d] Split table #%" PRIu64 " with range [%s,%s]",
+                    cfd->GetName().c_str(), job_id_, output_number,
+                    meta->smallest.DebugString(false).c_str(),
+                    meta->largest.DebugString(false).c_str());
       versions_->AddSplitFile(meta, cfd);
       fprintf(stdout, "meta smallest : %s\n", meta->smallest.DebugString(false).c_str());
       fprintf(stdout, "meta largest : %s\n", meta->largest.DebugString(false).c_str());
