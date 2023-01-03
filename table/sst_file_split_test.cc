@@ -382,19 +382,19 @@ TEST_F(SstFileSplitTest, GrandChildSplit) {
 
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+ // dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, even_keys);
   db->Flush(foptions, dbfull(db)->GetColumnFamilyHandle(1));
@@ -472,19 +472,19 @@ TEST_F(SstFileSplitTest, FlushParentAfterSplitAllowWriteStall) {
 
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+ // dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+ // dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+ // dbfull(db)->TEST_WaitForFlushMemTable();
 
   /////
   CreateMTD(db, odd_big_keys);
@@ -564,19 +564,19 @@ TEST_F(SstFileSplitTest, FlushParentAfterSplitDisallowWriteStall) {
 
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
  
   CreateMTD(db, odd_keys);
   db->Flush(FlushOptions());
-  dbfull(db)->TEST_WaitForFlushMemTable();
+  //dbfull(db)->TEST_WaitForFlushMemTable();
 
   /////
   CreateMTD(db, odd_big_keys);

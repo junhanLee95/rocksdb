@@ -3211,22 +3211,8 @@ Status VersionSet::ProcessManifestWrites(
       for (auto& e : batch_edits) {
         fprintf(stderr, "[JH] %s\n", e->DebugString(false).c_str());
       }
-      //assert(batch_edits.size() == 3);
       assert(new_cf_options != nullptr);
       ColumnFamilyData* cfd = first_writer.cfd;
-      // create column family for second & third writer
-      //Slice median_key = cfd->current()->storage_info()->GetMedianKey();
-      //const Slice median_key_copy = Slice(median_key.data(), median_key.size());
-      //fprintf(stderr, "LogAndAplly: median key_copy : %s\n", median_key_copy.ToString().c_str());
-      //std::string median_key = cfd->current()->storage_info()->GetMedianKey().ToString();
-      /*auto cfd_out_0 = CreateColumnFamily(*new_cf_options, writers[1].edit_list.front(), cfd->GetSmallestKey(), median_key);
-      auto cfd_out_1 = CreateColumnFamily(*new_cf_options, writers[2].edit_list.front(), median_key, cfd->GetLargestKey());
-
-      // update column family tree
-      cfd->children_cfds.push_back(cfd_out_0);
-      cfd->children_cfds.push_back(cfd_out_1);
-      // update logical column family data
-      column_family_set_->SplitLogicalColumnFamily(cfd, cfd_out_0, cfd_out_1);*/
       bool create_cf = false; // fisrt writer does not create column family
       std::vector<ColumnFamilyData*> cfd_outs;
       for(auto writer: writers) {
@@ -3237,7 +3223,6 @@ Status VersionSet::ProcessManifestWrites(
         else {
           auto cfd_out = CreateColumnFamily(*new_cf_options, writer.edit_list.front());
           cfd_outs.push_back(cfd_out);
-          cfd->children_cfds.push_back(cfd_out);
         }
       }
 

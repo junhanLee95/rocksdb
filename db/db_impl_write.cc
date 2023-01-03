@@ -1472,23 +1472,29 @@ Status DBImpl::SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, 
 
 // REQUIRES: mutex_ is held
 // REQUIERS: this thread is currently at the front of the writer queue
-Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>& to_cfds) {
+Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
   mutex_.AssertHeld();
   assert(from_cfd->mem()->IsEmpty()); // we already switched all mutable memtables into imm list
   assert(!from_cfd->imm()->HasFlushRequested());
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "SplitMemtables: start");
 
-  // set from_cfd imms to be splitted
+  // set from_cfd imms to be splitted.
+  // these will be removed after be splitted, by calling ClearSplittedMemtables
   from_cfd->imm()->SetSplitInProgress();
-
-  size_t to_size = to_cfds.size();
+  std::vector<PartitionTreeNode*> children_nodes = from_cfd->GetChildrenNodes();
+  assert(!children_nodes.empty()); // must have children nodes
+  size_t to_size = children_nodes.size();
   size_t from_imm_size = from_cfd->imm()->GetMemTableListSize();
 
   for (size_t from = 0; from < from_imm_size; from++) {
     MemTable* from_imm = from_cfd->imm()->GetMemTableFromList(from);
+    assert(from_imm->IsSplitInProgress());
+    if (from_imm->IsSplitInProgress() == false) {
+      continue; 
+    }
+    
     auto factory = std::make_shared<SkipListFactory>();
-
     ReadOptions ro;
     Arena arena;
     ro.total_order_seek = true;
@@ -1497,30 +1503,45 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
     ImmutableCFOptions ioptions(options);
     InternalKeyComparator cmp(BytewiseComparator());
  
-    // prepare contexts and memtables for to_cfds
+    // prepare contexts and memtables for children nodes
     std::vector<WriteContext*> contexts;
-    std::vector<MemTable*> new_mems;
+    std::vector<MemTable*> new_mems; //  [0, to_size - 1] is for children, last entry is for from_cfd
     std::vector<SequenceNumber> seqs;
-    for (size_t to = 0; to < to_size; to++) {
+
+    size_t to; // index of children nodes that includes the key of the memtable
+    for (to = 0; to < to_size + 1; to++) { 
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "SplitMemtables: to=%ld, to_size=%ld\n", to, to_size);
       // contexts
       contexts.push_back(new WriteContext());
       // memtables
       WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
-      fprintf(stdout, "to : %ld, cf id : %u\n", to, to_cfds[to]->GetID());
-      MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
-                                   kMaxSequenceNumber, to_cfds[to]->GetID());
-      to_cfds[to]->SetImmMemtable(mem);
-      fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
-      new_mems.push_back(mem);
-      seqs.push_back(1);
-      mem->Ref();
+      if (to != to_size) { // imm for children nodes
+        fprintf(stdout, "to : %ld, cf id : %u\n", to, children_nodes[to]->cfd_->GetID());
+        MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
+                                     kMaxSequenceNumber, children_nodes[to]->cfd_->GetID());
+        children_nodes[to]->cfd_->SetImmMemtable(mem);
+        fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
+        new_mems.push_back(mem);
+        seqs.push_back(1);
+        mem->Ref();  
+      } else { // imm for from_cfd
+        fprintf(stdout, "to : %ld, cf id : %u\n", to, from_cfd->GetID());
+        MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
+                                     kMaxSequenceNumber, from_cfd->GetID());
+        from_cfd->SetImmMemtable(mem);
+        fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
+        new_mems.push_back(mem);
+        seqs.push_back(1);
+        mem->Ref();         
+      }
     }
 
-    assert(new_mems.size() == to_size);
+    assert(new_mems.size() == to_size + 1); // number of children nodes (to_size) + parent node (1)
 
     InternalIterator* mem_iter = from_imm->NewIterator(ro, &arena);
+
+    to = 0; // index of children nodes that includes the key of the memtable
     for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
       Slice key = mem_iter->key();
       Slice value = mem_iter->value();
@@ -1535,27 +1556,38 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
       Slice user_key = ikey.user_key;
       ValueType type = ikey.type;
 
-      // select memtables to put item
+      // select memtable index to put the item
       std::string user_key_str = user_key.ToString();
-      size_t select = 0; // from_cfd for the default
-      for (size_t to = 1; to < to_size; to++) {
-
-        std::string smallest_to = to_cfds[to]->GetSmallestKey();
-        std::string largest_to = to_cfds[to]->GetLargestKey();
-
-        fprintf(stdout, "SplitMemtables: cf[%s] range : [%s,%s]\n",
-                to_cfds[to]->GetName().c_str(),
-                smallest_to.c_str(), largest_to.c_str());
-
-        if (user_key_str.compare(smallest_to) >= 0 && user_key_str.compare(largest_to) <= 0) {
-          select = to;
+      size_t select = to_size; // where to put. from_cfd for the default
+      while (to < to_size) {
+        std::string smallest_to = children_nodes[to]->cfd_->GetSmallestKey();
+        std::string largest_to = children_nodes[to]->cfd_->GetLargestKey();       
+        if (user_key_str.compare(smallest_to) < 0) {
+          // user key is within parent's key range, not children nodes
           break;
+        }
+        else if (user_key_str.compare(smallest_to) >= 0 &&
+                 user_key_str.compare(largest_to) <= 0) {
+          // user key is within child's key range
+          select = to;
+          break; 
+        } else {
+          // user key is larger than child's largest
+          // increment the index
+          to ++;
         }
       }
 
-      fprintf(stdout, "SplitMemtables: %s goes to cf[%u]-%s\n",
-                      user_key_str.c_str(), to_cfds[select]->GetID(),
-                      to_cfds[select]->GetName().c_str());
+      if (select == to_size) { // put to parent
+        fprintf(stdout, "SplitMemtables: %s goes to cf[%u]-%s\n",
+                      user_key_str.c_str(), from_cfd->GetID(),
+                      from_cfd->GetName().c_str());       
+      } else { // put to children
+        fprintf(stdout, "SplitMemtables: %s goes to cf[%u]-%s\n",
+                      user_key_str.c_str(), children_nodes[select]->cfd_->GetID(),
+                      children_nodes[select]->cfd_->GetName().c_str());  
+      }
+      
 
       switch (type) {
         case kTypeValue:
@@ -1579,19 +1611,21 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamil
 
     // delete existing imms in from_cfd
     from_cfd->imm()->ClearSplittedMemtables(&contexts[to_size]->memtables_to_free_,
-                                            new_mems[0]->GetID());
+                                            from_imm->GetID());
 
-    // add new_mems to to_cfds
-    for (size_t to = 0; to < to_size; to++) {
+    // add new_mems to target cfds
+    for (to = 0; to < to_size + 1; to++) {
       if (!new_mems[to]->IsEmpty()) {
         new_mems[to]->SetNextLogNumber(logfile_number_);
-        to_cfds[to]->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
+
+        ColumnFamilyData* cfd = (to == to_size) ? from_cfd : children_nodes[to]->cfd_;
+        cfd->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "[%s] SplitMemtables: New memtable created with log file: #%" PRIu64
                  ". Immutable memtables: %d.\n",
-                 to_cfds[to]->GetName().c_str(), logfile_number_, to_cfds[to]->imm()->NumNotFlushed());
-        InstallSuperVersionAndScheduleWork(to_cfds[to], &contexts[to]->superversion_context,
-                                            *to_cfds[to]->GetLatestMutableCFOptions());
+                 cfd->GetName().c_str(), logfile_number_, cfd->imm()->NumNotFlushed());
+        InstallSuperVersionAndScheduleWork(cfd, &contexts[to]->superversion_context,
+                                          *cfd->GetLatestMutableCFOptions());  
       } else{
         new_mems[to]->Unref();
         delete new_mems[to];
@@ -1833,11 +1867,27 @@ size_t DBImpl::GetWalPreallocateBlockSize(uint64_t write_buffer_size) const {
 // can call if they wish
 Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
                const Slice& key, const Slice& value) {
+  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfd = cfh->cfd();
+  ColumnFamilySet* cfs = cfd->GetColumnFamilySet();
+
+  // Dohyun Kim: Partition Tree Search (NO Mutex)
+  DBImpl* db_impl = reinterpret_cast<DBImpl*>(this);
+  if (db_impl->immutable_db_options_.allow_column_family_split) {
+    cfd = cfs->GetLogicalColumnFamily(key);
+    ROCKS_LOG_INFO(db_impl->immutable_db_options_.info_log,
+                   "Put key : %s (ID %d)",
+                   key.ToString().c_str(),
+                   cfd->GetID());  
+  }
+  
+
+  ColumnFamilyHandle* lcfh = db_impl->GetColumnFamilyHandle(cfd->GetID());
   // Pre-allocate size of write batch conservatively.
   // 8 bytes are taken by header, 4 bytes for count, 1 byte for type,
   // and we allocate 11 extra bytes for key length, as well as value length.
   WriteBatch batch(key.size() + value.size() + 24);
-  Status s = batch.Put(column_family, key, value);
+  Status s = batch.Put(lcfh, key, value);
   if (!s.ok()) {
     return s;
   }

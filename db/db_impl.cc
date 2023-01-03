@@ -1432,15 +1432,7 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   // JH: GetLogicalColumnFamily is replaced with GetAllLogicalColumnFamilies;
   // to implement inter-cfd point lookup
   if (immutable_db_options_.allow_column_family_split) {
-    std::vector<ColumnFamilyData*> cfds = cfs->GetAllLogicalColumnFamilies(key);
     cfd = cfs->GetLogicalColumnFamily(key);
-  
-    for (ColumnFamilyData* c: cfds) {
-      ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "GetImpl cfd stack : %s (ID %d)",
-                    key.ToString().c_str(),
-                    c->GetID());
-    }
 
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl key : %s (ID %d)",

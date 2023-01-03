@@ -37,7 +37,11 @@ class SplitPicker {
   bool SetupL0FilesIfNeeded(VersionStorageInfo* vstorage,
                             std::vector<FileMetaData*> metas,
                             CompactionInputFiles& l0_files);
-                            
+ 
+  bool SetupL1FilesIfNeeded(VersionStorageInfo* vstorage,
+                            CompactionInputFiles& l0_files,
+                            CompactionInputFiles& l1_files);
+                           
   // Pick level and inputs for a new split.
   // Returns nullptr if there is no split to be done.
   // Otherwise returns a pointer to a heap-allocated object that

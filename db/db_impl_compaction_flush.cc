@@ -1905,7 +1905,8 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   bool is_flush_pool_empty =
       env_->GetBackgroundThreads(Env::Priority::HIGH) == 0;
   while (!is_flush_pool_empty && unscheduled_flushes_ > 0 &&
-         bg_flush_scheduled_ < bg_job_limits.max_flushes) {
+         bg_flush_scheduled_ < bg_job_limits.max_flushes &&
+         bg_split_scheduled_ == 0) {
     bg_flush_scheduled_++;
     FlushThreadArg* fta = new FlushThreadArg;
     fta->db_ = this;
@@ -1919,7 +1920,8 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   if (is_flush_pool_empty) {
     while (unscheduled_flushes_ > 0 &&
            bg_flush_scheduled_ + bg_compaction_scheduled_ <
-               bg_job_limits.max_flushes) {
+               bg_job_limits.max_flushes &&
+           bg_split_scheduled_ == 0) {
       bg_flush_scheduled_++;
       FlushThreadArg* fta = new FlushThreadArg;
       fta->db_ = this;
@@ -1962,7 +1964,9 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   }
 
   while (bg_compaction_scheduled_ < bg_job_limits.max_compactions &&
-         unscheduled_compactions_ > 0) {
+         unscheduled_compactions_ > 0 &&
+         bg_split_scheduled_ == 0
+         ) {
     CompactionArg* ca = new CompactionArg;
     ca->db = this;
     ca->prepicked_compaction = nullptr;
@@ -2625,7 +2629,6 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
   // InternalKey* manual_end = &manual_end_storage;
   bool sfm_reserved_compact_space = false;
 
-  fprintf(stdout, "BackgroundSplit(2)\n");
   if (!split_queue_.empty()) {
     SplitRequest split_req = PopFirstFromSplitQueue();
     if (split_req.empty()) {
@@ -2633,7 +2636,6 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       ++unscheduled_splits_;
       return Status::Busy();
     }
-    fprintf(stdout, "BackgroundSplit(22)\n");
 
     cfd =  split_req.front().first;
     metas = split_req.front().second;
@@ -2649,7 +2651,6 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       delete cfd;
       return Status::OK();
     }
-    fprintf(stdout, "BackgroundSplit(23)\n");
 
     // Pick up latest mutable CF Options and use it throughout the
     // split job
@@ -2664,17 +2665,11 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
       TEST_SYNC_POINT("DBImpl::BackgroundSplit():BeforePickSplit");
       c.reset(cfd->PickSplit(metas, log_buffer));
       TEST_SYNC_POINT("DBImpl::BackgroundSplit():AfterPickSplit");
-
-      // update statistics
-      //RecordInHistogram(stats_, NUM_FILES_IN_SINGLE_COMPACTION,
-       //                 c->inputs(0)->size());
     }
   }
 
-  fprintf(stdout, "BackgroundSplit(3)\n");
   if (!c) {
     ROCKS_LOG_BUFFER(log_buffer, "Split nothing to do");
-    fprintf(stdout, "Split nothing to do\n");
   } else {
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:BeforeSplit",
                              c->column_family_data());
@@ -2699,34 +2694,29 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
         c->mutable_cf_options()->report_bg_io_stats, dbname_,
         &split_job_stats, thread_pri);
 
-    fprintf(stdout, "BackgroundSplit(4)\n");
     split_job.Prepare();
-    fprintf(stdout, "BackgroundSplit(5)\n");
 
     NotifyOnSplitBegin(c->column_family_data(), c.get(), status,
                             split_job_stats, job_context->job_id);
 
     mutex_.Unlock();
-    fprintf(stdout, "BackgroundSplit(6)\n");
     split_job.Run();
-    fprintf(stdout, "BackgroundSplit(7)\n");
     TEST_SYNC_POINT("DBImpl::BackgroundSplit:NonTrivial:AfterRun");
     mutex_.Lock();
 
     status = split_job.Install();
-    fprintf(stdout, "BackgroundSplit(8)\n");
     if (status.ok()) {
       InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                          &job_context->superversion_contexts[0],
                                          *c->mutable_cf_options());
-      InstallSuperVersionAndScheduleWork(c->column_family_data()->children_cfds[0],
+      // Install all children cfds that has made
+      /*InstallSuperVersionAndScheduleWork(c->column_family_data()->children_cfds[0],
                                          &job_context->superversion_contexts[0],
                                          *c->mutable_cf_options());
       InstallSuperVersionAndScheduleWork(c->column_family_data()->children_cfds[1],
                                          &job_context->superversion_contexts[0],
-                                         *c->mutable_cf_options());
+                                         *c->mutable_cf_options());*/
     }
-    fprintf(stdout, "BackgroundSplit(9)\n");
     *made_progress = true;
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundSplit:AfterSplit",
                              c->column_family_data());
@@ -2749,12 +2739,10 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
                            split_job_stats, job_context->job_id);
   }
 
-  fprintf(stdout, "Split status : %s\n", status.ToString().c_str());
   if (status.ok()) {
     // Done
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "[%s] Split column family finish", cfd->GetName().c_str());
-    fprintf(stdout, "Split column family finish\n");
   } else if (status.IsShutdownInProgress()) {
     // Ignore compaction errors found during shutting down
   } else {

@@ -935,10 +935,17 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     assert(sub_compact->current_output() != nullptr);
     sub_compact->builder->Add(key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
+
     sub_compact->current_output()->meta.UpdateBoundaries(
         key, c_iter->ikey().sequence);
     sub_compact->num_output_records++;
 
+    ROCKS_LOG_INFO(
+        db_options_.info_log,
+        "CompactionJob::ProcessKeyValueCompaction add builder - size(%lu), cnt(%lu)",
+        sub_compact->current_output_file_size ,
+        sub_compact->num_output_records     
+    );
     // Close output file if it is big enough. Two possibilities determine it's
     // time to close it: (1) the current key should be this file's last key, (2)
     // the next key should not be in this file.
@@ -1500,6 +1507,11 @@ Status CompactionJob::OpenCompactionOutputFile(
   writable_file->SetWriteLifeTimeHint(write_hint_);
   writable_file->SetPreallocationBlockSize(static_cast<size_t>(
       sub_compact->compaction->OutputFilePreallocationSize()));
+  ROCKS_LOG_INFO(
+          db_options_.info_log,
+          " OpenCompactionOutputFiles block size : %lu ",
+          sub_compact->compaction->OutputFilePreallocationSize());
+
   const auto& listeners =
       sub_compact->compaction->immutable_cf_options()->listeners;
   sub_compact->outfile.reset(

@@ -82,53 +82,48 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
   autovector<ColumnFamilyData*> column_family_datas;
   column_family_datas.push_back(cfd);
 
-  // put parent first
+  // Put parent first
   autovector<VersionEdit*> edits_in;
   VersionEdit edit_in;
   edit_in.SplitColumnFamily(cfd->GetName());
   edit_in.SetColumnFamily(cfd->GetID());
   edits_in.push_back(&edit_in);
   edit_lists.push_back(edits_in);
+  mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
 
-  // now put children
-  for (size_t i = 0; i < split_cnt; i++) {
-    superversion_contexts.emplace_back(SuperVersionContext(true));
-    std::string cf_out_name_i = cfd->GetName() + std::to_string(i);
-    cf_name_list.emplace_back(cf_out_name_i);
-  }
+
   {
 	  InstrumentedMutexLock l(&mutex_);
 	  autovector<VersionEdit*> edits_out;
-	  VersionEdit edit_out_arr[split_cnt];
-	  for (size_t i = 0; i < split_cnt; i++) {
 
-		  std::string smallest = sst_split_files[i].metadata->smallest.user_key().ToString(false);
-		  std::string largest = sst_split_files[i].metadata->largest.user_key().ToString(false);
-		  uint32_t new_id = versions_->GetColumnFamilySet()->GetNextColumnFamilyID();
+    // Now put children
+    // Before configuring the number of version edit as split_cnt,
+    // we need to compare the key ranges of existing children nodes
+    // with the key ranges of sst_split_files.
+    // For example, the key ranges of sst_split_files ={[5, 18], [19, 30], [40,60], [99, 200]}
+    // and key ranges of existing children nodes = {[1, 15], [20, 100]}
+    // then new intervals must be = {[15, 18], [19, 20], [100, 200]}
+    std::vector<VersionEdit> dummy_edit(1024);
+    size_t new_children_cnt = versions_->GetColumnFamilySet()->PrepareVersionEditsToSplit(
+                                      &mutex_, logfile_number_, cfd, sst_split_files, edit_lists, dummy_edit,
+                                      cf_name_list,
+                                      mutable_cf_options_list);
+    // prepare superversion_contexts 
+    for (size_t i = 0; i < new_children_cnt; i++) {
+      superversion_contexts.emplace_back(SuperVersionContext(true));
+    }
+    
+    assert(new_children_cnt == edit_lists.size() - 1);
+    assert(new_children_cnt == mutable_cf_options_list.size() - 1);
+    assert(new_children_cnt == cf_name_list.size());
+    assert(new_children_cnt == superversion_contexts.size());
 
-		  fprintf(stdout, "cf name : %s\n", cf_name_list[i].c_str());
-		  fprintf(stdout, "id : %u\n", new_id);
-		  fprintf(stdout, "smallest : %s\n", smallest.c_str());
-		  fprintf(stdout, "largest : %s\n", largest.c_str());
-		  edit_out_arr[i].AddColumnFamily(cf_name_list[i]);
-		  edit_out_arr[i].SetColumnFamily(new_id);
-		  edit_out_arr[i].SetLogNumber(logfile_number_);
-		  edit_out_arr[i].SetColumnFamilyKeyRange(smallest, largest);
-
-		  edits_out.push_back(&edit_out_arr[i]);
-		  edit_lists.push_back(edits_out);
-		  edits_out.clear();
-	  }
-
-	  for (size_t i = 0; i < split_cnt+1; i++) {
-		  mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
-	  }
 	  fprintf(stdout, "edit list size : %ld\n", edit_lists.size());
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-			  "Split Cnt %lu, edit size %lu",
+			  "Split File Cnt %lu, edit size %lu",
 			  split_cnt, edit_lists.size());
 
-	  uint32_t num_entries = split_cnt+1;
+	  uint32_t num_entries = new_children_cnt + 1;
 	  for (auto& edits: edit_lists) {
 		  assert(edits.size() == 1);
 		  edits[0]->MarkAtomicGroup(--num_entries);
@@ -148,7 +143,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 	  }
 
 	  // Add Directories if the CF creation is successful
-	  for (size_t i = 0; i < split_cnt; i++) {
+	  for (size_t i = 0; i < new_children_cnt; i++) {
 		  if (s.ok()) {
 			  auto* cfd_out_i = versions_->GetColumnFamilySet()
 				  ->GetColumnFamily(cf_name_list[i]);
@@ -168,7 +163,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
 		  single_column_family_mode_ = false;
 
-		  for (size_t i = 0; i < split_cnt; i++) {
+		  for (size_t i = 0; i < new_children_cnt; i++) {
 			  auto* cfd_out_i = versions_->GetColumnFamilySet()
 				  ->GetColumnFamily(cf_name_list[i]);
 			  assert(cfd_out_i != nullptr);
@@ -226,7 +221,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     if (s.ok()) {
       cfd->Ref();
       fprintf(stdout, "Split mt(2)\n");
-      s = SplitMemtables(cfd, column_family_datas);
+      s = SplitMemtables(cfd);
       fprintf(stdout, "Split mt(3)\n");
       cfd->Unref();
     } else {
@@ -245,18 +240,46 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
       // atomically flush splitted immutable memtables.
       assert(immutable_db_options_.atomic_flush);
 
-      for(auto to_cfd: column_family_datas) {
+      // reset column_family_datas
+      column_family_datas.clear();
+      if (cfd->imm()->NumNotFlushed() != 0) {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "imm count of parent cfd[%s] (ID %u) is not empty so flush required",
+                 cfd->GetName().c_str(),
+                 (unsigned) cfd->GetID());
+        column_family_datas.push_back(cfd); 
+      }
+
+      for(auto cnodes: cfd->GetChildrenNodes()) {
+        ColumnFamilyData* child_cfd = cnodes->cfd_;
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "cf [%s] (ID %u) imm count : %d",
-                 to_cfd->GetName().c_str(),
-                 (unsigned) to_cfd->GetID(),
-                 to_cfd->imm()->NumNotFlushed());
+                 child_cfd->GetName().c_str(),
+                 (unsigned) child_cfd->GetID(),
+                 child_cfd->imm()->NumNotFlushed());
+        if (child_cfd->imm()->NumNotFlushed() != 0) {
+          ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "imm count of child cfd[%s] (ID %u) is not empty so flush required",
+                 child_cfd->GetName().c_str(),
+                 (unsigned) child_cfd->GetID());
+          column_family_datas.push_back(child_cfd); 
+        }
       }
-      AssignAtomicFlushSeq(column_family_datas);
-      FlushRequest flush_req;
-      GenerateFlushRequest(column_family_datas, &flush_req);
-      SchedulePendingFlush(flush_req, FlushReason::kSplitMemtable);
-      MaybeScheduleFlushOrCompaction();
+
+      if (!column_family_datas.empty()) {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "Atomically flush immutable memtables after split memtables (SIZE : %lu)",
+                 column_family_datas.size());
+
+        AssignAtomicFlushSeq(column_family_datas);
+        FlushRequest flush_req;
+        GenerateFlushRequest(column_family_datas, &flush_req);
+        SchedulePendingFlush(flush_req, FlushReason::kSplitMemtable);
+        MaybeScheduleFlushOrCompaction();  
+      } else {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "No need to flush immutable memtables after split memtables");
+      }
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                  "Split Memtable of cf [%s] (ID %u) FAILED -- %s",

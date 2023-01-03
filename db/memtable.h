@@ -407,6 +407,10 @@ class MemTable {
     split_in_progress_ = in_progress;
   }
 
+  bool IsSplitInProgress(void) {
+    return split_in_progress_;
+  }
+
  private:
   enum FlushStateEnum { FLUSH_NOT_REQUESTED, FLUSH_REQUESTED, FLUSH_SCHEDULED };
 

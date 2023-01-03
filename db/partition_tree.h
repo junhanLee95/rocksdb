@@ -30,6 +30,7 @@ class PartitionTreeNode {
   PartitionTreeNode *SearchNextNode(const Slice &key);
 
   PartitionTreeNode *GetParentNode(void);
+  std::vector<PartitionTreeNode *> GetChildrenNodes(void);
 
   void Print(std::string TreeID, bool recursive);
 };
@@ -45,7 +46,7 @@ class PartitionTree {
   ~PartitionTree() {};
 
   void SetRootColumnFamily(ColumnFamilyData*);
-  void InsertSplittedColumnFamily (ColumnFamilyData *base_cfd, const std::vector<ColumnFamilyData*> &new_cfds);
+  Status InsertSplittedColumnFamily (ColumnFamilyData *base_cfd, const std::vector<ColumnFamilyData*> &new_cfds);
   ColumnFamilyData *SearchColumnFamily (const Slice &key); 
   std::vector<ColumnFamilyData*> SearchAllColumnFamilies (const Slice &key); 
   

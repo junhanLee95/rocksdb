@@ -25,7 +25,6 @@
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "util/thread_local.h"
-
 #include "db/partition_tree.h"
 
 namespace rocksdb {
@@ -48,6 +47,7 @@ class InstrumentedMutexLock;
 struct SuperVersionContext;
 class PartitionTree;
 class PartitionTreeNode;
+struct SplitFileInfo;
 
 extern const double kIncSlowdownRatio;
 
@@ -295,6 +295,7 @@ class ColumnFamilyData {
   // for partition tree node
   void SetPartitionTreeNode(PartitionTreeNode* node);
   PartitionTreeNode* GetPartitionTreeNode(void);
+  std::vector<PartitionTreeNode*> GetChildrenNodes(void);
 
   // Check if the passed range overlap with any running compactions.
   // REQUIRES: DB mutex held
@@ -415,9 +416,6 @@ class ColumnFamilyData {
   Directory* GetDataDir(size_t path_id) const;
 
   ThreadLocalPtr* TEST_GetLocalSV() { return local_sv_.get(); }
-
-  // children cfds which is splitted from the parent
-  std::vector<ColumnFamilyData*> children_cfds;
 
  private:
   friend class ColumnFamilySet;
@@ -624,6 +622,14 @@ class ColumnFamilySet {
   ColumnFamilyData* GetLogicalColumnFamily(const Slice &key);
   std::vector<ColumnFamilyData*> GetAllLogicalColumnFamilies(const Slice &key);
   ColumnFamilyData* GetParentColumnFamily(ColumnFamilyData* cfd);
+  size_t PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
+                                 uint64_t logfile_number,
+                                 ColumnFamilyData* cfd,
+                                 std::vector<SplitFileInfo>& sst_split_files,
+                                 autovector<autovector<VersionEdit*>>& edit_lists,
+                                 std::vector<VersionEdit>& edit_out,
+                                 autovector<std::string>& cf_name_list,
+                                 autovector<const MutableCFOptions*>& cf_options);
  private:
   friend class ColumnFamilyData;
   // helper function that gets called from cfd destructor
@@ -657,6 +663,15 @@ class ColumnFamilySet {
   Cache* table_cache_;
   WriteBufferManager* write_buffer_manager_;
   WriteController* write_controller_;
+
+  void AddKeyRangeIfNecessary(std::string r1, std::string r2,
+                              bool include_left,
+                              bool include_right,
+                              std::vector<std::string>& smallests,
+                              std::vector<std::string>& largests,
+                              size_t* split_cnt,
+                              std::string prefix_key
+                              );
 };
 
 // We use ColumnFamilyMemTablesImpl to provide WriteBatch a way to access

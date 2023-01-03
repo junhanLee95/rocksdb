@@ -1085,7 +1085,7 @@ class DBImpl : public DB {
 
   Status SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, ColumnFamilyData* cfd_out1);
 
-  Status SplitMemtables(ColumnFamilyData* from_cfd, autovector<ColumnFamilyData*>& to_cfds);
+  Status SplitMemtables(ColumnFamilyData* cfd);
 
   void SelectColumnFamiliesForAtomicFlush(autovector<ColumnFamilyData*>* cfds);
 

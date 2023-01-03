@@ -109,7 +109,7 @@ struct FileMetaData {
   int refs;  // Reference count
 
   bool being_compacted;        // Is this file undergoing compaction?
-  bool being_splitted;         // Is this file undergoing split?
+  //bool being_splitted;         // Is this file undergoing split?
   bool init_stats_from_file;   // true if the data-entry stats of this file
                                // has initialized from file.
 
@@ -128,7 +128,7 @@ struct FileMetaData {
         raw_value_size(0),
         refs(0),
         being_compacted(false),
-        being_splitted(false),
+        //being_splitted(false),
         init_stats_from_file(false),
         marked_for_compaction(false),
         marked_for_split(false)

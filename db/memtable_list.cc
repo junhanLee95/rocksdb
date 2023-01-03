@@ -288,21 +288,27 @@ bool MemTableList::IsFlushPending() const {
 }
 
 void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete,
-                                          uint64_t max_memtable_id) {
+                                          uint64_t target_memtable_id) {
   InstallNewVersion();
   const auto& memlist = current_->memlist_;
+  bool removed = false;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
-    if (m->split_in_progress_) {
-      fprintf(stdout, "m id : %lu, max : %lu\n", m->GetID(), max_memtable_id);
-      assert (m->GetID() < max_memtable_id);
+    if (m->split_in_progress_ && m->GetID() == target_memtable_id) {
+      fprintf(stdout, "[ClearSplittedMemtables] m id : %lu, target : %lu\n", m->GetID(), target_memtable_id);
       num_flush_not_started_--;
       if (num_flush_not_started_ == 0) {
           imm_flush_needed.store(false, std::memory_order_release);
       }
       current_->SplitRemove(m, to_delete);
+      removed = true;
     }
   }
+  if (!removed) {
+    fprintf(stderr, "[ClearSplittedMemtables] Error - memtable is not removed\n");
+  }
+  assert(removed);
+  
 }
 
 // Returns the memtables that need to be flushed.
