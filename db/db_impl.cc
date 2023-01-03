@@ -1559,12 +1559,8 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
     }
     else if (immutable_db_options_.allow_column_family_split) {
       // JH: if not found, we look up its parent column family
-      fprintf(stdout, "[JH] lookup cfd parent\n");
       cfd = cfs->GetParentColumnFamily(cfd);
-      fprintf(stdout, "[JH] lookup cfd parent\n");
       while(cfd != nullptr) {
-        fprintf(stdout, "[JH] lookup cfd parent %s\n",
-                cfd->GetName().c_str());
         Status s_parent;
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl: lookup parent node : %s (ID %d)"

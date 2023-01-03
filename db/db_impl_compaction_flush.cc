@@ -2526,7 +2526,6 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
         mutex_.Unlock();
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
                       "[JH]Have Something to Split");
-       fprintf(stdout, "[JH]Have Something to Split\n");
        SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
        mutex_.Lock();
     }

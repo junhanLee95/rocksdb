@@ -1535,9 +1535,7 @@ std::vector<ColumnFamilyData*> ColumnFamilySet::GetAllLogicalColumnFamilies(cons
 
 ColumnFamilyData* ColumnFamilySet::GetParentColumnFamily(ColumnFamilyData* cfd) {
   PartitionTreeNode* nnode = cfd->GetPartitionTreeNode();
-  fprintf(stdout, "[JH] nnode : %d\n", nnode!=nullptr);
   PartitionTreeNode* pnode = nnode->GetParentNode();
-  fprintf(stdout, "[JH] pnode : %d\n", pnode!=nullptr);
   return pnode == nullptr ? nullptr : pnode->cfd_;
 }
 
