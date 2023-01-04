@@ -2962,39 +2962,19 @@ Status VersionSet::ProcessManifestWrites(
       }
       assert(builder != nullptr);  // make checker happy
 
-      if (first_writer.edit_list.front()->is_split_move_) { // Split
-        // Group commits for ColumnFamilySplit
-        for (auto writer: writers) {
-          for (const auto& e : writer.edit_list) {
-            if (e->is_in_atomic_group_) {
-              if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
-                  (batch_edits.back()->is_in_atomic_group_ &&
-                   batch_edits.back()->remaining_entries_ == 0)) {
-                group_start = batch_edits.size();
-              }
-            } else if (group_start != std::numeric_limits<size_t>::max()) {
-              group_start = std::numeric_limits<size_t>::max();
-            }
-            std::cout << "help\n";
-            LogAndApplyHelper(writer.cfd, builder, e, mu);
-            batch_edits.push_back(e);
+      for (const auto& e : last_writer->edit_list) {
+        if (e->is_in_atomic_group_) {
+          if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
+              (batch_edits.back()->is_in_atomic_group_ &&
+               batch_edits.back()->remaining_entries_ == 0)) {
+            group_start = batch_edits.size();
           }
+        } else if (group_start != std::numeric_limits<size_t>::max()) {
+          group_start = std::numeric_limits<size_t>::max();
         }
-      } else { //Flush Or Compaction
-        for (const auto& e : last_writer->edit_list) {
-          if (e->is_in_atomic_group_) {
-            if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
-                (batch_edits.back()->is_in_atomic_group_ &&
-                 batch_edits.back()->remaining_entries_ == 0)) {
-              group_start = batch_edits.size();
-            }
-          } else if (group_start != std::numeric_limits<size_t>::max()) {
-            group_start = std::numeric_limits<size_t>::max();
-          }
-          std::cout << "help\n";
-          LogAndApplyHelper(last_writer->cfd, builder, e, mu);
-          batch_edits.push_back(e);
-        }
+        std::cout << "help\n";
+        LogAndApplyHelper(last_writer->cfd, builder, e, mu);
+        batch_edits.push_back(e);
       }
     }
     for (int i = 0; i < static_cast<int>(versions.size()); ++i) {

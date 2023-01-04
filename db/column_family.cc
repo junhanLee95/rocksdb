@@ -1840,11 +1840,11 @@ void ColumnFamilySet::AddKeyRangeIfNecessary(std::string r1, std::string r2,
 
   if (n1 < n2) {
     std::string s1 = std::to_string(n1);
-    s1.insert(0, r1.size() - s1.size(), '0');
+    s1.insert(0, r1.size() - s1.size() - psize, '0');
     s1 = prefix_key + s1;
 
     std::string s2 = std::to_string(n2);
-    s2.insert(0, r2.size() - s2.size(), '0');
+    s2.insert(0, r2.size() - s2.size() - psize, '0');
     s2 = prefix_key + s2;
 
     smallests.push_back(s1); 
