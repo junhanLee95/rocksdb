@@ -2603,7 +2603,6 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
     auto snapshot = read_options.snapshot != nullptr
                         ? read_options.snapshot->GetSequenceNumber()
                         : versions_->LastSequence();
-    //test
 	result = NewIteratorImpl(read_options, cfd, snapshot, read_callback);
   }
   return result;
