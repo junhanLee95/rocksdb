@@ -12,6 +12,7 @@ build_db.sh
 do_expr_thread.sh
 mytrace
 cscope.files
+cscope.out
 
 *.a
 *.arc

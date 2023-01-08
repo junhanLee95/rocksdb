@@ -503,7 +503,8 @@ set(SOURCES
         db/forward_iterator.cc
         db/internal_stats.cc
         db/in_memory_stats_history.cc
-        db/logs_with_prep_tracker.cc
+        db/lcf_iterator.cc
+		db/logs_with_prep_tracker.cc
         db/log_reader.cc
         db/log_writer.cc
         db/malloc_stats.cc

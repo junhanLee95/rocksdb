@@ -919,6 +919,7 @@ class DBImpl : public DB {
 #ifndef ROCKSDB_LITE
   friend class ForwardIterator;
 #endif
+  friend class LCFIterator;
   friend struct SuperVersion;
   friend class CompactedDBImpl;
   friend class DBTest_ConcurrentFlushWAL_Test;

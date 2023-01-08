@@ -42,6 +42,7 @@
 #include "db/external_sst_file_ingestion_job.h"
 #include "db/flush_job.h"
 #include "db/forward_iterator.h"
+#include "db/lcf_iterator.h"
 #include "db/in_memory_stats_history.h"
 #include "db/job_context.h"
 #include "db/log_reader.h"
@@ -2600,20 +2601,22 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
     // Note: no need to consider the special case of
     // last_seq_same_as_publish_seq_==false since NewIterator is overridden in
     // WritePreparedTxnDB
-    auto snapshot = read_options.snapshot != nullptr
-                        ? read_options.snapshot->GetSequenceNumber()
-                        : versions_->LastSequence();
-	if(allow_column_family_split){
-    	SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
+	if(immutable_db_options_.allow_column_family_split){
+		SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
     	auto iter = new LCFIterator(this, read_options, cfd, sv);
+    	//exit(0);
     	result = NewDBIterator(
         	env_, read_options, *cfd->ioptions(), sv->mutable_cf_options,
         	cfd->user_comparator(), iter, kMaxSequenceNumber,
         	sv->mutable_cf_options.max_sequential_skip_in_iterations, read_callback,
         	this, cfd);
 	}
-	else
+	else{
+    	auto snapshot = read_options.snapshot != nullptr
+        	                ? read_options.snapshot->GetSequenceNumber()
+            	            : versions_->LastSequence();
 		result = NewIteratorImpl(read_options, cfd, snapshot, read_callback);
+	}
   }
   return result;
 }
