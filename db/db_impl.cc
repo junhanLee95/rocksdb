@@ -2602,9 +2602,10 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
     // last_seq_same_as_publish_seq_==false since NewIterator is overridden in
     // WritePreparedTxnDB
 	if(immutable_db_options_.allow_column_family_split){
+		ROCKS_LOG_INFO(immutable_db_options_.info_log,"LCF mode is successful");
+		ROCKS_LOG_INFO(immutable_db_options_.info_log,"ID is %d",cfd->GetID());
 		SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
     	auto iter = new LCFIterator(this, read_options, cfd, sv);
-    	//exit(0);
     	result = NewDBIterator(
         	env_, read_options, *cfd->ioptions(), sv->mutable_cf_options,
         	cfd->user_comparator(), iter, kMaxSequenceNumber,
@@ -2612,6 +2613,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         	this, cfd);
 	}
 	else{
+		ROCKS_LOG_INFO(immutable_db_options_.info_log,"LCF mode isn't successful");
     	auto snapshot = read_options.snapshot != nullptr
         	                ? read_options.snapshot->GetSequenceNumber()
             	            : versions_->LastSequence();

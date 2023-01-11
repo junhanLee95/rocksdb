@@ -342,7 +342,7 @@ void LCFIterator::Seek(const Slice& internal_key) {
 void LCFIterator::SeekInternal(const Slice& internal_key,
                                    bool seek_to_first) {
   assert(mutable_iter_);
-  // mutable
+  // mutalbe_iter_ means memtable iterator
   seek_to_first ? mutable_iter_->SeekToFirst() :
                   mutable_iter_->Seek(internal_key);
 

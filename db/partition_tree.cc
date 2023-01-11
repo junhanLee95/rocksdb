@@ -218,10 +218,10 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
   PartitionTreeNode *nnode = nullptr; // next node
 
   while (true) {
-    ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
+    /*ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
                  "SearchColumnFamily : %s(%d)\n", 
                  cnode->cfd_->GetName().c_str(),
-                 cnode->cfd_->GetID());
+                 cnode->cfd_->GetID());*/
 
     nnode = cnode->SearchNextNode(key);
 
@@ -231,12 +231,12 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
     cnode = nnode; 
   }
 
-  ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
+  /*ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
                  "CFD[%s] Search... %s < [%s] < %s", 
                  cnode->cfd_->GetName().c_str(),
                  get_lmost_key(cnode).c_str(),
                  key.data(),
-                 get_rmost_key(cnode).c_str());
+                 get_rmost_key(cnode).c_str());*/
 
   
   /*fprintf(stdout, "CFD[%s] Search... %s < [%s] < %s\n", 
