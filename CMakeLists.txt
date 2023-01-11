@@ -919,6 +919,7 @@ if(WITH_TESTS)
         db/write_batch_test.cc
         db/write_callback_test.cc
         db/write_controller_test.cc
+        db/lcf_iterator_test.cc
         env/env_basic_test.cc
         env/env_test.cc
         env/mock_env_test.cc
@@ -940,6 +941,7 @@ if(WITH_TESTS)
         table/merger_test.cc
         table/sst_file_reader_test.cc
         table/sst_file_split_test.cc
+        table/lcf_iterator_test.cc
         table/table_test.cc
         tools/ldb_cmd_test.cc
         tools/reduce_levels_test.cc

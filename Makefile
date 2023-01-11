@@ -506,6 +506,7 @@ TESTS = \
 	write_batch_test \
 	write_batch_with_index_test \
 	write_controller_test\
+	lcf_iterator_test\
 	deletefile_test \
 	obsolete_files_test \
 	table_test \
@@ -1422,6 +1423,9 @@ write_batch_test: db/write_batch_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 write_controller_test: db/write_controller_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+lcf_iterator_test: db/lcf_iterator_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 merge_helper_test: db/merge_helper_test.o $(LIBOBJECTS) $(TESTHARNESS)
