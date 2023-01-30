@@ -185,12 +185,12 @@ TEST_F(LCFIteratorTest, SimpleSeek) {
   for(size_t i = 0; i < numItem; i++) {
     db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(values[i]));
   }
+
   std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
   for(size_t i = 0; i < numItem; i++) {
     iterator->Seek(keys[i]);
     ASSERT_EQ(iterator->value().data(), values[i]);
   }
-
  
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;

@@ -12,6 +12,7 @@
 
 #include "rocksdb/db.h"
 #include "rocksdb/iterator.h"
+#include "db/forward_iterator.h"
 #include "rocksdb/options.h"
 #include "db/dbformat.h"
 #include "table/internal_iterator.h"
@@ -27,6 +28,7 @@ class LCFLevelIterator;
 class VersionStorageInfo;
 struct FileMetaData;
 
+
 class minIterComparator {
  public:
   explicit minIterComparator(const Comparator* comparator) :
@@ -38,9 +40,10 @@ class minIterComparator {
  private:
   const Comparator* comparator_;
 };
-
+/*
 typedef std::priority_queue<InternalIterator*, std::vector<InternalIterator*>,
                             minIterComparator> minIterHeap;
+*/
 
 /**
  * LCFIterator is a special type of iterator that only supports Seek()
@@ -52,7 +55,7 @@ typedef std::priority_queue<InternalIterator*, std::vector<InternalIterator*>,
 class LCFIterator : public InternalIterator {
  public:
   LCFIterator(DBImpl* db, const ReadOptions& read_options,
-                  ColumnFamilyData* cfd, SuperVersion* current_sv = nullptr);
+                  ColumnFamilyData* root, std::vector<InternalIterator*> iterators, int num);
   virtual ~LCFIterator();
 
   void SeekForPrev(const Slice& /*target*/) override {
@@ -117,17 +120,23 @@ class LCFIterator : public InternalIterator {
 
   DBImpl* const db_;
   const ReadOptions read_options_;
-  ColumnFamilyData* const cfd_;
-  const SliceTransform* const prefix_extractor_;
+  //ColumnFamilyData* const cfd_;
+  
+  /*const SliceTransform* const prefix_extractor_;
   const Comparator* user_comparator_;
-  minIterHeap immutable_min_heap_;
+  minIterHeap immutable_min_heap_;*/
+
+  ColumnFamilyData* root_;
+  std::vector<InternalIterator*> iterators_;
+  std::unique_ptr<InternalIterator> merge_iter_;
+  int num_;
 
   SuperVersion* sv_;
-  InternalIterator* mutable_iter_;
+  /*InternalIterator* mutable_iter_;
   std::vector<InternalIterator*> imm_iters_;
   std::vector<InternalIterator*> l0_iters_;
   std::vector<LCFLevelIterator*> level_iters_;
-  InternalIterator* current_;
+  InternalIterator* current_;*/
   bool valid_;
 
   // Internal iterator status; set only by one of the unsupported methods.

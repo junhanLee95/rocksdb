@@ -2604,13 +2604,45 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
 	if(immutable_db_options_.allow_column_family_split){
 		ROCKS_LOG_INFO(immutable_db_options_.info_log,"LCF mode is successful");
 		ROCKS_LOG_INFO(immutable_db_options_.info_log,"ID is %d",cfd->GetID());
-		SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
-    	auto iter = new LCFIterator(this, read_options, cfd, sv);
+
+		ColumnFamilyData* root=cfd;
+		std::vector<InternalIterator*> iterators;
+		int num=0;
+		while(root){
+			auto imm=root->GetPartitionTreeNode()->GetParentNode();
+			if(!imm)
+				break;
+			root=imm->cfd_;
+		}
+		//fprintf(stdout,"root cfd is %d\n",int(root->GetID()));
+		SuperVersion* sv = root->GetReferencedSuperVersion(&mutex_);
+		//mutex_.Lock();
+		//SuperVersion* sv = root->GetSuperVersion()->Ref();
+		//mutex_.Unlock();
+		iterators.push_back(new ForwardIterator(this, read_options, root,sv));
+		num++;
+		for(auto cnodes: root->GetChildrenNodes()){
+			ColumnFamilyData* child_cfd = cnodes->cfd_;
+		//	fprintf(stdout,"child cfd is %d\n",int(child_cfd->GetID()));
+			sv = child_cfd->GetReferencedSuperVersion(&mutex_);
+			InternalIterator* child_iter = new ForwardIterator(this,read_options,child_cfd,sv);
+			child_iter->SeekToFirst();
+            while(child_iter->Valid()) {
+			  fprintf(stdout, "[Child] now value is %s\n", child_iter->value().data());
+			  child_iter->Next();
+			}
+			child_iter->SeekToFirst();
+			iterators.push_back(child_iter);
+			num++;
+		}
+
+		//fprintf(stdout,"size is %d\n",int(iterators.size()));
+    	auto iter = new LCFIterator(this, read_options, root, iterators,num);
     	result = NewDBIterator(
-        	env_, read_options, *cfd->ioptions(), sv->mutable_cf_options,
-        	cfd->user_comparator(), iter, kMaxSequenceNumber,
+        	env_, read_options, *root->ioptions(), sv->mutable_cf_options,
+        	root->user_comparator(), iter, kMaxSequenceNumber,
         	sv->mutable_cf_options.max_sequential_skip_in_iterations, read_callback,
-        	this, cfd);
+        	this, root);
 	}
 	else{
 		ROCKS_LOG_INFO(immutable_db_options_.info_log,"LCF mode isn't successful");
@@ -2619,6 +2651,15 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
             	            : versions_->LastSequence();
 		result = NewIteratorImpl(read_options, cfd, snapshot, read_callback);
 	}
+  }
+  std::vector<std::string> keys;
+  for(size_t i=0;i<10;i++){
+	  std::string k(1,'a'+i);
+	  keys.push_back(k);
+  }
+  for(int i=0;i<10;i++){
+	  result->Seek(keys[i]);
+	  fprintf(stdout,"now value is %s\n",result->value().data());
   }
   return result;
 }

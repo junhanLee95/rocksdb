@@ -168,18 +168,22 @@ class LCFLevelIterator : public InternalIterator {
     return Status::OK();
   }
   bool IsKeyPinned() const override {
-    return pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
-           file_iter_->IsKeyPinned();
+    return true;
+		//pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
+          // file_iter_->IsKeyPinned();
   }
   bool IsValuePinned() const override {
-    return pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
-           file_iter_->IsValuePinned();
+    return true;
+	//pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
+      //     file_iter_->IsValuePinned();
   }
   void SetPinnedItersMgr(PinnedIteratorsManager* pinned_iters_mgr) override {
-    pinned_iters_mgr_ = pinned_iters_mgr;
-    if (file_iter_) {
-      file_iter_->SetPinnedItersMgr(pinned_iters_mgr_);
-    }
+	 pinned_iters_mgr_ = pinned_iters_mgr;
+	return;
+	  //pinned_iters_mgr_ = pinned_iters_mgr;
+    //if (file_iter_) {
+      //file_iter_->SetPinnedItersMgr(pinned_iters_mgr_);
+    //}
   }
 
  private:
@@ -196,28 +200,41 @@ class LCFLevelIterator : public InternalIterator {
 };
 
 LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
-                                 ColumnFamilyData* cfd,
-                                 SuperVersion* current_sv)
+                                 ColumnFamilyData* root, std::vector<InternalIterator*> iterator, int num)
     : db_(db),
       read_options_(read_options),
-      cfd_(cfd),
-      prefix_extractor_(current_sv->mutable_cf_options.prefix_extractor.get()),
-      user_comparator_(cfd->user_comparator()),
-      immutable_min_heap_(minIterComparator(&cfd_->internal_comparator())),
-      sv_(current_sv),
-      mutable_iter_(nullptr),
-      current_(nullptr),
-      valid_(false),
-      status_(Status::OK()),
-      immutable_status_(Status::OK()),
-      has_iter_trimmed_for_upper_bound_(false),
-      current_over_upper_bound_(false),
-      is_prev_set_(false),
-      is_prev_inclusive_(false),
-      pinned_iters_mgr_(nullptr) {
-  if (sv_) {
-    RebuildIterators(false);
-  }
+//      cfd_(cfd),
+//      sv_(current_sv),
+	  root_(root),
+	  iterators_(iterator),
+	  num_(num)
+      {
+	for(int i=0;i<num;i++)
+		iterators_[i]->SeekToFirst();
+	//iterators_[1]->Next();
+    size_t id = 0;
+	for (auto& iter: iterator) {
+	  while(iter->Valid()){
+		fprintf(stdout,"[LCF%ld]now value is %s\n", id, iter->value().data());
+		iter->Next();
+	  }
+	  id++;
+	}
+
+    
+	//fprintf(stdout,"iter2 value is %s\n",iterators_[1]->key().data());
+	merge_iter_.reset(NewMergingIterator(&root_->internal_comparator(),&iterators_[0],num_));
+    std::vector<std::string> keys;
+	for(size_t i=0;i<10;i++){
+		std::string k(1,'a'+i);
+		keys.push_back(k);
+	}
+	
+	
+	
+  /*if (sv_) {
+	  RebuildIterators(false);
+  }*/
 }
 
 LCFIterator::~LCFIterator() {
@@ -281,25 +298,10 @@ void LCFIterator::SVCleanup() {
 }
 
 void LCFIterator::Cleanup(bool release_sv) {
-  if (mutable_iter_ != nullptr) {
-    DeleteIterator(mutable_iter_, true /* is_arena */);
-  }
-
-  for (auto* m : imm_iters_) {
-    DeleteIterator(m, true /* is_arena */);
-  }
-  imm_iters_.clear();
-
-  for (auto* f : l0_iters_) {
-    DeleteIterator(f);
-  }
-  l0_iters_.clear();
-
-  for (auto* l : level_iters_) {
-    DeleteIterator(l);
-  }
-  level_iters_.clear();
-
+  for(auto* m : iterators_)
+	 DeleteIterator(m);
+  iterators_.clear();
+  
   if (release_sv) {
     SVCleanup();
   }
@@ -307,41 +309,36 @@ void LCFIterator::Cleanup(bool release_sv) {
 
 bool LCFIterator::Valid() const {
   // See UpdateCurrent().
-  return valid_ ? !current_over_upper_bound_ : false;
+
+  return merge_iter_->Valid();
 }
 
 void LCFIterator::SeekToFirst() {
-  if (sv_ == nullptr) {
+  /*if (sv_ == nullptr) {
     RebuildIterators(true);
   } else if (sv_->version_number != cfd_->GetSuperVersionNumber()) {
     RenewIterators();
   } else if (immutable_status_.IsIncomplete()) {
     ResetIncompleteIterators();
   }
-  SeekInternal(Slice(), true);
-}
+  SeekInternal(Slice(), true);*/
 
+}
+/*
 bool LCFIterator::IsOverUpperBound(const Slice& internal_key) const {
   return !(read_options_.iterate_upper_bound == nullptr ||
            cfd_->internal_comparator().user_comparator()->Compare(
                ExtractUserKey(internal_key),
                *read_options_.iterate_upper_bound) < 0);
-}
+}*/
 
 void LCFIterator::Seek(const Slice& internal_key) {
-  if (sv_ == nullptr) {
-    RebuildIterators(true);
-  } else if (sv_->version_number != cfd_->GetSuperVersionNumber()) {
-    RenewIterators();
-  } else if (immutable_status_.IsIncomplete()) {
-    ResetIncompleteIterators();
-  }
   SeekInternal(internal_key, false);
 }
 
 void LCFIterator::SeekInternal(const Slice& internal_key,
                                    bool seek_to_first) {
-  assert(mutable_iter_);
+  /*assert(mutable_iter_);
   // mutalbe_iter_ means memtable iterator
   seek_to_first ? mutable_iter_->SeekToFirst() :
                   mutable_iter_->Seek(internal_key);
@@ -470,10 +467,15 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
   }
 
   UpdateCurrent();
+  */
+  if(!seek_to_first){
+  	merge_iter_->Seek(internal_key);
+  }
   TEST_SYNC_POINT_CALLBACK("LCFIterator::SeekInternal:Return", this);
 }
 
 void LCFIterator::Next() {
+  /*
   assert(valid_);
   bool update_prev_key = false;
 
@@ -530,26 +532,30 @@ void LCFIterator::Next() {
   }
   UpdateCurrent();
   TEST_SYNC_POINT_CALLBACK("LCFIterator::Next:Return", this);
+  */
+  merge_iter_->Next();
 }
 
 Slice LCFIterator::key() const {
   assert(valid_);
-  return current_->key();
+  return merge_iter_->key();
 }
 
 Slice LCFIterator::value() const {
   assert(valid_);
-  return current_->value();
+  return merge_iter_->value();
 }
 
 Status LCFIterator::status() const {
+	/*
   if (!status_.ok()) {
     return status_;
   } else if (!mutable_iter_->status().ok()) {
     return mutable_iter_->status();
   }
 
-  return immutable_status_;
+  return immutable_status_;*/
+  return merge_iter_->status();
 }
 
 Status LCFIterator::GetProperty(std::string prop_name, std::string* prop) {
@@ -561,12 +567,13 @@ Status LCFIterator::GetProperty(std::string prop_name, std::string* prop) {
   return Status::InvalidArgument();
 }
 
-void LCFIterator::SetPinnedItersMgr(
-    PinnedIteratorsManager* pinned_iters_mgr) {
-  pinned_iters_mgr_ = pinned_iters_mgr;
-  UpdateChildrenPinnedItersMgr();
-}
 
+void LCFIterator::SetPinnedItersMgr(
+	PinnedIteratorsManager* pinned_iters_mgr) {
+  pinned_iters_mgr_ = pinned_iters_mgr;
+  //UpdateChildrenPinnedItersMgr();
+}
+/*
 void LCFIterator::UpdateChildrenPinnedItersMgr() {
   // Set PinnedIteratorsManager for mutable memtable iterator.
   if (mutable_iter_) {
@@ -594,17 +601,21 @@ void LCFIterator::UpdateChildrenPinnedItersMgr() {
     }
   }
 }
-
+*/
 bool LCFIterator::IsKeyPinned() const {
-  return pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
-         current_->IsKeyPinned();
+ // return pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
+   //      current_->IsKeyPinned();
+	return true;
 }
 
 bool LCFIterator::IsValuePinned() const {
-  return pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
-         current_->IsValuePinned();
+//  return pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
+  //       current_->IsValuePinned();
+	return true;
 }
 
+
+/*
 void LCFIterator::RebuildIterators(bool refresh_sv) {
   // Clean up
   Cleanup(refresh_sv);
@@ -613,8 +624,8 @@ void LCFIterator::RebuildIterators(bool refresh_sv) {
     sv_ = cfd_->GetReferencedSuperVersion(&(db_->mutex_));
   }
   ReadRangeDelAggregator range_del_agg(&cfd_->internal_comparator(),
-                                       kMaxSequenceNumber /* upper_bound */);
-  mutable_iter_ = sv_->mem->NewIterator(read_options_, &arena_);
+                                       kMaxSequenceNumber *//* upper_bound */ //);
+/*  mutable_iter_ = sv_->mem->NewIterator(read_options_, &arena_);
   sv_->imm->AddIterators(read_options_, &imm_iters_, &arena_);
   if (!read_options_.ignore_range_deletions) {
     std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
@@ -662,18 +673,18 @@ void LCFIterator::RenewIterators() {
   svnew = cfd_->GetReferencedSuperVersion(&(db_->mutex_));
 
   if (mutable_iter_ != nullptr) {
-    DeleteIterator(mutable_iter_, true /* is_arena */);
-  }
+    DeleteIterator(mutable_iter_, true*/ /* is_arena */ //);
+/*  }
   for (auto* m : imm_iters_) {
-    DeleteIterator(m, true /* is_arena */);
-  }
+    DeleteIterator(m, true*/ /* is_arena */ //);
+/*  }
   imm_iters_.clear();
 
   mutable_iter_ = svnew->mem->NewIterator(read_options_, &arena_);
   svnew->imm->AddIterators(read_options_, &imm_iters_, &arena_);
   ReadRangeDelAggregator range_del_agg(&cfd_->internal_comparator(),
-                                       kMaxSequenceNumber /* upper_bound */);
-  if (!read_options_.ignore_range_deletions) {
+                                       kMaxSequenceNumber*/ /* upper_bound */ //);
+/*  if (!read_options_.ignore_range_deletions) {
     std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
         svnew->mem->NewRangeTombstoneIterator(
             read_options_, sv_->current->version_set()->LastSequence()));
@@ -772,7 +783,7 @@ void LCFIterator::ResetIncompleteIterators() {
     DeleteIterator(l0_iters_[i]);
     l0_iters_[i] = cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
-        *l0_files[i], nullptr /* range_del_agg */,
+        *l0_files[i], nullptr */ /* range_del_agg */ /*,
         sv_->mutable_cf_options.prefix_extractor.get());
     l0_iters_[i]->SetPinnedItersMgr(pinned_iters_mgr_);
   }
@@ -930,7 +941,7 @@ uint32_t LCFIterator::FindFileInRange(
   return static_cast<uint32_t>(std::lower_bound(b + left,
                                  b + right, internal_key, cmp) - b);
 }
-
+*/
 void LCFIterator::DeleteIterator(InternalIterator* iter, bool is_arena) {
   if (iter == nullptr) {
     return;
