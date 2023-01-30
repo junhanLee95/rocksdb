@@ -146,7 +146,7 @@ class LCFIteratorTest : public testing::Test {
   EnvOptions soptions_;
   std::string sst_name_;
 };
-
+/*
 TEST_F(LCFIteratorTest, SimpleSeek) {
   Options options;
   options.create_if_missing = true;
@@ -170,7 +170,7 @@ TEST_F(LCFIteratorTest, SimpleSeek) {
   infos.push_back(SplitFileInfo(f1, cfd));
 
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
-
+  dbfull(db)->TEST_WaitForSplit();
   size_t numItem = 10;
   std::vector<std::string> keys;
   std::vector<std::string> values;
@@ -189,13 +189,72 @@ TEST_F(LCFIteratorTest, SimpleSeek) {
   std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
   for(size_t i = 0; i < numItem; i++) {
     iterator->Seek(keys[i]);
-    ASSERT_EQ(iterator->value().data(), values[i]);
+    fprintf(stdout, "value : %s\n", iterator->value().data());
+    fprintf(stdout, "value size : %ld\n", iterator->value().size());
+    ASSERT_EQ(iterator->value().ToString(), values[i]);
+  }
+ 
+  dbfull(db)->DestroyLogicalColumnFamilies();
+  delete db;
+}*/
+
+TEST_F(LCFIteratorTest, DoubleSeek) {
+  Options options;
+  options.create_if_missing = true;
+  options.allow_column_family_split = true;
+  options.atomic_flush = true;
+
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+  std::vector<SplitFileInfo> infos;
+  FileMetaData* f1 = new FileMetaData;
+  std::string s1 = "c";
+  std::string l1 = "d";
+  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+  FileMetaData* f2 = new FileMetaData;
+  std::string s2 = "e";
+  std::string l2 = "f";
+  f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
+  f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
+
+  infos.push_back(SplitFileInfo(f1, cfd));
+  infos.push_back(SplitFileInfo(f2, cfd));
+
+  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->TEST_WaitForSplit();
+  size_t numItem = 10;
+  std::vector<std::string> keys;
+  std::vector<std::string> values;
+
+  for(size_t i = 0; i < numItem; i++) {
+    std::string k(1, 'a' + i);
+    std::string v = "v" + k;
+    keys.push_back(k); 
+    values.push_back(v); 
+  }
+
+  for(size_t i = 0; i < numItem; i++) {
+    db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(values[i]));
+  }
+
+  std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
+  for(size_t i = 0; i < numItem; i++) {
+    iterator->Seek(keys[i]);
+    fprintf(stdout, "value : %s\n", iterator->value().data());
+    fprintf(stdout, "value size : %ld\n", iterator->value().size());
+    ASSERT_EQ(iterator->value().ToString(), values[i]);
   }
  
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
 }
-
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

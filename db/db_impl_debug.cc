@@ -140,13 +140,19 @@ Status DBImpl::TEST_WaitForSplit(void) {
   // OR flush to finish.
 
   InstrumentedMutexLock l(&mutex_);
-  while ((bg_split_scheduled_) &&
-         (error_handler_.GetBGError() == Status::OK())) {
+  while ((bg_split_scheduled_) && 
+	  	(error_handler_.GetBGError() == Status::OK())) {
     bg_cv_.Wait();
   }
   return error_handler_.GetBGError();
 }
 
+Status DBImpl::TEST_MaybeScheduleFlushOrCompaction(void) {
+  mutex_.Lock();
+  MaybeScheduleFlushOrCompaction();
+  mutex_.Unlock();
+  return Status::OK();
+}
 Status DBImpl::TEST_WaitForCompact(bool wait_unscheduled) {
   // Wait until the compaction completes
 

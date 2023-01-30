@@ -206,7 +206,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
       ColumnFamilyData* p_cfd = pnode->cfd_;
       std::string p_largest = p_cfd->GetLargestKey();
       std::string l_smallest = l_cfd->GetSmallestKey();
-      assert(p_largest.compare(l_smallest) > 0);
+      assert(p_largest.compare(l_smallest) < 0);
     }
   }
 

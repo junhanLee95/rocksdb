@@ -2626,12 +2626,12 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
 		//	fprintf(stdout,"child cfd is %d\n",int(child_cfd->GetID()));
 			sv = child_cfd->GetReferencedSuperVersion(&mutex_);
 			InternalIterator* child_iter = new ForwardIterator(this,read_options,child_cfd,sv);
-			child_iter->SeekToFirst();
+			/*child_iter->SeekToFirst();
             while(child_iter->Valid()) {
 			  fprintf(stdout, "[Child] now value is %s\n", child_iter->value().data());
 			  child_iter->Next();
 			}
-			child_iter->SeekToFirst();
+			child_iter->SeekToFirst();*/
 			iterators.push_back(child_iter);
 			num++;
 		}
@@ -2651,7 +2651,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
             	            : versions_->LastSequence();
 		result = NewIteratorImpl(read_options, cfd, snapshot, read_callback);
 	}
-  }
+  }/*
   std::vector<std::string> keys;
   for(size_t i=0;i<10;i++){
 	  std::string k(1,'a'+i);
@@ -2660,7 +2660,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   for(int i=0;i<10;i++){
 	  result->Seek(keys[i]);
 	  fprintf(stdout,"now value is %s\n",result->value().data());
-  }
+  }*/
   return result;
 }
 

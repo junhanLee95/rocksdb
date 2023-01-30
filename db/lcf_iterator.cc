@@ -212,14 +212,14 @@ LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
 	for(int i=0;i<num;i++)
 		iterators_[i]->SeekToFirst();
 	//iterators_[1]->Next();
-    size_t id = 0;
+    /*size_t id = 0;
 	for (auto& iter: iterator) {
 	  while(iter->Valid()){
 		fprintf(stdout,"[LCF%ld]now value is %s\n", id, iter->value().data());
 		iter->Next();
 	  }
 	  id++;
-	}
+	}*/
 
     
 	//fprintf(stdout,"iter2 value is %s\n",iterators_[1]->key().data());
@@ -537,12 +537,12 @@ void LCFIterator::Next() {
 }
 
 Slice LCFIterator::key() const {
-  assert(valid_);
+  assert(Valid());
   return merge_iter_->key();
 }
 
 Slice LCFIterator::value() const {
-  assert(valid_);
+  assert(Valid());
   return merge_iter_->value();
 }
 

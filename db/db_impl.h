@@ -431,6 +431,7 @@ class DBImpl : public DB {
   // is only for the special test of CancelledCompactions
   Status TEST_WaitForCompact(bool waitUnscheduled = false);
   Status TEST_WaitForSplit(void);
+  Status TEST_MaybeScheduleFlushOrCompaction(void);
 
   // Return the maximum overlapping data (in bytes) at next level for any
   // file at a level >= 1.
