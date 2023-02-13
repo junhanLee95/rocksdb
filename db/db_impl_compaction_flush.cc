@@ -2369,9 +2369,9 @@ void DBImpl::BackgroundCallSplit(Env::Priority thread_pri) {
 
     // See if there's more work to be done
     MaybeScheduleFlushOrCompaction();
-    if (made_progress ||
+    /*if (made_progress ||
         bg_split_scheduled_ == 0 ||
-        /*HasPendingManualSplit() || */ unscheduled_splits_ == 0) {
+        HasPendingManualSplit() ||  unscheduled_splits_ == 0) {
       // signal if
       // * made_progress -- need to wakeup DelayWrite
       // * bg_split_scheduled_ == 0 -- need to wakeup ~DBImpl
@@ -2380,7 +2380,8 @@ void DBImpl::BackgroundCallSplit(Env::Priority thread_pri) {
       // waiting for it bg_cv_.SignalAll();
       //
       bg_cv_.SignalAll();
-    }
+    }*/
+    bg_cv_.SignalAll();
     // IMPORTANT: there should be no code after calling SignalAll. This call may
     // signal the DB destructor that it's OK to proceed with destruction. In
     // that case, all DB variables will be dealloacated and referencing them

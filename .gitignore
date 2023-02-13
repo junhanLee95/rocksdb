@@ -13,6 +13,7 @@ do_expr_thread.sh
 mytrace
 cscope.files
 cscope.out
+del.sh
 
 *.a
 *.arc

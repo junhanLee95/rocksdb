@@ -2614,26 +2614,30 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
 				break;
 			root=imm->cfd_;
 		}
+		std::vector<PartitionTreeNode*> nodes;
+		nodes=root->GetPartitionTreeNode()->Traversal();
+
 		//fprintf(stdout,"root cfd is %d\n",int(root->GetID()));
-		SuperVersion* sv = root->GetReferencedSuperVersion(&mutex_);
+		SuperVersion* sv=nullptr;
+		//= root->GetReferencedSuperVersion(&mutex_);
 		//mutex_.Lock();
 		//SuperVersion* sv = root->GetSuperVersion()->Ref();
 		//mutex_.Unlock();
-		iterators.push_back(new ForwardIterator(this, read_options, root,sv));
-		num++;
-		for(auto cnodes: root->GetChildrenNodes()){
-			ColumnFamilyData* child_cfd = cnodes->cfd_;
+		//iterators.push_back(new ForwardIterator(this, read_options, root,sv));
+		num=int(nodes.size());
+		for(auto cnodes: nodes){
+			ColumnFamilyData* node_cfd = cnodes->cfd_;
 		//	fprintf(stdout,"child cfd is %d\n",int(child_cfd->GetID()));
-			sv = child_cfd->GetReferencedSuperVersion(&mutex_);
-			InternalIterator* child_iter = new ForwardIterator(this,read_options,child_cfd,sv);
+			sv = node_cfd->GetReferencedSuperVersion(&mutex_);
+			InternalIterator* node_iter = new ForwardIterator(this,read_options,node_cfd,sv);
 			/*child_iter->SeekToFirst();
             while(child_iter->Valid()) {
 			  fprintf(stdout, "[Child] now value is %s\n", child_iter->value().data());
 			  child_iter->Next();
 			}
 			child_iter->SeekToFirst();*/
-			iterators.push_back(child_iter);
-			num++;
+			iterators.push_back(node_iter);
+			//num++;
 		}
 
 		//fprintf(stdout,"size is %d\n",int(iterators.size()));

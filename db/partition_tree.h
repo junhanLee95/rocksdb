@@ -33,6 +33,10 @@ class PartitionTreeNode {
   std::vector<PartitionTreeNode *> GetChildrenNodes(void);
 
   void Print(std::string TreeID, bool recursive);
+
+  std::vector<PartitionTreeNode *> Traversal();
+  void TraversalImpl(std::vector<PartitionTreeNode*> *nodes);
+
 };
 
 class PartitionTree {

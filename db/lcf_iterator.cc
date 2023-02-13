@@ -31,186 +31,19 @@ namespace rocksdb {
 //     iter.SetFileIndex(file_index);
 //     iter.Seek(target); // or iter.SeekToFirst();
 //     iter.Next()
-class LCFLevelIterator : public InternalIterator {
- public:
-  LCFLevelIterator(const ColumnFamilyData* const cfd,
-                       const ReadOptions& read_options,
-                       const std::vector<FileMetaData*>& files,
-                       const SliceTransform* prefix_extractor)
-      : cfd_(cfd),
-        read_options_(read_options),
-        files_(files),
-        valid_(false),
-        file_index_(std::numeric_limits<uint32_t>::max()),
-        file_iter_(nullptr),
-        pinned_iters_mgr_(nullptr),
-        prefix_extractor_(prefix_extractor) {}
-
-  ~LCFLevelIterator() override {
-    // Reset current pointer
-    if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
-      pinned_iters_mgr_->PinIterator(file_iter_);
-    } else {
-      delete file_iter_;
-    }
-  }
-
-  void SetFileIndex(uint32_t file_index) {
-    assert(file_index < files_.size());
-    status_ = Status::OK();
-    if (file_index != file_index_) {
-      file_index_ = file_index;
-      Reset();
-    }
-  }
-  void Reset() {
-    assert(file_index_ < files_.size());
-
-    // Reset current pointer
-    if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
-      pinned_iters_mgr_->PinIterator(file_iter_);
-    } else {
-      delete file_iter_;
-    }
-
-    ReadRangeDelAggregator range_del_agg(&cfd_->internal_comparator(),
-                                         kMaxSequenceNumber /* upper_bound */);
-    file_iter_ = cfd_->table_cache()->NewIterator(
-        read_options_, *(cfd_->soptions()), cfd_->internal_comparator(),
-        *files_[file_index_],
-        read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
-        prefix_extractor_, nullptr /* table_reader_ptr */, nullptr, false);
-    file_iter_->SetPinnedItersMgr(pinned_iters_mgr_);
-    valid_ = false;
-    if (!range_del_agg.IsEmpty()) {
-      status_ = Status::NotSupported(
-          "Range tombstones unsupported with LCFIterator");
-    }
-  }
-  void SeekToLast() override {
-    status_ = Status::NotSupported("LCFLevelIterator::SeekToLast()");
-    valid_ = false;
-  }
-  void Prev() override {
-    status_ = Status::NotSupported("LCFLevelIterator::Prev()");
-    valid_ = false;
-  }
-  bool Valid() const override {
-    return valid_;
-  }
-  void SeekToFirst() override {
-    assert(file_iter_ != nullptr);
-    if (!status_.ok()) {
-      assert(!valid_);
-      return;
-    }
-    file_iter_->SeekToFirst();
-    valid_ = file_iter_->Valid();
-  }
-  void Seek(const Slice& internal_key) override {
-    assert(file_iter_ != nullptr);
-
-    // This deviates from the usual convention for InternalIterator::Seek() in
-    // that it doesn't discard pre-existing error status. That's because this
-    // Seek() is only supposed to be called immediately after SetFileIndex()
     // (which discards pre-existing error status), and SetFileIndex() may set
     // an error status, which we shouldn't discard.
-    if (!status_.ok()) {
-      assert(!valid_);
-      return;
-    }
-
-    file_iter_->Seek(internal_key);
-    valid_ = file_iter_->Valid();
-  }
-  void SeekForPrev(const Slice& /*internal_key*/) override {
-    status_ = Status::NotSupported("LCFLevelIterator::SeekForPrev()");
-    valid_ = false;
-  }
-  void Next() override {
-    assert(valid_);
-    file_iter_->Next();
-    for (;;) {
-      valid_ = file_iter_->Valid();
-      if (!file_iter_->status().ok()) {
-        assert(!valid_);
-        return;
-      }
-      if (valid_) {
-        return;
-      }
-      if (file_index_ + 1 >= files_.size()) {
-        valid_ = false;
-        return;
-      }
-      SetFileIndex(file_index_ + 1);
-      if (!status_.ok()) {
-        assert(!valid_);
-        return;
-      }
-      file_iter_->SeekToFirst();
-    }
-  }
-  Slice key() const override {
-    assert(valid_);
-    return file_iter_->key();
-  }
-  Slice value() const override {
-    assert(valid_);
-    return file_iter_->value();
-  }
-  Status status() const override {
-    if (!status_.ok()) {
-      return status_;
-    } else if (file_iter_) {
-      return file_iter_->status();
-    }
-    return Status::OK();
-  }
-  bool IsKeyPinned() const override {
-    return true;
-		//pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
-          // file_iter_->IsKeyPinned();
-  }
-  bool IsValuePinned() const override {
-    return true;
-	//pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
-      //     file_iter_->IsValuePinned();
-  }
-  void SetPinnedItersMgr(PinnedIteratorsManager* pinned_iters_mgr) override {
-	 pinned_iters_mgr_ = pinned_iters_mgr;
-	return;
-	  //pinned_iters_mgr_ = pinned_iters_mgr;
-    //if (file_iter_) {
-      //file_iter_->SetPinnedItersMgr(pinned_iters_mgr_);
-    //}
-  }
-
- private:
-  const ColumnFamilyData* const cfd_;
-  const ReadOptions& read_options_;
-  const std::vector<FileMetaData*>& files_;
-
-  bool valid_;
-  uint32_t file_index_;
-  Status status_;
-  InternalIterator* file_iter_;
-  PinnedIteratorsManager* pinned_iters_mgr_;
-  const SliceTransform* prefix_extractor_;
-};
 
 LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
                                  ColumnFamilyData* root, std::vector<InternalIterator*> iterator, int num)
     : db_(db),
       read_options_(read_options),
-//      cfd_(cfd),
-//      sv_(current_sv),
 	  root_(root),
 	  iterators_(iterator),
 	  num_(num)
       {
-	for(int i=0;i<num;i++)
-		iterators_[i]->SeekToFirst();
+	/*for(int i=0;i<num;i++)
+		iterators_[i]->SeekToFirst();*/
 	//iterators_[1]->Next();
     /*size_t id = 0;
 	for (auto& iter: iterator) {
@@ -309,7 +142,6 @@ void LCFIterator::Cleanup(bool release_sv) {
 
 bool LCFIterator::Valid() const {
   // See UpdateCurrent().
-
   return merge_iter_->Valid();
 }
 
@@ -322,7 +154,7 @@ void LCFIterator::SeekToFirst() {
     ResetIncompleteIterators();
   }
   SeekInternal(Slice(), true);*/
-
+  merge_iter_->SeekToFirst();
 }
 /*
 bool LCFIterator::IsOverUpperBound(const Slice& internal_key) const {
@@ -338,136 +170,6 @@ void LCFIterator::Seek(const Slice& internal_key) {
 
 void LCFIterator::SeekInternal(const Slice& internal_key,
                                    bool seek_to_first) {
-  /*assert(mutable_iter_);
-  // mutalbe_iter_ means memtable iterator
-  seek_to_first ? mutable_iter_->SeekToFirst() :
-                  mutable_iter_->Seek(internal_key);
-
-  // immutable
-  // TODO(ljin): NeedToSeekImmutable has negative impact on performance
-  // if it turns to need to seek immutable often. We probably want to have
-  // an option to turn it off.
-  if (seek_to_first || NeedToSeekImmutable(internal_key)) {
-    immutable_status_ = Status::OK();
-    if (has_iter_trimmed_for_upper_bound_ &&
-        (
-            // prev_ is not set yet
-            is_prev_set_ == false ||
-            // We are doing SeekToFirst() and internal_key.size() = 0
-            seek_to_first ||
-            // prev_key_ > internal_key
-            cfd_->internal_comparator().InternalKeyComparator::Compare(
-                prev_key_.GetInternalKey(), internal_key) > 0)) {
-      // Some iterators are trimmed. Need to rebuild.
-      RebuildIterators(true);
-      // Already seeked mutable iter, so seek again
-      seek_to_first ? mutable_iter_->SeekToFirst()
-                    : mutable_iter_->Seek(internal_key);
-    }
-    {
-      auto tmp = minIterHeap(minIterComparator(&cfd_->internal_comparator()));
-      immutable_min_heap_.swap(tmp);
-    }
-    for (size_t i = 0; i < imm_iters_.size(); i++) {
-      auto* m = imm_iters_[i];
-      seek_to_first ? m->SeekToFirst() : m->Seek(internal_key);
-      if (!m->status().ok()) {
-        immutable_status_ = m->status();
-      } else if (m->Valid()) {
-        immutable_min_heap_.push(m);
-      }
-    }
-
-    Slice user_key;
-    if (!seek_to_first) {
-      user_key = ExtractUserKey(internal_key);
-    }
-    const VersionStorageInfo* vstorage = sv_->current->storage_info();
-    const std::vector<FileMetaData*>& l0 = vstorage->LevelFiles(0);
-    for (size_t i = 0; i < l0.size(); ++i) {
-      if (!l0_iters_[i]) {
-        continue;
-      }
-      if (seek_to_first) {
-        l0_iters_[i]->SeekToFirst();
-      } else {
-        // If the target key passes over the larget key, we are sure Next()
-        // won't go over this file.
-        if (user_comparator_->Compare(user_key,
-              l0[i]->largest.user_key()) > 0) {
-          if (read_options_.iterate_upper_bound != nullptr) {
-            has_iter_trimmed_for_upper_bound_ = true;
-            DeleteIterator(l0_iters_[i]);
-            l0_iters_[i] = nullptr;
-          }
-          continue;
-        }
-        l0_iters_[i]->Seek(internal_key);
-      }
-
-      if (!l0_iters_[i]->status().ok()) {
-        immutable_status_ = l0_iters_[i]->status();
-      } else if (l0_iters_[i]->Valid() &&
-                 !IsOverUpperBound(l0_iters_[i]->key())) {
-        immutable_min_heap_.push(l0_iters_[i]);
-      } else {
-        has_iter_trimmed_for_upper_bound_ = true;
-        DeleteIterator(l0_iters_[i]);
-        l0_iters_[i] = nullptr;
-      }
-    }
-
-    for (int32_t level = 1; level < vstorage->num_levels(); ++level) {
-      const std::vector<FileMetaData*>& level_files =
-          vstorage->LevelFiles(level);
-      if (level_files.empty()) {
-        continue;
-      }
-      if (level_iters_[level - 1] == nullptr) {
-        continue;
-      }
-      uint32_t f_idx = 0;
-      if (!seek_to_first) {
-        f_idx = FindFileInRange(level_files, internal_key, 0,
-                                static_cast<uint32_t>(level_files.size()));
-      }
-
-      // Seek
-      if (f_idx < level_files.size()) {
-        level_iters_[level - 1]->SetFileIndex(f_idx);
-        seek_to_first ? level_iters_[level - 1]->SeekToFirst() :
-                        level_iters_[level - 1]->Seek(internal_key);
-
-        if (!level_iters_[level - 1]->status().ok()) {
-          immutable_status_ = level_iters_[level - 1]->status();
-        } else if (level_iters_[level - 1]->Valid() &&
-                   !IsOverUpperBound(level_iters_[level - 1]->key())) {
-          immutable_min_heap_.push(level_iters_[level - 1]);
-        } else {
-          // Nothing in this level is interesting. Remove.
-          has_iter_trimmed_for_upper_bound_ = true;
-          DeleteIterator(level_iters_[level - 1]);
-          level_iters_[level - 1] = nullptr;
-        }
-      }
-    }
-
-    if (seek_to_first) {
-      is_prev_set_ = false;
-    } else {
-      prev_key_.SetInternalKey(internal_key);
-      is_prev_set_ = true;
-      is_prev_inclusive_ = true;
-    }
-
-    TEST_SYNC_POINT_CALLBACK("LCFIterator::SeekInternal:Immutable", this);
-  } else if (current_ && current_ != mutable_iter_) {
-    // current_ is one of immutable iterators, push it back to the heap
-    immutable_min_heap_.push(current_);
-  }
-
-  UpdateCurrent();
-  */
   if(!seek_to_first){
   	merge_iter_->Seek(internal_key);
   }
@@ -475,64 +177,7 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
 }
 
 void LCFIterator::Next() {
-  /*
-  assert(valid_);
-  bool update_prev_key = false;
-
-  if (sv_ == nullptr ||
-      sv_->version_number != cfd_->GetSuperVersionNumber()) {
-    std::string current_key = key().ToString();
-    Slice old_key(current_key.data(), current_key.size());
-
-    if (sv_ == nullptr) {
-      RebuildIterators(true);
-    } else {
-      RenewIterators();
-    }
-    SeekInternal(old_key, false);
-    if (!valid_ || key().compare(old_key) != 0) {
-      return;
-    }
-  } else if (current_ != mutable_iter_) {
-    // It is going to advance immutable iterator
-
-    if (is_prev_set_ && prefix_extractor_) {
-      // advance prev_key_ to current_ only if they share the same prefix
-      update_prev_key =
-          prefix_extractor_->Transform(prev_key_.GetUserKey())
-              .compare(prefix_extractor_->Transform(current_->key())) == 0;
-    } else {
-      update_prev_key = true;
-    }
-
-
-    if (update_prev_key) {
-      prev_key_.SetInternalKey(current_->key());
-      is_prev_set_ = true;
-      is_prev_inclusive_ = false;
-    }
-  }
-
-  current_->Next();
-  if (current_ != mutable_iter_) {
-    if (!current_->status().ok()) {
-      immutable_status_ = current_->status();
-    } else if ((current_->Valid()) && (!IsOverUpperBound(current_->key()))) {
-      immutable_min_heap_.push(current_);
-    } else {
-      if ((current_->Valid()) && (IsOverUpperBound(current_->key()))) {
-        // remove the current iterator
-        DeleteCurrentIter();
-        current_ = nullptr;
-      }
-      if (update_prev_key) {
-        mutable_iter_->Seek(prev_key_.GetInternalKey());
-      }
-    }
-  }
-  UpdateCurrent();
-  TEST_SYNC_POINT_CALLBACK("LCFIterator::Next:Return", this);
-  */
+  //TEST_SYNC_POINT_CALLBACK("LCFIterator::Next:Return", this);
   merge_iter_->Next();
 }
 
@@ -547,14 +192,6 @@ Slice LCFIterator::value() const {
 }
 
 Status LCFIterator::status() const {
-	/*
-  if (!status_.ok()) {
-    return status_;
-  } else if (!mutable_iter_->status().ok()) {
-    return mutable_iter_->status();
-  }
-
-  return immutable_status_;*/
   return merge_iter_->status();
 }
 

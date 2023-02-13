@@ -29,17 +29,6 @@ class VersionStorageInfo;
 struct FileMetaData;
 
 
-class minIterComparator {
- public:
-  explicit minIterComparator(const Comparator* comparator) :
-    comparator_(comparator) {}
-
-  bool operator()(InternalIterator* a, InternalIterator* b) {
-    return comparator_->Compare(a->key(), b->key()) > 0;
-  }
- private:
-  const Comparator* comparator_;
-};
 /*
 typedef std::priority_queue<InternalIterator*, std::vector<InternalIterator*>,
                             minIterComparator> minIterHeap;

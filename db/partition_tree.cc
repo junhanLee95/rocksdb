@@ -76,6 +76,21 @@ void PartitionTreeNode::Print(
 }
 
 
+std::vector<PartitionTreeNode *> PartitionTreeNode::Traversal() {
+	std::vector<PartitionTreeNode*> nodes;
+	this->TraversalImpl(&nodes);
+	return nodes;
+}
+void PartitionTreeNode::TraversalImpl(
+		std::vector<PartitionTreeNode*> *nodes) {
+  nodes->push_back(this);
+//  fprintf(stdout,"ID is %d\n",this->cfd_->GetID());
+
+  for (auto cnodes: lower_level_nodes_)
+    cnodes->TraversalImpl(nodes);
+
+}
+
 // PartitionTree function.
 
 PartitionTree::PartitionTree( 
@@ -273,7 +288,6 @@ void PartitionTree::PrintAll() {
 }
  
 }
-
 
 
 
