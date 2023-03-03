@@ -17,6 +17,8 @@
 #include "db/dbformat.h"
 #include "table/internal_iterator.h"
 #include "util/arena.h"
+#include "db/column_family.h"
+#include "table/merging_iterator.h"
 
 namespace rocksdb {
 
@@ -44,7 +46,7 @@ typedef std::priority_queue<InternalIterator*, std::vector<InternalIterator*>,
 class LCFIterator : public InternalIterator {
  public:
   LCFIterator(DBImpl* db, const ReadOptions& read_options,
-                  ColumnFamilyData* root, std::vector<InternalIterator*> iterators, int num);
+                  ColumnFamilyData* root, std::vector<InternalIterator*> iterators, std::vector<PartitionTreeNode*> nodes);
   virtual ~LCFIterator();
 
   void SeekForPrev(const Slice& /*target*/) override {
@@ -99,6 +101,7 @@ class LCFIterator : public InternalIterator {
 
   bool IsOverUpperBound(const Slice& internal_key) const;
 
+  void UpdateMaxKey(std::string user_key);
   // Set PinnedIteratorsManager for all children Iterators, this function should
   // be called whenever we update children Iterators or pinned_iters_mgr_.
   void UpdateChildrenPinnedItersMgr();
@@ -117,8 +120,11 @@ class LCFIterator : public InternalIterator {
 
   ColumnFamilyData* root_;
   std::vector<InternalIterator*> iterators_;
-  std::unique_ptr<InternalIterator> merge_iter_;
-  int num_;
+  InternalIterator* merge_iter_;
+  std::vector<PartitionTreeNode*> nodes_;
+  Arena arena_;
+  MergeIteratorBuilder merge_iter_builder_;
+  std::string max_key_="";
 
   SuperVersion* sv_;
   /*InternalIterator* mutable_iter_;
@@ -151,7 +157,6 @@ class LCFIterator : public InternalIterator {
   bool is_prev_inclusive_;
 
   PinnedIteratorsManager* pinned_iters_mgr_;
-  Arena arena_;
 };
 
 }  // namespace rocksdb

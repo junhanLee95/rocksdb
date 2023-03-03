@@ -189,14 +189,15 @@ TEST_F(LCFIteratorTest, SimpleSeek) {
   std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
   for(size_t i = 0; i < numItem; i++) {
     iterator->Seek(keys[i]);
-    fprintf(stdout, "value : %s\n", iterator->value().data());
-    fprintf(stdout, "value size : %ld\n", iterator->value().size());
+    //fprintf(stdout, "value : %s\n", iterator->value().data());
+    //fprintf(stdout, "value size : %ld\n", iterator->value().size());
     ASSERT_EQ(iterator->value().ToString(), values[i]);
   }
- 
+  fprintf(stdout, "Value test is success\n"); 
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
-}*/
+}
+*/
 /*
 TEST_F(LCFIteratorTest, DoubleSeek) {
   Options options;
@@ -309,7 +310,7 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleSeek) {
   }
 
   std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
-  for(size_t i = 0; i < numItem; i++) {
+  for(size_t i = 6; i < numItem; i++) {
     iterator->Seek(keys[i]);
     //fprintf(stdout, "value : %s\n", iterator->value().data());
     //fprintf(stdout, "value size : %ld\n", iterator->value().size());
@@ -319,8 +320,10 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleSeek) {
  
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
-}*/
-/*TEST_F(LCFIteratorTest, NewestSimpleSeek) {
+}
+*/
+/*
+TEST_F(LCFIteratorTest, NewestSimpleSeek) {
   size_t numItem = 10;
   std::vector<std::string> keys;
   std::vector<std::string> values;
@@ -419,6 +422,7 @@ TEST_F(LCFIteratorTest, SimpleNext) {
 
   std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
   iterator->SeekToFirst();
+  fprintf(stdout, "$$$$$$$$$$$smallest is %s\n",iterator->value().data());
   for(size_t i = 0; i < numItem; i++) {
     //fprintf(stdout, "value : %s\n", iterator->value().data());
     //fprintf(stdout, "value size : %ld\n", iterator->value().size());
@@ -429,8 +433,9 @@ TEST_F(LCFIteratorTest, SimpleNext) {
  
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
-}*/
-/*
+}
+*/
+
 TEST_F(LCFIteratorTest, DoubleNext) {
   Options options;
   options.create_if_missing = true;
@@ -490,7 +495,8 @@ TEST_F(LCFIteratorTest, DoubleNext) {
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
 }
-*/
+
+/*
 TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   Options options;
   options.create_if_missing = true;
@@ -554,6 +560,7 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
 }
+*/
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

@@ -24,6 +24,9 @@
 #include "util/string_util.h"
 #include "util/sync_point.h"
 
+#define get_lmost_key(n) ((n)->cfd_->GetSmallestKey())
+#define get_rmost_key(n) ((n)->cfd_->GetLargestKey())
+
 namespace rocksdb {
 
 // Usage:
@@ -35,15 +38,17 @@ namespace rocksdb {
     // an error status, which we shouldn't discard.
 
 LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
-                                 ColumnFamilyData* root, std::vector<InternalIterator*> iterator, int num)
+                                 ColumnFamilyData* root, std::vector<InternalIterator*> iterator,
+								 std::vector<PartitionTreeNode*> nodes)
     : db_(db),
       read_options_(read_options),
 	  root_(root),
 	  iterators_(iterator),
-	  num_(num)
+	  nodes_(nodes),
+	  merge_iter_builder_(MergeIteratorBuilder(&root_->internal_comparator(),&arena_))
       {
-	/*for(int i=0;i<num;i++)
-		iterators_[i]->SeekToFirst();*/
+	//for(int i=0;i<num;i++)
+		//iterators_[i]->SeekToFirst();
 	//iterators_[1]->Next();
     /*size_t id = 0;
 	for (auto& iter: iterator) {
@@ -53,16 +58,15 @@ LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
 	  }
 	  id++;
 	}*/
+	//Arena arena;
+    //MergeIteratorBuilder builder(&root_->internal_comparator(),&arena);
+	//merge_iter_builder_=builder;
+	//fprintf(stdout,"number is %d\n",int(iterators_.size()));
+	for(auto iter: iterators_)
+	  merge_iter_builder_.AddIterator(iter);
+	merge_iter_=merge_iter_builder_.GetMergeIter();
 
-    
-	//fprintf(stdout,"iter2 value is %s\n",iterators_[1]->key().data());
-	merge_iter_.reset(NewMergingIterator(&root_->internal_comparator(),&iterators_[0],num_));
-    std::vector<std::string> keys;
-	for(size_t i=0;i<10;i++){
-		std::string k(1,'a'+i);
-		keys.push_back(k);
-	}
-	
+	//merge_iter_=NewMergingIterator(&root_->internal_comparator(),&iterators_[0],num_);
 	
 	
   /*if (sv_) {
@@ -121,6 +125,11 @@ void LCFIterator::SVCleanup() {
   if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
     // pinned_iters_mgr_ tells us to make sure that all visited key-value slices
     // are alive until pinned_iters_mgr_->ReleasePinnedData() is called.
+      read_options_.background_purge_on_iterator_cleanup ||
+      db_->immutable_db_options().avoid_unnecessary_blocking_io;
+  if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
+    // pinned_iters_mgr_ tells us to make sure that all visited key-value slices
+    // are alive until pinned_iters_mgr_->ReleasePinnedData() is called.
     // The slices may point into some memtables owned by sv_, so we need to keep
     // sv_ referenced until pinned_iters_mgr_ unpins everything.
     auto p = new SVCleanupParams{db_, sv_, background_purge};
@@ -128,6 +137,7 @@ void LCFIterator::SVCleanup() {
   } else {
     SVCleanup(db_, sv_, background_purge);
   }
+}
 }
 
 void LCFIterator::Cleanup(bool release_sv) {
@@ -152,9 +162,8 @@ void LCFIterator::SeekToFirst() {
     RenewIterators();
   } else if (immutable_status_.IsIncomplete()) {
     ResetIncompleteIterators();
-  }
-  SeekInternal(Slice(), true);*/
-  merge_iter_->SeekToFirst();
+  }*/
+  SeekInternal(Slice(), true);
 }
 /*
 bool LCFIterator::IsOverUpperBound(const Slice& internal_key) const {
@@ -170,7 +179,89 @@ void LCFIterator::Seek(const Slice& internal_key) {
 
 void LCFIterator::SeekInternal(const Slice& internal_key,
                                    bool seek_to_first) {
-  if(!seek_to_first){
+  if(seek_to_first){
+	//Traverse partition tree only left direction and add it to merge_iter_.
+	std::vector<std::string> small_keys;
+    for(auto cnodes: nodes_)
+		small_keys.push_back(get_lmost_key(cnodes));
+
+    sort(small_keys.begin(), small_keys.end());
+	std::string smallest_key=small_keys.front();
+
+    //fprintf(stdout,"Initial node num is %d\n",int(nodes_.size()));
+    //Find nodes which added to merge_iter_.
+	std::vector<PartitionTreeNode*> addnode;
+    for(auto cnodes: nodes_){
+	  if (get_rmost_key(cnodes).empty() || smallest_key.compare(get_rmost_key(cnodes)) <= 0) {
+	    if (get_lmost_key(cnodes).empty() || smallest_key.compare(get_lmost_key(cnodes)) >= 0){
+	      addnode.push_back(cnodes);
+		  nodes_.erase(remove(nodes_.begin(), nodes_.end(), cnodes),nodes_.end());
+		  auto childnodes=cnodes->Traversal();
+		  for(auto dnodes: childnodes){
+			if(find(addnode.begin(), addnode.end(), dnodes)==addnode.end()){
+              addnode.push_back(dnodes);
+              nodes_.erase(remove(nodes_.begin(), nodes_.end(), dnodes),nodes_.end());
+			}
+		  }
+		}
+	  }
+	}
+	//fprintf(stdout,"left node's num is %d\n",int(nodes_.size()));
+
+    //If some nodes iterator need to be added, expand merge_iter_.
+    if(addnode.size() >= 1){
+	  //fprintf(stdout,"%d iterators is need to be added!!!\n",int(addnode.size()));
+      SuperVersion* sv=nullptr;
+
+	  // Use MergingIterator::AddIterator
+      for(auto cnodes: addnode){
+		UpdateMaxKey(get_rmost_key(cnodes));
+		ColumnFamilyData* node_cfd = cnodes->cfd_;
+		sv = node_cfd->GetReferencedSuperVersion(&(db_->mutex_));
+		InternalIterator* node_iter = new ForwardIterator(db_,read_options_,node_cfd,sv);
+	    merge_iter_builder_.AddIterator(node_iter);
+	  }
+	  merge_iter_=merge_iter_builder_.GetMergeIter();
+    }
+    merge_iter_->SeekToFirst();
+  }
+  else{
+    //Find nodes which added to merge_iter_.
+    std::vector<PartitionTreeNode*> addnode;
+	//fprintf(stdout,"left node's num is %d\n",int(nodes_.size()));
+	std::string key_str = ExtractUserKey(internal_key).ToString();
+    for(auto cnodes: nodes_){
+	  if (get_rmost_key(cnodes).empty() || key_str.compare(get_rmost_key(cnodes)) <= 0) {
+	    if (get_lmost_key(cnodes).empty() || key_str.compare(get_lmost_key(cnodes)) >= 0){
+	      addnode.push_back(cnodes);
+		  nodes_.erase(remove(nodes_.begin(), nodes_.end(), cnodes),nodes_.end());
+		  auto childnodes=cnodes->Traversal();
+		  for(auto dnodes: childnodes){
+			if(find(addnode.begin(), addnode.end(), dnodes)==addnode.end()){
+              addnode.push_back(dnodes);
+              nodes_.erase(remove(nodes_.begin(), nodes_.end(), dnodes),nodes_.end());
+			}
+		  }
+	    }
+	  } 
+    }
+
+    //If some nodes iterator need to be added, expand merge_iter_.
+  
+    if(addnode.size() >= 1){
+	  //fprintf(stdout,"%d iterators is need to be added!!!\n",int(addnode.size()));
+      SuperVersion* sv=nullptr;
+
+	  // Use MergingIterator::AddIterator
+      for(auto cnodes: addnode){
+		UpdateMaxKey(get_rmost_key(cnodes));
+		ColumnFamilyData* node_cfd = cnodes->cfd_;
+		sv = node_cfd->GetReferencedSuperVersion(&(db_->mutex_));
+		InternalIterator* node_iter = new ForwardIterator(db_,read_options_,node_cfd,sv);
+	    merge_iter_builder_.AddIterator(node_iter);
+	  }
+    }
+	merge_iter_=merge_iter_builder_.GetMergeIter();
   	merge_iter_->Seek(internal_key);
   }
   TEST_SYNC_POINT_CALLBACK("LCFIterator::SeekInternal:Return", this);
@@ -178,6 +269,61 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
 
 void LCFIterator::Next() {
   //TEST_SYNC_POINT_CALLBACK("LCFIterator::Next:Return", this);
+
+  //Move codes related with small_keys to Constructor to save sort cost.
+  std::vector<std::string> small_keys;
+  //add condition when nodes_ is empty
+  //fprintf(stdout,"max key is %s\n",max_key_.c_str());
+
+  if(nodes_.size()>=1 && ExtractUserKey(merge_iter_->key()).ToString().compare(max_key_)==0){
+    for(auto cnodes: nodes_)
+	  small_keys.push_back(get_lmost_key(cnodes));
+
+    sort(small_keys.begin(), small_keys.end());
+    std::string smallest_key=small_keys.front();
+
+    //Distinguish Time of adding Column Family
+    //When CF is added( Constructor, SeekInternal(), Next() ), update some variable ( ex) current_max), then compare that variable and key.
+    //It can easliy update CF adding timing.
+
+    //Find nodes which added to merge_iter_.
+    std::vector<PartitionTreeNode*> addnode;
+    for(auto cnodes: nodes_){
+      //fprintf(stdout,"key is %s %s\n",get_lmost_key(cnodes).c_str(),get_rmost_key(cnodes).c_str());
+      if (get_rmost_key(cnodes).empty() || smallest_key.compare(get_rmost_key(cnodes)) <= 0) {
+        if (get_lmost_key(cnodes).empty() || smallest_key.compare(get_lmost_key(cnodes)) >= 0){
+          addnode.push_back(cnodes);
+          nodes_.erase(remove(nodes_.begin(), nodes_.end(), cnodes),nodes_.end());
+		  auto childnodes=cnodes->Traversal();
+		  for(auto dnodes: childnodes){
+			if(find(addnode.begin(), addnode.end(), dnodes)==addnode.end()){
+              addnode.push_back(dnodes);
+              nodes_.erase(remove(nodes_.begin(), nodes_.end(), dnodes),nodes_.end());
+			}
+		  }
+	    }
+	  }
+    }
+
+    //If some nodes iterator need to be added, expand merge_iter_.
+    if(addnode.size() >= 1){
+      //fprintf(stdout,"%d iterators is need to be added!!!\n",int(addnode.size()));
+      SuperVersion* sv=nullptr;
+
+	  // Use MergingIterator::AddIterator
+      for(auto cnodes: addnode){
+		UpdateMaxKey(get_rmost_key(cnodes));
+	    ColumnFamilyData* node_cfd = cnodes->cfd_;
+	    sv = node_cfd->GetReferencedSuperVersion(&(db_->mutex_));
+	    InternalIterator* node_iter = new ForwardIterator(db_,read_options_,node_cfd,sv);
+		node_iter->SeekToFirst();
+	    merge_iter_builder_.AddIterator(node_iter);
+	  }
+	  //It is need to reinitialize Heap when after call AddIterator().
+      merge_iter_builder_.InitForNext();
+      merge_iter_=merge_iter_builder_.GetMergeIter();
+    }
+  }
   merge_iter_->Next();
 }
 
@@ -204,6 +350,12 @@ Status LCFIterator::GetProperty(std::string prop_name, std::string* prop) {
   return Status::InvalidArgument();
 }
 
+void LCFIterator::UpdateMaxKey(std::string user_key){
+  if(max_key_.empty())
+    max_key_=user_key;
+  else
+	max_key_ = (max_key_.compare(user_key) < 0 ) ? user_key : max_key_;
+}
 
 void LCFIterator::SetPinnedItersMgr(
 	PinnedIteratorsManager* pinned_iters_mgr) {
@@ -531,42 +683,6 @@ void LCFIterator::DeleteCurrentIter() {
 
 bool LCFIterator::TEST_CheckDeletedIters(int* pdeleted_iters,
                                              int* pnum_iters) {
-  bool retval = false;
-  int deleted_iters = 0;
-  int num_iters = 0;
-
-  const VersionStorageInfo* vstorage = sv_->current->storage_info();
-  const std::vector<FileMetaData*>& l0 = vstorage->LevelFiles(0);
-  for (size_t i = 0; i < l0.size(); ++i) {
-    if (!l0_iters_[i]) {
-      retval = true;
-      deleted_iters++;
-    } else {
-      num_iters++;
-    }
-  }
-
-  for (int32_t level = 1; level < vstorage->num_levels(); ++level) {
-    if ((level_iters_[level - 1] == nullptr) &&
-        (!vstorage->LevelFiles(level).empty())) {
-      retval = true;
-      deleted_iters++;
-    } else if (!vstorage->LevelFiles(level).empty()) {
-      num_iters++;
-    }
-  }
-  if ((!retval) && num_iters <= 1) {
-    retval = true;
-  }
-  if (pdeleted_iters) {
-    *pdeleted_iters = deleted_iters;
-  }
-  if (pnum_iters) {
-    *pnum_iters = num_iters;
-  }
-  return retval;
-}
-
 uint32_t LCFIterator::FindFileInRange(
     const std::vector<FileMetaData*>& files, const Slice& internal_key,
     uint32_t left, uint32_t right) {

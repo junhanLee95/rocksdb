@@ -93,6 +93,21 @@ class MergingIterator : public InternalIterator {
 
   Status status() const override { return status_; }
 
+  void NextInitHeap() {
+    ClearHeaps();
+    status_ = Status::OK();
+    for (auto& child : children_) {
+      if (child.Valid()) {
+        assert(child.status().ok());
+        minHeap_.push(&child);
+      } else {
+        considerStatus(child.status());
+      }
+    }
+    direction_ = kForward;
+    current_ = CurrentForward();
+  }
+
   void SeekToFirst() override {
     ClearHeaps();
     status_ = Status::OK();
@@ -424,6 +439,21 @@ void MergeIteratorBuilder::AddIterator(InternalIterator* iter) {
   } else {
     first_iter = iter;
   }
+}
+
+void MergeIteratorBuilder::InitForNext(){
+  if(use_merging_iter)
+	  merge_iter->NextInitHeap();
+}
+
+InternalIterator* MergeIteratorBuilder::GetMergeIter() {
+  InternalIterator* ret = nullptr;
+  if (!use_merging_iter) {
+    ret = first_iter;
+  } else {
+    ret = merge_iter;
+  }
+  return ret;
 }
 
 InternalIterator* MergeIteratorBuilder::Finish() {

@@ -47,10 +47,14 @@ class MergeIteratorBuilder {
   // Add iter to the merging iterator.
   void AddIterator(InternalIterator* iter);
 
+  void InitForNext();
+
   // Get arena used to build the merging iterator. It is called one a child
   // iterator needs to be allocated.
   Arena* GetArena() { return arena; }
 
+  //InternalIterator* GetMergeIter();
+  InternalIterator* GetMergeIter();
   // Return the result merging iterator.
   InternalIterator* Finish();
 
