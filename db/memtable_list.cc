@@ -250,8 +250,8 @@ void MemTableListVersion::Remove(MemTable* m,
 
 void MemTableListVersion::SplitRemove(MemTable* m,
                                  autovector<MemTable*>* to_delete) {
-  fprintf(stdout, "refs : %d\n", (int)(refs_));
-  fprintf(stdout, "memlist size : %ld\n", memlist_.size());
+  //fprintf(stdout, "refs : %d\n", (int)(refs_));
+  //fprintf(stdout, "memlist size : %ld\n", memlist_.size());
   //assert(refs_ == 0);  // only when refs_ == 1 is MemTableListVersion mutable
   memlist_.remove(m);
 
@@ -295,7 +295,7 @@ void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete,
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
     if (m->split_in_progress_ && m->GetID() == target_memtable_id) {
-      fprintf(stdout, "[ClearSplittedMemtables] m id : %lu, target : %lu\n", m->GetID(), target_memtable_id);
+      //fprintf(stdout, "[ClearSplittedMemtables] m id : %lu, target : %lu\n", m->GetID(), target_memtable_id);
       num_flush_not_started_--;
       if (num_flush_not_started_ == 0) {
           imm_flush_needed.store(false, std::memory_order_release);

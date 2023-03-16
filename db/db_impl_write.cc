@@ -1517,20 +1517,20 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
       // memtables
       WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
       if (to != to_size) { // imm for children nodes
-        fprintf(stdout, "to : %ld, cf id : %u\n", to, children_nodes[to]->cfd_->GetID());
+        //fprintf(stdout, "to : %ld, cf id : %u\n", to, children_nodes[to]->cfd_->GetID());
         MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
                                      kMaxSequenceNumber, children_nodes[to]->cfd_->GetID());
         children_nodes[to]->cfd_->SetImmMemtable(mem);
-        fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
+        //fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
         new_mems.push_back(mem);
         seqs.push_back(1);
         mem->Ref();  
       } else { // imm for from_cfd
-        fprintf(stdout, "to : %ld, cf id : %u\n", to, from_cfd->GetID());
+        //fprintf(stdout, "to : %ld, cf id : %u\n", to, from_cfd->GetID());
         MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
                                      kMaxSequenceNumber, from_cfd->GetID());
         from_cfd->SetImmMemtable(mem);
-        fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
+        //fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
         new_mems.push_back(mem);
         seqs.push_back(1);
         mem->Ref();         
@@ -1577,7 +1577,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
           to ++;
         }
       }
-
+      /*
       if (select == to_size) { // put to parent
         fprintf(stdout, "SplitMemtables: %s goes to cf[%u]-%s\n",
                       user_key_str.c_str(), from_cfd->GetID(),
@@ -1586,7 +1586,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
         fprintf(stdout, "SplitMemtables: %s goes to cf[%u]-%s\n",
                       user_key_str.c_str(), children_nodes[select]->cfd_->GetID(),
                       children_nodes[select]->cfd_->GetName().c_str());  
-      }
+      }*/
       
 
       switch (type) {
@@ -1875,10 +1875,10 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   DBImpl* db_impl = reinterpret_cast<DBImpl*>(this);
   if (db_impl->immutable_db_options_.allow_column_family_split) {
     cfd = cfs->GetLogicalColumnFamily(key);
-    ROCKS_LOG_INFO(db_impl->immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(db_impl->immutable_db_options_.info_log,
                    "Put key : %s (ID %d)",
                    key.ToString().c_str(),
-                   cfd->GetID());  
+                   cfd->GetID());  */
   }
   
 

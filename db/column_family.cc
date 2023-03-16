@@ -1715,9 +1715,9 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
                    "PrepareVersionEditsToSplit: create new child [%s, %s]", 
                    smallests[i].c_str(),
                    largests[i].c_str());
-    fprintf(stdout, "PrepareVersionEditsToSplit: create new child [%s, %s]", 
+    /*fprintf(stdout, "PrepareVersionEditsToSplit: create new child [%s, %s]", 
                    smallests[i].c_str(),
-                   largests[i].c_str());
+                   largests[i].c_str());*/
     uint32_t next_cf_id = GetNextColumnFamilyID();
     edit_out[i].SetColumnFamily(next_cf_id /* cf id */);
     std::string cf_name = "default" + std::to_string(next_cf_id);
@@ -1770,8 +1770,8 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   ColumnFamilyData* new_cfd = new ColumnFamilyData(
       id, name, smallest, largest, dummy_versions, table_cache_, write_buffer_manager_, options,
       *db_options_, env_options_, this);
-  fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: smallest : %s\n", smallest.c_str());
-  fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: largest : %s\n", largest.c_str());
+  //fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: smallest : %s\n", smallest.c_str());
+  //fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: largest : %s\n", largest.c_str());
   ROCKS_LOG_INFO(db_options_->info_log,
                 "ColumnFamilySet::CreateColumnFamily (%d)%s - [%s,%s]\n",
                 id, name.c_str(),

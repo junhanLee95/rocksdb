@@ -1585,8 +1585,8 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
   std::vector<FileMetaData*> std_metas;
   for (auto& meta: metas) {
     std_metas.push_back(meta);
-    fprintf(stdout,"GenerateSplitReq: push meta s: %s\n", meta->smallest.DebugString(false).c_str());
-    fprintf(stdout,"GenerateSplitReq: push meta l: %s\n", meta->largest.DebugString(false).c_str());
+    //fprintf(stdout,"GenerateSplitReq: push meta s: %s\n", meta->smallest.DebugString(false).c_str());
+    //fprintf(stdout,"GenerateSplitReq: push meta l: %s\n", meta->largest.DebugString(false).c_str());
   }
   req->emplace_back(cfd, std_metas);
 }
@@ -1837,9 +1837,9 @@ Status DBImpl::WaitForFlushMemTables(
     // Number of column families that have finished flush.
     int num_finished = 0;
     for (int i = 0; i < num; ++i) {
-      fprintf(stdout, "[%s] numnotflushed : %d\n",
+      /*fprintf(stdout, "[%s] numnotflushed : %d\n",
               cfds[i]->GetName().c_str(),
-              cfds[i]->imm()->NumNotFlushed());
+              cfds[i]->imm()->NumNotFlushed());*/
       if (cfds[i]->IsDropped()) {
         ++num_dropped;
       } else if (cfds[i]->imm()->NumNotFlushed() == 0 ||
@@ -1936,7 +1936,7 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
       bg_flush_scheduled_ == 0 &&
       bg_compaction_scheduled_ == 0 &&
       unscheduled_splits_ > 0) {
-      fprintf(stdout, "schedule split\n");
+      //fprintf(stdout, "schedule split\n");
       bg_split_scheduled_++;
       SplitThreadArg* fta = new SplitThreadArg;
       fta->db_ = this;
@@ -2038,7 +2038,7 @@ void DBImpl::AddToSplitQueue(SplitRequest& req) {
   auto cfd = req.front().first;
   assert(!cfd->queued_for_split());
   cfd->Ref();
-  fprintf(stdout,"AddToSplitQueue add\n");
+  //fprintf(stdout,"AddToSplitQueue add\n");
   split_queue_.push_back(req);
   cfd->set_queued_for_split(true);
 }
@@ -2106,12 +2106,12 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
 }
 
 void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
-  fprintf(stdout, "split queued : %d\n", cfd->queued_for_split() );
-  fprintf(stdout, "split need : %d\n", cfd->NeedsSplit() );
-  fprintf(stdout, "comp queued : %d\n", cfd->queued_for_compaction() );
+  //fprintf(stdout, "split queued : %d\n", cfd->queued_for_split() );
+  //fprintf(stdout, "split need : %d\n", cfd->NeedsSplit() );
+  //fprintf(stdout, "comp queued : %d\n", cfd->queued_for_compaction() );
   if (!cfd->queued_for_split() && cfd->NeedsSplit()
       && !cfd->queued_for_compaction()) {
-    fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
+    //fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
     SplitRequest split_req;
     GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
     assert(!split_req.empty());
@@ -2301,10 +2301,10 @@ void DBImpl::BackgroundCallSplit(Env::Priority thread_pri) {
 
     assert(thread_pri == Env::Priority::LOW &&
            bg_split_scheduled_);
-    fprintf(stdout, "BackgroundSplit\n");
+    //fprintf(stdout, "BackgroundSplit\n");
     Status s = BackgroundSplit(&made_progress, &job_context, &log_buffer,
                                thread_pri);
-    fprintf(stdout, "BackgroundSplit\n");
+    //fprintf(stdout, "BackgroundSplit\n");
     TEST_SYNC_POINT("BackgroundCallSplit:1");
 
     if (s.IsBusy()) {

@@ -726,7 +726,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   if (status.ok()) {
     status = InstallCompactionResults(mutable_cf_options);
   }
-  ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply(2)");
+  //ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply(2)");
   VersionStorageInfo::LevelSummaryStorage tmp;
   auto vstorage = cfd->current()->storage_info();
   const auto& stats = compaction_stats_;
@@ -940,12 +940,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
         key, c_iter->ikey().sequence);
     sub_compact->num_output_records++;
 
-    ROCKS_LOG_INFO(
+    /*ROCKS_LOG_INFO(
         db_options_.info_log,
         "CompactionJob::ProcessKeyValueCompaction add builder - size(%lu), cnt(%lu)",
         sub_compact->current_output_file_size ,
         sub_compact->num_output_records     
-    );
+    );*/
     // Close output file if it is big enough. Two possibilities determine it's
     // time to close it: (1) the current key should be this file's last key, (2)
     // the next key should not be in this file.
@@ -1352,16 +1352,19 @@ Status CompactionJob::FinishCompactionOutputFile(
 
     // JH: If db allows column family split,
     // Generate split request if necessary
+    float threshold = 0.6 - 0.1 * cfd->GetPartitionTreeNode()->GetDepth();
     if ( db_options_.allow_column_family_split &&
-         efficiency < 0.6 && compact_->compaction->output_level() == 1) {
+         efficiency < threshold && compact_->compaction->output_level() == 1) {
       ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Split table #%" PRIu64 " with range [%s,%s]",
                     cfd->GetName().c_str(), job_id_, output_number,
                     meta->smallest.DebugString(false).c_str(),
                     meta->largest.DebugString(false).c_str());
+      ROCKS_LOG_INFO(db_options_.info_log, "cfd(%s) efficiency : %f, threshold : %f", cfd->GetName().c_str(),
+                    efficiency, threshold);
       versions_->AddSplitFile(meta, cfd);
-      fprintf(stdout, "meta smallest : %s\n", meta->smallest.DebugString(false).c_str());
-      fprintf(stdout, "meta largest : %s\n", meta->largest.DebugString(false).c_str());
+      //fprintf(stdout, "meta smallest : %s\n", meta->smallest.DebugString(false).c_str());
+      //fprintf(stdout, "meta largest : %s\n", meta->largest.DebugString(false).c_str());
       /*
       auto vstorage = cfd->current()->storage_info();
       vstorage->AddToFilesMarkedForSplit(meta);*/
@@ -1434,14 +1437,14 @@ Status CompactionJob::InstallCompactionResults(
 
   // Add compaction inputs
   compaction->AddInputDeletions(compact_->compaction->edit());
-  ROCKS_LOG_INFO(db_options_.info_log, "[JH] AddInputDeletions");
+  //ROCKS_LOG_INFO(db_options_.info_log, "[JH] AddInputDeletions");
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
     }
   }
-  ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply");
+  //ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply");
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),
                                 db_mutex_, db_directory_);

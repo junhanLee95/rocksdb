@@ -75,6 +75,9 @@ void PartitionTreeNode::Print(
     nodes->Print(TreeID + std::to_string(i++), true);
 }
 
+int PartitionTreeNode::GetDepth(void) {
+  return depth_; 
+}
 
 // PartitionTree function.
 
@@ -84,7 +87,7 @@ PartitionTree::PartitionTree(
   if (column_family_data != nullptr) {
       column_family_data->SetPartitionTreeNode(root_);  
   }
-  fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
+  //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
   partition_nodes_.insert({column_family_data->GetID(), root_}); 
 }
@@ -93,7 +96,7 @@ void PartitionTree::SetRootColumnFamily (
     ColumnFamilyData* column_family_data) {
   root_->SetColumnFamily(column_family_data);
 
-  fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
+  //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
   partition_nodes_.insert({column_family_data->GetID(), root_});
 }
@@ -102,14 +105,14 @@ Status PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
 
-  fprintf(stdout, "[InsertSplittedColumnFamily] base CFD[%d] %s - [%s, %s]\n",  
+  /*fprintf(stdout, "[InsertSplittedColumnFamily] base CFD[%d] %s - [%s, %s]\n",  
             base_cfd->GetID(),
             base_cfd->GetName().c_str(),
             base_cfd->GetSmallestKey().c_str(),
-            base_cfd->GetLargestKey().c_str());
+            base_cfd->GetLargestKey().c_str());*/
   
   if (new_cfds.empty()) {
-    fprintf(stdout, "[InsertSplittedColumnFamily] new_cfds are empty\n");
+    //fprintf(stdout, "[InsertSplittedColumnFamily] new_cfds are empty\n");
     return Status::OK(); 
   }
 
@@ -122,7 +125,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
 
   // Note: We assume that the vector new_cfds already sorted 
   // with respect to its key range. 
-
+  /*
   for (auto lnode: base_node->lower_level_nodes_) {
     ColumnFamilyData* l_cfd = lnode->cfd_;
     fprintf(stdout, "[InsertSplittedColumnFamily] before: child CFD[%d] %s - [%s, %s]\n",  
@@ -130,10 +133,11 @@ Status PartitionTree::InsertSplittedColumnFamily (
             l_cfd->GetName().c_str(),
             l_cfd->GetSmallestKey().c_str(),
             l_cfd->GetLargestKey().c_str());
-  }
+  }*/
 
   for (auto new_cfd: new_cfds) {
     auto node = new PartitionTreeNode(new_cfd);
+    node->depth_ = base_node->depth_+1;
     assert (new_cfd != nullptr);
     new_cfd->SetPartitionTreeNode(node);  
 
@@ -141,13 +145,13 @@ Status PartitionTree::InsertSplittedColumnFamily (
     std::string n_largest = new_cfd->GetLargestKey();
     assert(!n_smallest.empty());
     assert(!n_largest.empty());
-
+    /*
     fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s - [%s, %s]\n", 
             new_cfd->GetID(), 
             new_cfd->GetName().c_str(), 
             n_smallest.c_str(), 
             n_largest.c_str()
-            );
+            );*/
     int l, r, m;
     l = 0;
     r = base_node->lower_level_nodes_.size() - 1;
@@ -165,7 +169,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
         l = m + 1;
       } else {
         // n and m overlaps! assert error
-        fprintf(stdout, "[PartitionTree] CFD[%d] %s [%s, %s] and CFD[%d] %s [%s, %s] overlaps!\n",
+        /*fprintf(stdout, "[PartitionTree] CFD[%d] %s [%s, %s] and CFD[%d] %s [%s, %s] overlaps!\n",
             new_cfd->GetID(),
             new_cfd->GetName().c_str(),
             n_smallest.c_str(),
@@ -174,16 +178,16 @@ Status PartitionTree::InsertSplittedColumnFamily (
             base_node->lower_level_nodes_[m]->cfd_->GetName().c_str(),
             m_smallest.c_str(),
             m_largest.c_str()
-        );
+        );*/
         return Status::Corruption();
       }
     }
     // now l is the target to insert to
-    fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s to : %d\n", 
+    /*fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s to : %d\n", 
             new_cfd->GetID(), 
             new_cfd->GetName().c_str(), 
             l
-            );
+            );*/
     base_node->lower_level_nodes_.insert(base_node->lower_level_nodes_.begin() + l,
                                          node);
     //JH: Set parent node
@@ -195,11 +199,11 @@ Status PartitionTree::InsertSplittedColumnFamily (
   for (size_t i = 0; i < base_node->lower_level_nodes_.size(); i++) {
     PartitionTreeNode* lnode = base_node->lower_level_nodes_[i];
     ColumnFamilyData* l_cfd = lnode->cfd_;
-    fprintf(stdout, "[InsertSplittedColumnFamily] after: child CFD[%d] %s - [%s, %s]\n",  
+    /*fprintf(stdout, "[InsertSplittedColumnFamily] after: child CFD[%d] %s - [%s, %s]\n",  
             l_cfd->GetID(),
             l_cfd->GetName().c_str(),
             l_cfd->GetSmallestKey().c_str(),
-            l_cfd->GetLargestKey().c_str());
+            l_cfd->GetLargestKey().c_str());*/
 
     if (i != 0) { // boundary overlap check
       PartitionTreeNode* pnode = base_node->lower_level_nodes_[i-1];
@@ -218,10 +222,10 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
   PartitionTreeNode *nnode = nullptr; // next node
 
   while (true) {
-    ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
+    /*ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
                  "SearchColumnFamily : %s(%d)\n", 
                  cnode->cfd_->GetName().c_str(),
-                 cnode->cfd_->GetID());
+                 cnode->cfd_->GetID());*/
 
     nnode = cnode->SearchNextNode(key);
 
@@ -231,12 +235,12 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
     cnode = nnode; 
   }
 
-  ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
+  /*ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
                  "CFD[%s] Search... %s < [%s] < %s", 
                  cnode->cfd_->GetName().c_str(),
                  get_lmost_key(cnode).c_str(),
                  key.data(),
-                 get_rmost_key(cnode).c_str());
+                 get_rmost_key(cnode).c_str());*/
 
   
   /*fprintf(stdout, "CFD[%s] Search... %s < [%s] < %s\n", 

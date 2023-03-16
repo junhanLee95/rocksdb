@@ -1434,10 +1434,10 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   if (immutable_db_options_.allow_column_family_split) {
     cfd = cfs->GetLogicalColumnFamily(key);
 
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl key : %s (ID %d)",
                    key.ToString().c_str(),
-                   cfd->GetID());  
+                   cfd->GetID());  */
   }
   
 
@@ -1514,8 +1514,8 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       pinnable_val->PinSelf();
       RecordTick(stats_, MEMTABLE_HIT);
 
-      ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                     "GetImpl: mem");
+      /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "GetImpl: mem");*/
 
     } else if ((s.ok() || s.IsMergeInProgress()) &&
                sv->imm->Get(lkey, pinnable_val->GetSelf(), &s, &merge_context,
@@ -1525,8 +1525,8 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       pinnable_val->PinSelf();
       RecordTick(stats_, MEMTABLE_HIT);
 
-      ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                     "GetImpl: imm");
+      /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "GetImpl: imm");*/
 
     }
     if (!done && !s.ok() && !s.IsMergeInProgress()) {
@@ -1540,8 +1540,8 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
                      &max_covering_tombstone_seq, value_found, nullptr, nullptr,
                      callback, is_blob_index);
     RecordTick(stats_, MEMTABLE_MISS);
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "GetImpl: sst");
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: sst");*/
 
   }
 
@@ -1562,14 +1562,14 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       cfd = cfs->GetParentColumnFamily(cfd);
       while(cfd != nullptr) {
         Status s_parent;
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl: lookup parent node : %s (ID %d)"
                    , cfd->GetName().c_str()
-                   , cfd->GetID());
+                   , cfd->GetID());*/
         sv = GetAndRefSuperVersion(cfd);
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "GetImpl sv current : %s",
-                 sv->current->DebugString(true, true).c_str());
+                 sv->current->DebugString(true, true).c_str());*/
         sv->current->Get(read_options, lkey, pinnable_val, &s_parent, &merge_context,
                      &max_covering_tombstone_seq, value_found, nullptr, nullptr,
                      callback, is_blob_index);
@@ -1580,16 +1580,16 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
         if (s_parent.ok()) {
           // found
           s = s_parent;
-          ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "GetImpl: sst found");  
+          /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: sst found");  */
           break;
         } else {
           cfd = cfs->GetParentColumnFamily(cfd);
         }
       }
       if (!s.ok()) {
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "GetImpl: sst not found");  
+        /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GetImpl: sst not found");  */
       }
     }
     RecordInHistogram(stats_, BYTES_PER_READ, size);

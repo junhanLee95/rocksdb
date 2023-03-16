@@ -844,12 +844,12 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
     const Slice& key = c_iter->key();
     const Slice& value = c_iter->value();
     Slice user_key = c_iter->user_key();
-    ROCKS_LOG_INFO(
+    /*ROCKS_LOG_INFO(
           db_options_.info_log,
           "ProcessKeyValueSplit: key -> %s, value -> %s\n",
           key.ToString().c_str(),
           value.ToString().c_str());
-    LogFlush(db_options_.info_log);
+    LogFlush(db_options_.info_log);*/
 
     std::string user_key_str = user_key.ToString();
     bool is_child = false; // determine whether we should add items to child cfd or not
@@ -892,7 +892,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       ColumnFamilyData* child_cfd = sub_split->children_nodes[sub_split->child_idx]->cfd_;
       std::string child_smallest = child_cfd->GetSmallestKey();
       std::string child_largest = child_cfd->GetLargestKey();
-      fprintf(stdout, "ProcessKeyValueSplit: user_key -> %s child -> [%s, %s]\n",
+      /*fprintf(stdout, "ProcessKeyValueSplit: user_key -> %s child -> [%s, %s]\n",
             user_key_str.c_str(),
             child_smallest.c_str(),
             child_largest.c_str());
@@ -902,35 +902,35 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
           user_key_str.c_str(),
           child_smallest.c_str(),
           child_largest.c_str());
-      LogFlush(db_options_.info_log);
+      LogFlush(db_options_.info_log);*/
       if (user_key_str.compare(child_smallest) < 0) {
         // user key is within parent's key range, not children nodes
-        fprintf(stdout, "ProcessKeyValueSplit - is_parent\n");
+        /*fprintf(stdout, "ProcessKeyValueSplit - is_parent\n");
         ROCKS_LOG_INFO(
           db_options_.info_log,
           "ProcessKeyValueSplit - is_parent\n");
-        LogFlush(db_options_.info_log);
+        LogFlush(db_options_.info_log);*/
         is_child = false;
         break;
       }
       else if (user_key_str.compare(child_smallest) >= 0 &&
                user_key_str.compare(child_largest) <= 0) {
         // user key is within child's key range
-        fprintf(stdout, "ProcessKeyValueSplit - is_child\n");
+        /*fprintf(stdout, "ProcessKeyValueSplit - is_child\n");
         ROCKS_LOG_INFO(
           db_options_.info_log,
           "ProcessKeyValueSplit - is_child\n");
-        LogFlush(db_options_.info_log);
+        LogFlush(db_options_.info_log);*/
         is_child = true;
         break;
       }
       else {
-        ROCKS_LOG_INFO(
+        /*ROCKS_LOG_INFO(
           db_options_.info_log,
           "SplitJob::ProcessKeyValueSplit child output_file_ended(%lu)",
           sub_split->child_idx
         );
-        LogFlush(db_options_.info_log);
+        LogFlush(db_options_.info_log);*/
         // user key is larger than child's largest
         // finish the current child builder
         const Slice* next_key = nullptr;
@@ -964,14 +964,14 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       sub_split->child_current_output()->meta.UpdateBoundaries(
             key, c_iter->ikey().sequence);
       sub_split->child_num_output_records++;
-
+      /*
       ROCKS_LOG_INFO(
         db_options_.info_log,
         "SplitJob::ProcessKeyValueSplit add child builder - size(%lu), cnt(%lu)",
         sub_split->child_current_output_file_size ,
         sub_split->child_num_output_records     
       );
-      LogFlush(db_options_.info_log);
+      LogFlush(db_options_.info_log);*/
 
     }
     else {
@@ -980,14 +980,14 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       sub_split->parent_current_output()->meta.UpdateBoundaries(
             key, c_iter->ikey().sequence);
       sub_split->parent_num_output_records++;     
-
+      /*
       ROCKS_LOG_INFO(
         db_options_.info_log,
         "SplitJob::ProcessKeyValueSplit add parent builder - size(%lu), cnt(%lu)",
         sub_split->parent_current_output_file_size ,
         sub_split->parent_num_output_records     
       );
-      LogFlush(db_options_.info_log);
+      LogFlush(db_options_.info_log);*/
     }
 
     // Close output file if it is big enough. Two possibilities determine it's
@@ -1389,7 +1389,7 @@ Status SplitJob::FinishSplitOutputFile(
   
   const uint64_t current_entries = is_child ? sub_split->child_builder->NumEntries() :
                                  sub_split->parent_builder->NumEntries();             
-  std::cout << "current_entries : " << current_entries << std::endl;
+  //std::cout << "current_entries : " << current_entries << std::endl;
   if (current_entries != 0 && s.ok()) {
     if (is_child) {
       s = sub_split->child_builder->Finish();
@@ -1457,7 +1457,7 @@ Status SplitJob::FinishSplitOutputFile(
         TableFileName(sub_split->compaction->immutable_cf_options()->cf_paths,
                       meta->fd.GetNumber(), meta->fd.GetPathId());
     env_->DeleteFile(fname);
-    std::cout << "pop back " << fname << std::endl;
+    //std::cout << "pop back " << fname << std::endl;
 
     // Also need to remove the file from outputs, or it will be added to the
     // VersionEdit.

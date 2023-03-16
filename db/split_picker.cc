@@ -40,12 +40,12 @@ bool SplitPicker::SetupL0FilesIfNeeded(VersionStorageInfo* vstorage,
 std::vector<FileMetaData*> metas, CompactionInputFiles& l0_files) {
   bool exists = false;
   for (FileMetaData* f: vstorage->LevelFiles(0)) {
-    fprintf(stdout,"L0 Setup: push meta s: %s\n", f->smallest.DebugString(false).c_str());
-    fprintf(stdout,"L0 Setup: push meta l: %s\n", f->largest.DebugString(false).c_str());
+    //fprintf(stdout,"L0 Setup: push meta s: %s\n", f->smallest.DebugString(false).c_str());
+    //fprintf(stdout,"L0 Setup: push meta l: %s\n", f->largest.DebugString(false).c_str());
   
     for (FileMetaData* f1: metas) {
-      fprintf(stdout,"L0 Setup: push meta s: %s\n", f1->smallest.DebugString(false).c_str());
-      fprintf(stdout,"L0 Setup: push meta l: %s\n", f1->largest.DebugString(false).c_str());
+     // fprintf(stdout,"L0 Setup: push meta s: %s\n", f1->smallest.DebugString(false).c_str());
+     // fprintf(stdout,"L0 Setup: push meta l: %s\n", f1->largest.DebugString(false).c_str());
 
       if (!f->being_compacted && HaveOverlappingKeyRanges(f, f1)) {
         l0_files.files.push_back(f);
@@ -62,13 +62,13 @@ bool SplitPicker::SetupL1FilesIfNeeded(VersionStorageInfo* vstorage,
  CompactionInputFiles& l0_files,  CompactionInputFiles& l1_files) {
   bool exists = false;
   for (FileMetaData* f: vstorage->LevelFiles(1)) {
-    fprintf(stdout,"L1 Setup: push meta s: %s\n", f->smallest.DebugString(false).c_str());
-    fprintf(stdout,"L1 Setup: push meta l: %s\n", f->largest.DebugString(false).c_str());
+    //fprintf(stdout,"L1 Setup: push meta s: %s\n", f->smallest.DebugString(false).c_str());
+    //fprintf(stdout,"L1 Setup: push meta l: %s\n", f->largest.DebugString(false).c_str());
   
     for (size_t i = 0; i < l0_files.size(); i++) {
       FileMetaData* f1 = l0_files.files[i];
-      fprintf(stdout,"L1 Setup: push meta s: %s\n", f1->smallest.DebugString(false).c_str());
-      fprintf(stdout,"L1 Setup: push meta l: %s\n", f1->largest.DebugString(false).c_str());
+      //fprintf(stdout,"L1 Setup: push meta s: %s\n", f1->smallest.DebugString(false).c_str());
+      //fprintf(stdout,"L1 Setup: push meta l: %s\n", f1->largest.DebugString(false).c_str());
 
       if (!f->being_compacted && HaveOverlappingKeyRanges(f, f1)) {
         l1_files.files.push_back(f);
@@ -104,7 +104,7 @@ Compaction* SplitPicker::PickSplit(const std::string& cf_name,
   CompactionInputFiles l0_files;
   CompactionInputFiles l1_files;
   if (SetupL0FilesIfNeeded(vstorage, metas, l0_files)) {
-    std::cout << "PickSplit input level : " << l0_files.level << std::endl;
+    //std::cout << "PickSplit input level : " << l0_files.level << std::endl;
     ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit another L0 inputs[%d] : %d",
                      0, l0_files.size());
     inputs_.push_back(l0_files);

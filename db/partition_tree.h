@@ -19,6 +19,7 @@ class PartitionTreeNode {
  public:
   
   ColumnFamilyData *cfd_ = nullptr;
+  int depth_=0;
 
   std::vector<PartitionTreeNode*> lower_level_nodes_;
   PartitionTreeNode *parent_node_ = nullptr;
@@ -33,6 +34,7 @@ class PartitionTreeNode {
   std::vector<PartitionTreeNode *> GetChildrenNodes(void);
 
   void Print(std::string TreeID, bool recursive);
+  int GetDepth(void);
 };
 
 class PartitionTree {

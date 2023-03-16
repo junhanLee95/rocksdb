@@ -1274,8 +1274,8 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
           RecordTick(db_statistics_, GET_HIT_L2_AND_UP);
         }
         PERF_COUNTER_BY_LEVEL_ADD(user_key_return_count, 1, fp.GetHitFileLevel());
-        ROCKS_LOG_INFO(info_log_,
-                     "VersionGetImpl: found");
+        /*ROCKS_LOG_INFO(info_log_,
+                     "VersionGetImpl: found");*/
         return;
       case GetContext::kDeleted:
         // Use empty error message for speed
@@ -2870,9 +2870,9 @@ Status VersionSet::ProcessManifestWrites(
   assert(!writers.empty());
   ManifestWriter& first_writer = writers.front();
   ManifestWriter* last_writer = &first_writer;
-  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites");
-  std::cout << "ProcessManifestWrites - writers cnt : " << writers.size() << std::endl;
-  std::cout << "ProcessManifestWrites - manifest_writers cnt : " << manifest_writers_.size() << std::endl;
+  //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites");
+  //std::cout << "ProcessManifestWrites - writers cnt : " << writers.size() << std::endl;
+  //std::cout << "ProcessManifestWrites - manifest_writers cnt : " << manifest_writers_.size() << std::endl;
   assert(!manifest_writers_.empty());
   assert(manifest_writers_.front() == &first_writer);
 
@@ -2972,7 +2972,7 @@ Status VersionSet::ProcessManifestWrites(
         } else if (group_start != std::numeric_limits<size_t>::max()) {
           group_start = std::numeric_limits<size_t>::max();
         }
-        std::cout << "help\n";
+        //std::cout << "help\n";
         LogAndApplyHelper(last_writer->cfd, builder, e, mu);
         batch_edits.push_back(e);
       }
@@ -2985,7 +2985,7 @@ Status VersionSet::ProcessManifestWrites(
     }
   }
 
-  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2)");
+  //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2)");
 #ifndef NDEBUG
   // Verify that version edits of atomic groups have correct
   // remaining_entries_.
@@ -3025,7 +3025,7 @@ Status VersionSet::ProcessManifestWrites(
   uint64_t new_manifest_file_size = 0;
   Status s;
 
-  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(3)");
+  //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(3)");
   assert(pending_manifest_file_number_ == 0);
   if (!descriptor_log_ ||
       manifest_file_size_ > db_options_->max_manifest_file_size) {
@@ -3045,7 +3045,7 @@ Status VersionSet::ProcessManifestWrites(
           column_family_set_->GetMaxColumnFamily());
     }
   }
-  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(4)");
+  //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(4)");
 
   {
     EnvOptions opt_env_opts = env_->OptimizeForManifestWrite(env_options_);
@@ -3065,7 +3065,7 @@ Status VersionSet::ProcessManifestWrites(
             mutable_cf_options_ptrs[i]->prefix_extractor.get());
       }
     }
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(5)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(5)");
 
     // This is fine because everything inside of this block is serialized --
     // only one thread can be here at the same time
@@ -3090,14 +3090,14 @@ Status VersionSet::ProcessManifestWrites(
         s = WriteSnapshot(descriptor_log_.get());
       }
     }
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(6)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(6)");
 
     if (!first_writer.edit_list.front()->IsColumnFamilyManipulation()) {
       for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
         versions[i]->PrepareApply(*mutable_cf_options_ptrs[i], true);
       }
     }
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(7)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(7)");
 
     // Write new records to MANIFEST log
     if (s.ok()) {
@@ -3135,7 +3135,7 @@ Status VersionSet::ProcessManifestWrites(
                         s.ToString().c_str());
       }
     }
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(8)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(8)");
 
     // If we just created a new descriptor file, install it by writing a
     // new CURRENT file that points to it.
@@ -3144,7 +3144,7 @@ Status VersionSet::ProcessManifestWrites(
                          db_directory);
       TEST_SYNC_POINT("VersionSet::ProcessManifestWrites:AfterNewManifest");
     }
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(9)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(9)");
 
     if (s.ok()) {
       // find offset in manifest file where this version is stored.
@@ -3157,14 +3157,14 @@ Status VersionSet::ProcessManifestWrites(
       TEST_SYNC_POINT("VersionSet::LogAndApply::ColumnFamilyDrop:2");
     }
 
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(1L)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(1L)");
     LogFlush(db_options_->info_log);
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2L)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2L)");
     TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifestDone");
     mu->Lock();
   }
 
-    ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(10)");
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(10)");
   // Append the old manifest file to the obsolete_manifest_ list to be deleted
   // by PurgeObsoleteFiles later.
   if (s.ok() && new_descriptor_log) {
@@ -3172,7 +3172,7 @@ Status VersionSet::ProcessManifestWrites(
         DescriptorFileName("", manifest_file_number_));
   }
 
-  ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(11)");
+  //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(11)");
   // Install the new versions
   if (s.ok()) {
     if (first_writer.edit_list.front()->is_column_family_add_) {
@@ -3188,9 +3188,9 @@ Status VersionSet::ProcessManifestWrites(
       }
     } else if (first_writer.edit_list.front()->is_column_family_split_) {
 
-      for (auto& e : batch_edits) {
+      /*for (auto& e : batch_edits) {
         fprintf(stderr, "[JH] %s\n", e->DebugString(false).c_str());
-      }
+      }*/
       assert(new_cf_options != nullptr);
       ColumnFamilyData* cfd = first_writer.cfd;
       bool create_cf = false; // fisrt writer does not create column family
@@ -3337,11 +3337,11 @@ Status VersionSet::LogAndApply(
 #endif /* ! NDEBUG */
   }
   
-  for (const auto& edit_list: edit_lists) {
+  /*for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
       fprintf(stdout, "%s\n", edit->DebugString().c_str());
     }
-  }
+  }*/
 
   int num_cfds = static_cast<int>(column_family_datas.size());
   if (num_cfds == 1 && column_family_datas[0] == nullptr) {
@@ -3351,7 +3351,7 @@ Status VersionSet::LogAndApply(
   }
   if (num_cfds == 1 && column_family_datas[0] != nullptr && is_split_column_family) {
     // SplitColumnFamily
-    fprintf(stdout,"split column family\n");
+    //fprintf(stdout,"split column family\n");
     bool first_edit = true;
     for (const auto& edit_list : edit_lists) {
       assert(edit_list.size()==1);
@@ -3479,7 +3479,7 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   // last_allocated_sequence_ as the last sequence.
   edit->SetLastSequence(db_options_->two_write_queues ? last_allocated_sequence_
                                                       : last_sequence_);
-  std::cout << edit->DebugString() << std::endl;
+  //std::cout << edit->DebugString() << std::endl;
   builder->Apply(edit);
 }
 
@@ -4660,9 +4660,9 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 
 void VersionSet::GetSplitFiles(std::vector<SplitFileInfo>* files) {
   for (auto& f: split_files_) {
-    fprintf(stdout, "GetSplitFiles meta smallest : %s\n", f.metadata->smallest.DebugString(false).c_str());
+    /*fprintf(stdout, "GetSplitFiles meta smallest : %s\n", f.metadata->smallest.DebugString(false).c_str());
     fprintf(stdout, "GetSplitFiles meta largest : %s\n", f.metadata->largest.DebugString(false).c_str());
-    fprintf(stdout, "GetSplitFiles cfd name : %s\n", f.cfd->GetName().c_str());
+    fprintf(stdout, "GetSplitFiles cfd name : %s\n", f.cfd->GetName().c_str());*/
     files->push_back(std::move(f));
   }
   split_files_.clear();
