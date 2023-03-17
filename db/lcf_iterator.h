@@ -70,6 +70,7 @@ class LCFIterator : public InternalIterator {
   virtual Slice value() const override;
   virtual Status status() const override;
   virtual Status GetProperty(std::string prop_name, std::string* prop) override;
+  std::vector<ColumnFamilyData *> CFIncludingKey(std::vector<PartitionTreeNode*> nodes,std::string key);
   virtual void SetPinnedItersMgr(
       PinnedIteratorsManager* pinned_iters_mgr) override;
   virtual bool IsKeyPinned() const override;
@@ -125,6 +126,7 @@ class LCFIterator : public InternalIterator {
   Arena arena_;
   MergeIteratorBuilder merge_iter_builder_;
   std::string max_key_="";
+  std::vector<PartitionTreeNode*> tree_nodes_;
 
   SuperVersion* sv_;
   /*InternalIterator* mutable_iter_;

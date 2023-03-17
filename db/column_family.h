@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 #include <atomic>
-
+#include <queue>
 #include "db/memtable_list.h"
 #include "db/table_cache.h"
 #include "db/table_properties_collector.h"
@@ -291,6 +291,11 @@ class ColumnFamilyData {
   // thread-safe
   std::string GetSmallestKey();
   std::string GetLargestKey();
+  
+
+  void Increase_Num_Query(bool is_range);
+  bool IsHot();
+  void SetHot();
 
   // for partition tree node
   void SetPartitionTreeNode(PartitionTreeNode* node);
@@ -441,8 +446,18 @@ class ColumnFamilyData {
   std::string smallest_user_key_; // active if split is enabled
   std::string largest_user_key_;  // active if split is enabled
   PartitionTreeNode* partition_tree_node_;  // active if split is enabled
+
+  std::queue<std::string> recent_query_;    // active if split is enabled
+  int now_num_range_;		 // active if split is enabled
+  //int num_query_;		 // active if split is enabled
+  int sliding_window_size_;  // active if split is enabled
+  double hot_threshold_;	 // active if split is enabled
+  bool is_hot_;		         // active if split is enabled
+
   Version* dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;         // == dummy_versions->prev_
+
+  
 
   std::atomic<int> refs_;      // outstanding references to ColumnFamilyData
   std::atomic<bool> initialized_;

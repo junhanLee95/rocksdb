@@ -410,6 +410,10 @@ ColumnFamilyData::ColumnFamilyData(
       name_(name),
       smallest_user_key_(smallest_user_key),
       largest_user_key_(largest_user_key),
+	  now_num_range_(0),
+	  sliding_window_size_(20),
+	  hot_threshold_(0.3),
+	  is_hot_(false),
       dummy_versions_(_dummy_versions),
       current_(nullptr),
       refs_(0),
@@ -502,6 +506,10 @@ ColumnFamilyData::ColumnFamilyData(
     const EnvOptions& env_options, ColumnFamilySet* column_family_set)
     : id_(id),
       name_(name),
+	  now_num_range_(0),
+	  sliding_window_size_(20),
+	  hot_threshold_(0.3),
+	  is_hot_(false),
       dummy_versions_(_dummy_versions),
       current_(nullptr),
       refs_(0),
@@ -1039,6 +1047,41 @@ std::string ColumnFamilyData::GetSmallestKey() {
 
 std::string ColumnFamilyData::GetLargestKey() {
   return largest_user_key_;
+}
+
+void ColumnFamilyData::Increase_Num_Query(bool is_range){
+  //think about recent query
+  if(!recent_query_.empty()){
+    if (int(recent_query_.size())==sliding_window_size_){
+	  if(recent_query_.front().compare("R")==0){
+  	    now_num_range_ -= 1;
+	  }
+	  recent_query_.pop();
+	}
+  }
+
+  if(is_range){
+	recent_query_.push("R");
+    now_num_range_ += 1;
+  }
+  else
+    recent_query_.push("N");
+
+  //if(int(recent_query_.size())==sliding_window_size_)
+  //fprintf(stdout,"CFID is %d, now query is %d, range query is %d\n",id_,int(recent_query_.size()),now_num_range_);
+}
+
+bool ColumnFamilyData::IsHot(){
+  return is_hot_;
+}
+
+void ColumnFamilyData::SetHot(){
+  if(int(recent_query_.size())==0)
+    return;
+  float ratio = now_num_range_ / float(std::min(int(recent_query_.size()),sliding_window_size_));
+  //fprintf(stdout,"Range is %d, Ratio is %f\n",now_num_range_,ratio);
+  if(ratio >= hot_threshold_)
+    is_hot_=true;
 }
 
 void ColumnFamilyData::SetPartitionTreeNode(PartitionTreeNode* node) {

@@ -435,7 +435,7 @@ TEST_F(LCFIteratorTest, SimpleNext) {
   delete db;
 }
 */
-
+/*
 TEST_F(LCFIteratorTest, DoubleNext) {
   Options options;
   options.create_if_missing = true;
@@ -495,8 +495,8 @@ TEST_F(LCFIteratorTest, DoubleNext) {
   dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
 }
+*/
 
-/*
 TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   Options options;
   options.create_if_missing = true;
@@ -545,22 +545,25 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
 
   for(size_t i = 0; i < numItem; i++) {
     db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(values[i]));
+	//fprintf(stdout,"\n");
   }
-
-  std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
+  //fprintf(stdout, "Put task is finished\n");
+  //std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
+  auto *iterator=dbfull(db)->NewIterator(ReadOptions(), cfh);
   iterator->SeekToFirst();
   for(size_t i = 0; i < numItem; i++) {
     //fprintf(stdout, "value : %s\n", iterator->value().data());
     //fprintf(stdout, "value size : %ld\n", iterator->value().size());
     ASSERT_EQ(iterator->value().ToString(), values[i]);
 	iterator->Next();
+	//fprintf(stdout,"\n");
   }
   fprintf(stdout, "Value test is success\n");
- 
-  dbfull(db)->DestroyLogicalColumnFamilies();
+  delete iterator; 
+  //dbfull(db)->DestroyLogicalColumnFamilies();
   delete db;
 }
-*/
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

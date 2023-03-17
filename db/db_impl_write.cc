@@ -1875,6 +1875,7 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   DBImpl* db_impl = reinterpret_cast<DBImpl*>(this);
   if (db_impl->immutable_db_options_.allow_column_family_split) {
     cfd = cfs->GetLogicalColumnFamily(key);
+    cfd->Increase_Num_Query(false);
     /*ROCKS_LOG_INFO(db_impl->immutable_db_options_.info_log,
                    "Put key : %s (ID %d)",
                    key.ToString().c_str(),

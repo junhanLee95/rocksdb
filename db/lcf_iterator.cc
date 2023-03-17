@@ -1,4 +1,4 @@
-//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+	//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -62,6 +62,7 @@ LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
     //MergeIteratorBuilder builder(&root_->internal_comparator(),&arena);
 	//merge_iter_builder_=builder;
 	//fprintf(stdout,"number is %d\n",int(iterators_.size()));
+	tree_nodes_=root_->GetPartitionTreeNode()->Traversal();
 	for(auto iter: iterators_)
 	  merge_iter_builder_.AddIterator(iter);
 	merge_iter_=merge_iter_builder_.GetMergeIter();
@@ -75,7 +76,13 @@ LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
 }
 
 LCFIterator::~LCFIterator() {
-  Cleanup(true);
+  for(auto cnodes : tree_nodes_){
+	  //fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
+	  cnodes->cfd_->SetHot();
+	  //fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
+  }
+  this->Cleanup(true);
+  fprintf(stdout,"Success to delete LCFIterator\n");
 }
 
 void LCFIterator::SVCleanup(DBImpl* db, SuperVersion* sv,
@@ -141,10 +148,11 @@ void LCFIterator::SVCleanup() {
 }
 
 void LCFIterator::Cleanup(bool release_sv) {
-  for(auto* m : iterators_)
-	 DeleteIterator(m);
-  iterators_.clear();
-  
+  //for(auto* m : iterators_)
+//	 DeleteIterator(m,true);
+  //iterators_.clear();
+ 
+  DeleteIterator(merge_iter_,true);
   if (release_sv) {
     SVCleanup();
   }
@@ -187,6 +195,7 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
 
     sort(small_keys.begin(), small_keys.end());
 	std::string smallest_key=small_keys.front();
+    
 
     //fprintf(stdout,"Initial node num is %d\n",int(nodes_.size()));
     //Find nodes which added to merge_iter_.
@@ -223,6 +232,7 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
 	  }
 	  merge_iter_=merge_iter_builder_.GetMergeIter();
     }
+
     merge_iter_->SeekToFirst();
   }
   else{
@@ -263,6 +273,14 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
     }
 	merge_iter_=merge_iter_builder_.GetMergeIter();
   	merge_iter_->Seek(internal_key);
+  }
+
+  //update query nums
+  if(!merge_iter_->Valid())
+	  return;
+  std::vector<ColumnFamilyData *> target_CF = CFIncludingKey(tree_nodes_,ExtractUserKey(merge_iter_->key()).ToString());
+  for (auto cnodes : tree_nodes_){
+    cnodes->cfd_->Increase_Num_Query(find(target_CF.begin(),target_CF.end(),cnodes->cfd_) != target_CF.end());
   }
   TEST_SYNC_POINT_CALLBACK("LCFIterator::SeekInternal:Return", this);
 }
@@ -325,6 +343,14 @@ void LCFIterator::Next() {
     }
   }
   merge_iter_->Next();
+  
+  //update query nums
+  if(!merge_iter_->Valid())
+	  return;
+  std::vector<ColumnFamilyData *> target_CF = CFIncludingKey(tree_nodes_,ExtractUserKey(merge_iter_->key()).ToString());
+  for (auto cnodes : tree_nodes_){
+    cnodes->cfd_->Increase_Num_Query(find(target_CF.begin(),target_CF.end(),cnodes->cfd_) != target_CF.end());
+  }
 }
 
 Slice LCFIterator::key() const {
@@ -348,6 +374,18 @@ Status LCFIterator::GetProperty(std::string prop_name, std::string* prop) {
     return Status::OK();
   }
   return Status::InvalidArgument();
+}
+
+std::vector<ColumnFamilyData *> LCFIterator::CFIncludingKey(std::vector<PartitionTreeNode*> nodes,std::string key){
+	std::vector<ColumnFamilyData *> cfds;
+  for(auto cnodes: nodes){
+    if (get_rmost_key(cnodes).empty() || key.compare(get_rmost_key(cnodes)) <= 0) {
+	  if (get_lmost_key(cnodes).empty() || key.compare(get_lmost_key(cnodes)) >= 0){
+  	    cfds.push_back(cnodes->cfd_);
+	  }
+	}
+  }
+  return cfds;
 }
 
 void LCFIterator::UpdateMaxKey(std::string user_key){

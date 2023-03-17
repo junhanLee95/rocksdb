@@ -1434,6 +1434,7 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   // to implement inter-cfd point lookup
   if (immutable_db_options_.allow_column_family_split) {
     cfd = cfs->GetLogicalColumnFamily(key);
+    cfd->Increase_Num_Query(false);
 
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl key : %s (ID %d)",
@@ -1562,6 +1563,7 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       // JH: if not found, we look up its parent column family
       cfd = cfs->GetParentColumnFamily(cfd);
       while(cfd != nullptr) {
+        cfd->Increase_Num_Query(false);
         Status s_parent;
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl: lookup parent node : %s (ID %d)"
