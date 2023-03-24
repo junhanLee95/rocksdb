@@ -918,6 +918,7 @@ if(WITH_TESTS)
         db/write_batch_test.cc
         db/write_callback_test.cc
         db/write_controller_test.cc
+        db/lcf_put_test.cc
         env/env_basic_test.cc
         env/env_test.cc
         env/mock_env_test.cc

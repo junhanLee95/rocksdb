@@ -199,6 +199,12 @@ Status PartitionTree::InsertSplittedColumnFamily (
   for (size_t i = 0; i < base_node->lower_level_nodes_.size(); i++) {
     PartitionTreeNode* lnode = base_node->lower_level_nodes_[i];
     ColumnFamilyData* l_cfd = lnode->cfd_;
+    ROCKS_LOG_INFO(l_cfd->ioptions()->info_log,
+                 "InsertSplittedColumnFamily: child %ld - %s(%d)\n", 
+                 i,
+                 l_cfd->GetName().c_str(),
+                 l_cfd->GetID());
+    LogFlush(l_cfd->ioptions()->info_log);
     /*fprintf(stdout, "[InsertSplittedColumnFamily] after: child CFD[%d] %s - [%s, %s]\n",  
             l_cfd->GetID(),
             l_cfd->GetName().c_str(),
@@ -210,7 +216,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
       ColumnFamilyData* p_cfd = pnode->cfd_;
       std::string p_largest = p_cfd->GetLargestKey();
       std::string l_smallest = l_cfd->GetSmallestKey();
-      assert(p_largest.compare(l_smallest) > 0);
+      assert(p_largest.compare(l_smallest) < 0);
     }
   }
 

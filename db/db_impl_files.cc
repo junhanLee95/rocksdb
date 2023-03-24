@@ -40,9 +40,8 @@ uint64_t DBImpl::MinObsoleteSstNumberToKeep() {
 void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
   mutex_.AssertHeld();
 	assert(immutable_db_options_.allow_column_family_split);
-  assert(valid);
   if(!valid) {
-    return ;  
+    return;  
   }
   versions_->GetSplitFiles(&job_context->sst_split_files);
 }
@@ -120,7 +119,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
 	  //fprintf(stdout, "edit list size : %ld\n", edit_lists.size());
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-			  "Split File Cnt %lu, edit size %lu",
+			  "SplitColumnFamilyFromSstFiles[%s]: Split File Cnt %lu, edit size %lu",
+        cfd->GetName().c_str(),
 			  split_cnt, edit_lists.size());
 
 	  uint32_t num_entries = new_children_cnt + 1;
@@ -157,7 +157,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 	  //fprintf(stdout, "Install SuperVersion\n");
 	  if (s.ok()) {
 		  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-				  "Split column family [%s] (ID %u)",
+				  "SplitColumnFamilyFromSstFiles: Split column family [%s] (ID %u)",
 				  cfd->GetName().c_str(),
 				  (unsigned) cfd->GetID());
 
@@ -178,13 +178,13 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 			  cfd_out_i->set_initialized();
 
 			  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-					  "Create column family [%s] (ID %u)",
+					  "SplitColumnFamilyFromSstFiles: Create column family [%s] (ID %u)",
 					  cfd_out_i->GetName().c_str(),
 					  (unsigned) cfd_out_i->GetID());
 		  }
 	  } else {
 		  ROCKS_LOG_ERROR(immutable_db_options_.info_log,
-				  "Split column family [%s] (ID %u) FAILED -- %s",
+				  "SplitColumnFamilyFromSstFiles: Split column family [%s] (ID %u) FAILED -- %s",
 				  cfd->GetName().c_str(),
 				  (unsigned) cfd->GetID(),
 				  s.ToString().c_str());
@@ -214,19 +214,21 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     if (!cfd->mem()->IsEmpty()) {
       cfd->Ref();
       s = SwitchMemtable(cfd, &context);
+      s = SplitMemtables(cfd);
       cfd->Unref();
     }
     //fprintf(stdout, "Split mt\n");
-
+    /*
     if (s.ok()) {
       cfd->Ref();
       //fprintf(stdout, "Split mt(2)\n");
       s = SplitMemtables(cfd);
       //fprintf(stdout, "Split mt(3)\n");
       cfd->Unref();
-    } else {
+    } else */
+    if (!s.ok()) {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
-                 "Switching Memtable of cf [%s] (ID %u) FAILED -- %s",
+                 "SplitColumnFamilyFromSstFiles: Switching Memtable of cf [%s] (ID %u) FAILED -- %s",
                  cfd->GetName().c_str(),
                  (unsigned) cfd->GetID(),
                  s.ToString().c_str());
@@ -234,7 +236,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
     if (s.ok()) {
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "Split Memtable of cf [%s] (ID %u)",
+                 "SplitColumnFamilyFromSstFiles: Split Memtable of cf [%s] (ID %u) is finished",
                  cfd->GetName().c_str(),
                  (unsigned) cfd->GetID());
       // atomically flush splitted immutable memtables.
@@ -244,7 +246,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
       column_family_datas.clear();
       if (cfd->imm()->NumNotFlushed() != 0) {
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "imm count of parent cfd[%s] (ID %u) is not empty so flush required",
+                 "SplitColumnFamilyFromSstFiles: imm count of parent cfd[%s] (ID %u) is not empty so flush required",
                  cfd->GetName().c_str(),
                  (unsigned) cfd->GetID());
         column_family_datas.push_back(cfd); 
@@ -253,13 +255,15 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
       for(auto cnodes: cfd->GetChildrenNodes()) {
         ColumnFamilyData* child_cfd = cnodes->cfd_;
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "cf [%s] (ID %u) imm count : %d",
+                 "SplitColumnFamilyFromSstFiles[%s]: cf [%s] (ID %u) imm count : %d",
+                 cfd->GetName().c_str(),
                  child_cfd->GetName().c_str(),
                  (unsigned) child_cfd->GetID(),
                  child_cfd->imm()->NumNotFlushed());
         if (child_cfd->imm()->NumNotFlushed() != 0) {
           ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "imm count of child cfd[%s] (ID %u) is not empty so flush required",
+                 "SplitColumnFamilyFromSstFiles[%s]: imm count of child cfd[%s] (ID %u) is not empty so flush required",
+                 cfd->GetName().c_str(),
                  child_cfd->GetName().c_str(),
                  (unsigned) child_cfd->GetID());
           column_family_datas.push_back(child_cfd); 
@@ -268,7 +272,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
       if (!column_family_datas.empty()) {
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "Atomically flush immutable memtables after split memtables (SIZE : %lu)",
+                 "SplitColumnFamilyFromSstFiles[%s]: Atomically flush immutable memtables after split memtables (SIZE : %lu)",
+                 cfd->GetName().c_str(),
                  column_family_datas.size());
 
         AssignAtomicFlushSeq(column_family_datas);
@@ -278,11 +283,13 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
         MaybeScheduleFlushOrCompaction();  
       } else {
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "No need to flush immutable memtables after split memtables");
+                 "SplitColumnFamilyFromSstFiles[%s]: \
+                 No need to flush immutable memtables after split memtables",
+                 cfd->GetName().c_str());
       }
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
-                 "Split Memtable of cf [%s] (ID %u) FAILED -- %s",
+                 "SplitColumnFamilyFromSstFiles: Split Memtable of cf [%s] (ID %u) FAILED -- %s",
                  cfd->GetName().c_str(),
                  (unsigned) cfd->GetID(),
                  s.ToString().c_str());
@@ -295,11 +302,11 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
   auto vstorage = cfd->current()->storage_info();
   for (auto& sst_split_file: sst_split_files) {
     FileMetaData* meta = sst_split_file.metadata;
-    vstorage->AddToFilesMarkedForSplit(meta);
+    meta->marked_for_split = true;
     //sst_split_file.DeleteInfo(); // free info
   }
   //fprintf(stdout, "Split sst(2)\n");
-  
+  vstorage->ComputeFilesMarkedForSplit();
   SchedulePendingSplit(cfd);
   return Status::OK();
 }

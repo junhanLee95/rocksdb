@@ -67,6 +67,10 @@ ifeq ($(MAKECMDGOALS),static_lib)
 	DEBUG_LEVEL=0
 endif
 
+ifeq ($(MAKECMDGOALS),lcf_put_test)
+	DEBUG_LEVEL=2
+endif
+
 ifeq ($(MAKECMDGOALS),install-static)
 	DEBUG_LEVEL=0
 endif
@@ -549,6 +553,7 @@ TESTS = \
 	range_del_aggregator_test \
 	sst_file_reader_test \
 	sst_file_split_test \
+	lcf_put_test \
 	db_secondary_test \
 
 PARALLEL_TEST = \
@@ -1575,6 +1580,9 @@ sst_file_reader_test: table/sst_file_reader_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 sst_file_split_test: table/sst_file_split_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+lcf_put_test: db/lcf_put_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 db_secondary_test: db/db_secondary_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)

@@ -135,6 +135,10 @@ class VersionStorageInfo {
   // ComputeCompactionScore()
   void ComputeFilesMarkedForCompaction();
 
+  // This computes files_marked_for_split_ and is called by
+  // SplitColumnFamilyFromSstFiles()
+  void ComputeFilesMarkedForSplit();
+
   // This computes ttl_expired_files_ and is called by
   // ComputeCompactionScore()
   void ComputeExpiredTtlFiles(const ImmutableCFOptions& ioptions,
@@ -151,10 +155,6 @@ class VersionStorageInfo {
   //
   // REQUIRES: DB mutex held
   void ComputeBottommostFilesMarkedForCompaction();
-
-  // REQUIRES: DB mutex held
-  void AddToFilesMarkedForSplit(FileMetaData* meta);
-
 
   // Generate level_files_brief_ from files_
   void GenerateLevelFilesBrief();

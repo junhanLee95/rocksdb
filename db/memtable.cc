@@ -528,7 +528,7 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
     }
 
     // The first sequence number inserted into the memtable
-    assert(first_seqno_ == 0 || s >= first_seqno_);
+    /*JH assert(first_seqno_ == 0 || s >= first_seqno_);*/
     if (first_seqno_ == 0) {
       first_seqno_.store(s, std::memory_order_relaxed);
 

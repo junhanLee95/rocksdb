@@ -461,6 +461,7 @@ Status DBImpl::AtomicFlushMemTablesToOutputFiles(
         mems_list.emplace_back(&mems);
         mutable_cf_options_list.emplace_back(&all_mutable_cf_options[i]);
         tmp_file_meta.emplace_back(&file_meta[i]);
+        fprintf(stdout, "After atomic flush cf[%d] -> %" PRIu64 "\n", i, file_meta[i].fd.GetNumber());
       }
     }
 
@@ -1578,7 +1579,7 @@ void DBImpl::GenerateFlushRequest(const autovector<ColumnFamilyData*>& cfds,
 }
 
 void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
-                                  autovector<FileMetaData*> metas,
+                                  const autovector<FileMetaData*>& metas,
                                   SplitRequest* req) {
   assert(req != nullptr);
   req->reserve(1);
@@ -1589,6 +1590,7 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
     //fprintf(stdout,"GenerateSplitReq: push meta l: %s\n", meta->largest.DebugString(false).c_str());
   }
   req->emplace_back(cfd, std_metas);
+
 }
 
 Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
@@ -1935,6 +1937,8 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   if (immutable_db_options_.allow_column_family_split &&
       bg_flush_scheduled_ == 0 &&
       bg_compaction_scheduled_ == 0 &&
+      /*num_running_flushes_ == 0 &&
+      num_running_compactions_ == 0 &&*/
       unscheduled_splits_ > 0) {
       //fprintf(stdout, "schedule split\n");
       bg_split_scheduled_++;
@@ -2114,6 +2118,7 @@ void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
     //fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
     SplitRequest split_req;
     GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
+    assert(cfd->current()->storage_info()->FilesMarkedForSplit().empty());
     assert(!split_req.empty());
 
     AddToSplitQueue(split_req);
@@ -2521,16 +2526,14 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
     if (immutable_db_options_.allow_column_family_split) {
       FindSplitFiles(&job_context, s.ok());
       TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
-  
+
       if (job_context.HaveSomethingToSplit()) {
         mutex_.Unlock();
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                      "[JH]Have Something to Split");
-       SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
-       mutex_.Lock();
-    }
-
-     
+            "[JH]Have Something to Split");
+        SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
+        mutex_.Lock();
+      }
     }
     // If compaction failed, we want to delete all temporary files that we might
     // have created (they might not be all recorded in job_context in case of a
@@ -2721,7 +2724,9 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
                              c->column_family_data());
   }
 
+  std::string cf_name;
   if (c != nullptr) {
+    cf_name = c->column_family_data()->GetName();
     c->ReleaseCompactionFiles(status);
     *made_progress = true;
 
@@ -2741,7 +2746,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
   if (status.ok()) {
     // Done
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "[%s] Split column family finish", cfd->GetName().c_str());
+                 "[%s] Split column family finish", cf_name.c_str());
   } else if (status.IsShutdownInProgress()) {
     // Ignore compaction errors found during shutting down
   } else {

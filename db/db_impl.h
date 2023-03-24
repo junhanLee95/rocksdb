@@ -1197,7 +1197,7 @@ class DBImpl : public DB {
   void GenerateFlushRequest(const autovector<ColumnFamilyData*>& cfds,
                             FlushRequest* req);
 
-  void GenerateSplitRequest(ColumnFamilyData* cfd, autovector<FileMetaData*> metas,
+  void GenerateSplitRequest(ColumnFamilyData* cfd, const autovector<FileMetaData*>& metas,
                             SplitRequest* req);
 
   void SchedulePendingFlush(const FlushRequest& req, FlushReason flush_reason);

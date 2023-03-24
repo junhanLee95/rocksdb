@@ -1745,6 +1745,30 @@ void VersionStorageInfo::ComputeFilesMarkedForCompaction() {
   }
 }
 
+void VersionStorageInfo::ComputeFilesMarkedForSplit() {
+  files_marked_for_split_.clear();
+  int last_qualify_level = 0;
+
+  // Do not include files from the last level with data
+  // If table properties collector suggests a file on the last level,
+  // we should not move it to a new level.
+  for (int level = num_levels() - 1; level >= 1; level--) {
+    if (!files_[level].empty()) {
+      last_qualify_level = level - 1;
+      break;
+    }
+  }
+
+  for (int level = 0; level <= last_qualify_level; level++) {
+    for (auto* f : files_[level]) {
+      if (!f->being_compacted && f->marked_for_split) {
+        files_marked_for_split_.emplace_back(f);
+      }
+    }
+  }
+}
+
+
 void VersionStorageInfo::ComputeExpiredTtlFiles(
     const ImmutableCFOptions& ioptions, const uint64_t ttl) {
   assert(ttl > 0);
@@ -2056,10 +2080,6 @@ void VersionStorageInfo::ComputeBottommostFilesMarkedForCompaction() {
       }
     }
   }
-}
-
-void VersionStorageInfo::AddToFilesMarkedForSplit(FileMetaData* meta) {
-  files_marked_for_split_.push_back(meta);
 }
 
 void Version::Ref() {

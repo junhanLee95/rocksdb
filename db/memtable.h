@@ -403,6 +403,10 @@ class MemTable {
     flush_in_progress_ = in_progress;
   }
 
+  bool IsFlushInProgress(void) {
+    return flush_in_progress_;
+  }
+
   void SetSplitInProgress(bool in_progress) {
     split_in_progress_ = in_progress;
   }

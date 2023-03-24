@@ -287,11 +287,13 @@ bool MemTableList::IsFlushPending() const {
   return false;
 }
 
-void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete,
+void MemTableList::ClearSplittedMemtables(const std::shared_ptr<rocksdb::Logger> info_log,
+                                          autovector<MemTable*>* to_delete,
                                           uint64_t target_memtable_id) {
   InstallNewVersion();
   const auto& memlist = current_->memlist_;
   bool removed = false;
+  int cnt = 0;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
     if (m->split_in_progress_ && m->GetID() == target_memtable_id) {
@@ -302,10 +304,15 @@ void MemTableList::ClearSplittedMemtables(autovector<MemTable*>* to_delete,
       }
       current_->SplitRemove(m, to_delete);
       removed = true;
+      cnt++;
     }
   }
   if (!removed) {
-    fprintf(stderr, "[ClearSplittedMemtables] Error - memtable is not removed\n");
+    ROCKS_LOG_ERROR(info_log,
+                    "[ClearSplittedMemtables] Error - memtable is not removed");
+  } else {
+    ROCKS_LOG_INFO(info_log,
+                    "[ClearSplittedMemtables] removed #%d memtables", cnt);
   }
   assert(removed);
   
@@ -628,6 +635,7 @@ Status InstallMemtableAtomicFlushResults(
       assert(i == 0 || (*mems_list[k])[i]->GetEdits()->NumEntries() == 0);
       (*mems_list[k])[i]->SetFlushCompleted(true);
       (*mems_list[k])[i]->SetFileNumber(file_metas[k]->fd.GetNumber());
+      fprintf(stdout, "MT %" PRIu64 "  Set File Number : %" PRIu64 " \n",(*mems_list[k])[i]->GetID(), file_metas[k]->fd.GetNumber());
     }
   }
 
@@ -669,6 +677,8 @@ Status InstallMemtableAtomicFlushResults(
       }
       auto* imm = (imm_lists == nullptr) ? cfds[i]->imm() : imm_lists->at(i);
       for (auto m : *mems_list[i]) {
+        fprintf(stdout, "MT %" PRIu64 "  Verify File Number : %" PRIu64 " \n", m->GetID(), m->GetFileNumber());
+        assert(!m->IsSplitInProgress());
         assert(m->GetFileNumber() > 0);
         uint64_t mem_id = m->GetID();
         ROCKS_LOG_BUFFER(log_buffer,

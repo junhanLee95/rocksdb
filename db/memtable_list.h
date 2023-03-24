@@ -213,7 +213,7 @@ class MemTableList {
 
   // Returns the earliest memtables that needs to be flushed. The returned
   // memtables are guaranteed to be in the ascending order of created time.
-  void ClearSplittedMemtables(autovector<MemTable*>* to_delete, uint64_t max_memtable_id);
+  void ClearSplittedMemtables(const std::shared_ptr<rocksdb::Logger> info_log, autovector<MemTable*>* to_delete, uint64_t max_memtable_id);
 
   // all split_in_progress_ flag of the memtables that have to be splitted
   // set to be true.

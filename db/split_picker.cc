@@ -176,7 +176,8 @@ Compaction* SplitPicker::GetSplit(VersionStorageInfo* vstorage) {
 
 bool SplitPicker::NeedsSplit(const VersionStorageInfo* vstorage) {
   ROCKS_LOG_INFO(ioptions_.info_log,
-                 "NeedsSplit: %ld files marked", vstorage->FilesMarkedForSplit().size()); return vstorage->FilesMarkedForSplit().size() > 0;
+                 "NeedsSplit: %ld files marked", vstorage->FilesMarkedForSplit().size());
+  return vstorage->FilesMarkedForSplit().size() > 0;
   /*
   assert(vstorage->num_levels()==2);
   ROCKS_LOG_INFO(ioptions_.info_log,

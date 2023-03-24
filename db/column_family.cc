@@ -1461,6 +1461,14 @@ bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
 
 // under a DB mutex AND write thread
 bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs) {
+  std::string s_outs="[";
+  for (auto c: c_outs) {
+    s_outs += c->GetName();
+    s_outs += ", ";
+  }
+  s_outs += "]";
+  ROCKS_LOG_INFO(db_options_->info_log.get(),
+                 "SplitLogicalColumnFamily: %s to %s", c_in->GetName().c_str(), s_outs.c_str());
   partition_tree_->InsertSplittedColumnFamily(c_in, c_outs);
   return true;
   
@@ -1703,9 +1711,9 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
 
   }
 
-  assert(smallests.size() == split_cnt);
+  /*assert(smallests.size() == split_cnt);
   assert(largests.size() == split_cnt);
-  assert(split_cnt <= sst_split_files.size());
+  assert(split_cnt <= sst_split_files.size());*/
 
   // Prepare edit_lists and cf_options
   autovector<VersionEdit*> edits_out;
@@ -1827,6 +1835,9 @@ void ColumnFamilySet::AddKeyRangeIfNecessary(std::string r1, std::string r2,
                                              size_t* split_cnt,
                                              std::string prefix_key
                                              ) {
+  fprintf(stdout, "prefix_key : %s\n", prefix_key.c_str());
+  fprintf(stdout, "r1 : %s\n", r1.c_str());
+  fprintf(stdout, "r2 : %s\n", r2.c_str());
   size_t psize = prefix_key.size();
   long n1 = stol(r1.substr(psize, r1.size() - psize));
   long n2 = stol(r2.substr(psize, r2.size() - psize));

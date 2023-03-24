@@ -230,15 +230,27 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 
   // This will release and re-acquire the mutex.
   Status s = WriteLevel0Table();
+  if (!s.ok()) {
+    fprintf(stdout, "WriteLevel0 fail\n");
+  }
+  if (shutting_down_->load(std::memory_order_acquire)) {
+    fprintf(stdout, "shutdown\n");
+  }
+  if (cfd_->IsDropped()) {
+    fprintf(stdout, "dropped\n");
+  }
+
 
   if (s.ok() &&
       (shutting_down_->load(std::memory_order_acquire) || cfd_->IsDropped())) {
+    fprintf(stdout, "WriteLevel0\n");
     s = Status::ShutdownInProgress(
         "Database shutdown or Column family drop during flush");
   }
 
   if (!s.ok()) {
     cfd_->imm()->RollbackMemtableFlush(mems_, meta_.fd.GetNumber());
+    fprintf(stdout, "Rollback\n");
   } else if (write_manifest_) {
     TEST_SYNC_POINT("FlushJob::InstallResults");
     // Replace immutable memtable with the generated Table
@@ -247,10 +259,12 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
         meta_.fd.GetNumber(), &job_context_->memtables_to_free, db_directory_,
         log_buffer_);
   }
-
+  fprintf(stdout, "Inside running flush : %" PRIu64 "\n", meta_.fd.GetNumber());
   if (s.ok() && file_meta != nullptr) {
+    fprintf(stdout, "WriteManifest\n");
     *file_meta = meta_;
   }
+  fprintf(stdout, "Inside running flush(2) : %" PRIu64 "\n", file_meta->fd.GetNumber());
   RecordFlushIOStats();
 
   auto stream = event_logger_->LogToBuffer(log_buffer_);

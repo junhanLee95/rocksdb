@@ -2262,7 +2262,8 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
 
       WriteContext context_in;
       autovector<MemTable*> imms;
-      cfd_in0->imm()->ClearSplittedMemtables(&context_in.memtables_to_free_, UINT_MAX);
+      cfd_in0->imm()->ClearSplittedMemtables(immutable_db_options_.info_log,
+                                             &context_in.memtables_to_free_, UINT_MAX);
       InstallSuperVersionAndScheduleWork(cfd_in0, &context_in.superversion_context,
                                         *cfd_in0->GetLatestMutableCFOptions());
       cfd_in0->Unref();
