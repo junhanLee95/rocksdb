@@ -40,7 +40,9 @@ enum Tag : uint32_t {
   kColumnFamilyAdd = 201,
   kColumnFamilyDrop = 202,
   kMaxColumnFamily = 203,
-  kColumnFamilySplit = 204,
+  kColumnFamilySplit = 204, // new
+  kColumnFamilySmallest = 205,
+  kColumnFamilyLargest = 206,
 
   kInAtomicGroup = 300,
 };
@@ -210,6 +212,16 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
   if (is_column_family_split_) {
     PutVarint32(dst, kColumnFamilySplit);
     PutLengthPrefixedSlice(dst, Slice(column_family_name_));
+  }
+
+  if (!smallest_user_key_.empty()) {
+    PutVarint32(dst, kColumnFamilySmallest);
+    PutLengthPrefixedSlice(dst, Slice(smallest_user_key_));
+  }
+
+  if (!largest_user_key_.empty()) {
+    PutVarint32(dst, kColumnFamilyLargest);
+    PutLengthPrefixedSlice(dst, Slice(largest_user_key_));
   }
 
   if (is_column_family_drop_) {
@@ -529,6 +541,26 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         } else {
           if (!msg) {
             msg = "column family split";
+          }
+        }
+        break;
+
+      case kColumnFamilySmallest:
+        if (GetLengthPrefixedSlice(&input, &str)) {
+          smallest_user_key_ = str.ToString();
+        } else {
+          if (!msg) {
+            msg = "column family smallest";
+          }
+        }
+        break;
+
+      case kColumnFamilyLargest:
+        if (GetLengthPrefixedSlice(&input, &str)) {
+          largest_user_key_ = str.ToString();
+        } else {
+          if (!msg) {
+            msg = "column family largest";
           }
         }
         break;

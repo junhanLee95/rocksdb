@@ -1041,6 +1041,12 @@ class VersionSet {
 
   static uint64_t GetTotalSstFilesSize(Version* dummy_versions);
 
+  typedef struct {
+    bool split_requested;
+    ColumnFamilyData* parent;
+    std::vector<ColumnFamilyData*> children;
+  }split_column_family_info;
+
  protected:
   struct ManifestWriter;
 
@@ -1080,7 +1086,9 @@ class VersionSet {
       bool* have_log_number, uint64_t* log_number, bool* have_prev_log_number,
       uint64_t* previous_log_number, bool* have_next_file, uint64_t* next_file,
       bool* have_last_sequence, SequenceNumber* last_sequence,
-      uint64_t* min_log_number_to_keep, uint32_t* max_column_family);
+      uint64_t* min_log_number_to_keep, uint32_t* max_column_family, 
+      split_column_family_info* info=nullptr
+      );
 
   Status ExtractInfoFromVersionEdit(
       ColumnFamilyData* cfd, const VersionEdit& edit, bool* have_log_number,

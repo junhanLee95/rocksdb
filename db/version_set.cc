@@ -3512,7 +3512,8 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
     bool* have_log_number, uint64_t* log_number, bool* have_prev_log_number,
     uint64_t* previous_log_number, bool* have_next_file, uint64_t* next_file,
     bool* have_last_sequence, SequenceNumber* last_sequence,
-    uint64_t* min_log_number_to_keep, uint32_t* max_column_family) {
+    uint64_t* min_log_number_to_keep, uint32_t* max_column_family,
+    split_column_family_info* info) {
   // Not found means that user didn't supply that column
   // family option AND we encountered column family add
   // record. Once we encounter column family drop record,
@@ -3536,16 +3537,32 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
           edit.column_family_name_);
     }
     auto cf_options = name_to_options.find(edit.column_family_name_);
-    if (cf_options == name_to_options.end()) {
+    if (!db_options_->allow_column_family_split && 
+        cf_options == name_to_options.end()) {
       column_families_not_found.insert(
           {edit.column_family_, edit.column_family_name_});
     } else {
-      cfd = CreateColumnFamily(cf_options->second, &edit);
+      if (db_options_->allow_column_family_split && 
+          cf_options == name_to_options.end()) {
+        cf_options = name_to_options.find("default");
+        cfd = CreateColumnFamily(cf_options->second, &edit);
+      } else {
+        cfd = CreateColumnFamily(cf_options->second, &edit);
+      }
       cfd->set_initialized();
       builders.insert(std::make_pair(
           edit.column_family_, std::unique_ptr<BaseReferencedVersionBuilder>(
                                    new BaseReferencedVersionBuilder(cfd))));
+      if (info->split_requested) {
+        assert(info->parent != nullptr); 
+        info->children.push_back(cfd);
+      }
     }
+  } else if (edit.is_column_family_split_) {
+    uint32_t parent_id = edit.column_family_;
+    info->split_requested = true;
+    info->parent = column_family_set_->GetColumnFamily(parent_id);
+    assert(info->parent != nullptr);
   } else if (edit.is_column_family_drop_) {
     if (cf_in_builders) {
       auto builder = builders.find(edit.column_family_);
@@ -3583,6 +3600,7 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
     assert(builder != builders.end());
     builder->second->version_builder()->Apply(&edit);
   }
+
   return ExtractInfoFromVersionEdit(
       cfd, edit, have_log_number, log_number, have_prev_log_number,
       previous_log_number, have_next_file, next_file, have_last_sequence,
@@ -3689,6 +3707,9 @@ Status VersionSet::Recover(
   ROCKS_LOG_INFO(db_options_->info_log, "Recovering from manifest file: %s\n",
                  manifest_path.c_str());
 
+  ROCKS_LOG_INFO(db_options_->info_log, "Recovering process - lcf enabled : %d\n",
+                 db_options_->allow_column_family_split);
+
   std::unique_ptr<SequentialFileReader> manifest_file_reader;
   {
     std::unique_ptr<SequentialFile> manifest_file;
@@ -3767,6 +3788,12 @@ Status VersionSet::Recover(
           break;
         }
         replay_buffer[num_entries_decoded - 1] = std::move(edit);
+
+        split_column_family_info info;
+        info.split_requested = false;
+        info.parent = nullptr;
+        assert(info.children.empty());
+
         if (num_entries_decoded == replay_buffer.size()) {
           TEST_SYNC_POINT_CALLBACK("VersionSet::Recover:LastInAtomicGroup",
                                    &edit);
@@ -3776,10 +3803,26 @@ Status VersionSet::Recover(
                 &have_log_number, &log_number, &have_prev_log_number,
                 &previous_log_number, &have_next_file, &next_file,
                 &have_last_sequence, &last_sequence, &min_log_number_to_keep,
-                &max_column_family);
+                &max_column_family,
+                &info);
             if (!s.ok()) {
               break;
             }
+          }
+
+          if (s.ok() && info.split_requested) {
+            assert(info.parent != nullptr);
+            assert(info.children.size() > 0);
+            std::string str_children="";
+            for(auto& c: info.children) {
+              str_children += c->GetName() + ", ";
+            }
+            ROCKS_LOG_INFO(db_options_->info_log,
+                     "Recovering split column families from parent[%s] to child[%s]",
+                     info.parent->GetName().c_str(),
+                     str_children.c_str());
+
+            column_family_set_->SplitLogicalColumnFamily(info.parent, info.children);
           }
           replay_buffer.clear();
           num_entries_decoded = 0;
