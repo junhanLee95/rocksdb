@@ -1402,7 +1402,7 @@ Status DBImpl::SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, 
     bool key_greater_than_median = false;
     SequenceNumber seq = 1;
 
-    InternalIterator* mem_iter = mem->NewIterator(ro, &arena);
+    std::unique_ptr<InternalIterator> mem_iter(mem->NewIterator(ro, &arena));
     for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
       Slice key = mem_iter->key();
       Slice value = mem_iter->value();
@@ -1536,11 +1536,13 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
         //seqs.push_back(/*1*/kMaxSequenceNumber);
         mem->Ref();         
       }
+
+      delete wb;
     }
 
     assert(new_mems.size() == to_size + 1); // number of children nodes (to_size) + parent node (1)
 
-    InternalIterator* mem_iter = from_imm->NewIterator(ro, &arena);
+    std::unique_ptr<InternalIterator> mem_iter(from_imm->NewIterator(ro, &arena));
 
     to = 0; // index of children nodes that includes the key of the memtable
     for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
@@ -1650,6 +1652,8 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
     for (auto& context: contexts) {
       delete context;
     }
+    contexts.clear();
+    new_mems.clear();
   }
 
   return Status::OK();

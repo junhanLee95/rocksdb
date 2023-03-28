@@ -22,129 +22,15 @@
 
 namespace rocksdb {
 
-std::string EncodeAsString(uint64_t v) {
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%08" PRIu64, v);
-  return std::string(buf);
-}
-
-std::string EncodeAsUint64(uint64_t v) {
-  std::string dst;
-  PutFixed64(&dst, v);
-  return dst;
-}
-
 class LCFPutTest : public testing::Test {
  public:
   LCFPutTest() {
-    options_.merge_operator = MergeOperators::CreateUInt64AddOperator();
-    sst_name_ = test::PerThreadDBPath("sst_file");
   }
 
   ~LCFPutTest() {
-    //Status s = Env::Default()->DeleteFile(sst_name_);
-    //assert(s.ok());
   }
 
   DBImpl* dbfull(DB* db) { return reinterpret_cast<DBImpl*>(db) ;};
-
-  void CreateFile(const std::string& file_name,
-                  const std::vector<std::string>& keys, int level) {
-    SstFileWriter writer(soptions_, options_);
-    ASSERT_OK(writer.Open(file_name, level));
-    for (size_t i = 0; i + 2 < keys.size(); i += 3) {
-      ASSERT_OK(writer.Put(keys[i], keys[i]));
-      ASSERT_OK(writer.Merge(keys[i + 1], EncodeAsUint64(i + 1)));
-      ASSERT_OK(writer.Delete(keys[i + 2]));
-    }
-    ASSERT_OK(writer.Finish());
-  }
-
-
-  void CreateFile(const std::string& file_name,
-                  const std::vector<std::string>& keys) {
-    SstFileWriter writer(soptions_, options_);
-    ASSERT_OK(writer.Open(file_name));
-    for (size_t i = 0; i + 2 < keys.size(); i += 3) {
-      ASSERT_OK(writer.Put(keys[i], keys[i]));
-      ASSERT_OK(writer.Merge(keys[i + 1], EncodeAsUint64(i + 1)));
-      ASSERT_OK(writer.Delete(keys[i + 2]));
-    }
-    ASSERT_OK(writer.Finish());
-  }
-
-  void GetSstFiles(Env* env, std::string path,
-                             std::vector<std::string>* files) {
-    env->GetChildren(path, files);
-
-    files->erase(
-        std::remove_if(files->begin(), files->end(), [](std::string name) {
-          uint64_t number;
-          FileType type;
-          return !(ParseFileName(name, &number, &type) && type == kTableFile);
-        }), files->end());
-  }
-
-  int GetSstFileCount(std::string path) {
-    std::vector<std::string> files;
-    GetSstFiles(Env::Default(), path, &files);
-    return static_cast<int>(files.size());
-  }
-
-  void CreateFileCF(const std::string& file_name,
-                  const std::vector<std::string>& keys,
-                  ColumnFamilyHandle* cfh 
-                  ) {
-    SstFileWriter writer(soptions_, options_, cfh);
-    ASSERT_OK(writer.Open(file_name));
-    for (size_t i = 0; i + 2 < keys.size(); i += 3) {
-      ASSERT_OK(writer.Put(keys[i], keys[i]));
-      ASSERT_OK(writer.Merge(keys[i + 1], EncodeAsUint64(i + 1)));
-      ASSERT_OK(writer.Delete(keys[i + 2]));
-    }
-    ASSERT_OK(writer.Finish());
-  }
-
-  void CheckFile(const std::string& file_name,
-                 const std::vector<std::string>& keys,
-                 bool check_global_seqno = false) {
-    ReadOptions ropts;
-    SstFileReader reader(options_);
-    ASSERT_OK(reader.Open(file_name));
-    ASSERT_OK(reader.VerifyChecksum());
-    std::unique_ptr<Iterator> iter(reader.NewIterator(ropts));
-    iter->SeekToFirst();
-    for (size_t i = 0; i + 2 < keys.size(); i += 3) {
-      ASSERT_TRUE(iter->Valid());
-      ASSERT_EQ(iter->key().compare(keys[i]), 0);
-      ASSERT_EQ(iter->value().compare(keys[i]), 0);
-      iter->Next();
-      ASSERT_TRUE(iter->Valid());
-      ASSERT_EQ(iter->key().compare(keys[i + 1]), 0);
-      ASSERT_EQ(iter->value().compare(EncodeAsUint64(i + 1)), 0);
-      iter->Next();
-    }
-    ASSERT_FALSE(iter->Valid());
-    if (check_global_seqno) {
-      auto properties = reader.GetTableProperties();
-      std::cout << "[CheckFile] property cf id   : " << properties->column_family_id << std::endl;
-      std::cout << "[CheckFile] property cf name : " << properties->column_family_name << std::endl;
-      ASSERT_TRUE(properties);
-      auto& user_properties = properties->user_collected_properties;
-      ASSERT_TRUE(
-          user_properties.count(ExternalSstFilePropertyNames::kGlobalSeqno));
-    }
-  }
-
-  void CreateFileAndCheck(const std::vector<std::string>& keys) {
-    CreateFile(sst_name_, keys);
-    CheckFile(sst_name_, keys);
-  }
-
- protected:
-  Options options_;
-  EnvOptions soptions_;
-  std::string sst_name_;
 };
 
 TEST_F(LCFPutTest, ThreeLevelAfterPut) {
@@ -182,7 +68,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   for(int i = 0; i < numItem; i++) {
     db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(values1[i]));
   }
-
+  
   std::vector<SplitFileInfo> infos;
 
   FileMetaData* f1 = new FileMetaData;
@@ -205,7 +91,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
     db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(values2[i]));
   }
 
-
+  
   FileMetaData* f2 = new FileMetaData;
   std::string s2 = "user1250";
   std::string l2 = "user1280";
@@ -241,8 +127,16 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
     assert(res == values3[i]);
   }
 
-  DestroyDB(db_name, options);
+  delete f1;
+  delete f2;
+  delete f3;
+
+  keys.clear();
+  values1.clear();
+  values2.clear();
+  values3.clear();
   delete db;
+  db = nullptr;
 }
 
 TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
@@ -339,7 +233,14 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
     assert(res == values3[i]);
   }
 
-  DestroyDB(db_name, options);
+  delete f1;
+  delete f2;
+  delete f3;
+
+  keys.clear();
+  values1.clear();
+  values2.clear();
+  values3.clear();
   delete db;
 }
 

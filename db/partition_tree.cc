@@ -19,7 +19,15 @@ PartitionTreeNode::PartitionTreeNode (
   }
 
   lower_level_nodes_ = {};
-} 
+}
+
+PartitionTreeNode::~PartitionTreeNode() {
+  // IMPLEMENT THIS
+  fprintf(stdout, "[PartitionTreeNode] delete partition tree node\n");
+  for (auto& n: lower_level_nodes_) {
+    delete n;
+  }
+}
 
 void PartitionTreeNode::SetColumnFamily (
     ColumnFamilyData* column_family_data) {
@@ -90,6 +98,12 @@ PartitionTree::PartitionTree(
   //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
   partition_nodes_.insert({column_family_data->GetID(), root_}); 
+}
+
+PartitionTree::~PartitionTree() {
+  fprintf(stdout, "[PartitionTree] delete partition tree node\n");
+  delete root_;
+  partition_nodes_.clear();
 }
 
 void PartitionTree::SetRootColumnFamily (

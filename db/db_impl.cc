@@ -1452,9 +1452,9 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
 
   // Acquire SuperVersion
   SuperVersion* sv = GetAndRefSuperVersion(cfd);
-  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+  /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "GetImpl sv current : %s",
-                 sv->current->DebugString(true, true).c_str());
+                 sv->current->DebugString(true, true).c_str());*/
 
   TEST_SYNC_POINT("DBImpl::GetImpl:1");
   TEST_SYNC_POINT("DBImpl::GetImpl:2");
@@ -2314,11 +2314,20 @@ void DBImpl::PrintLogicalColumnFamily(void) {
 void DBImpl::DestroyLogicalColumnFamilies(void) {
   for (auto cfd: *versions_->GetColumnFamilySet()) {
     uint32_t cfd_id = cfd->GetID();
+    if (cfd_id == 0)
+      continue;
     std::string cfd_name = cfd->GetName();
     std::cout << "Destroy cf[" << cfd_id << "] : " << cfd_name << std::endl;
     ColumnFamilyHandle* cfh = GetColumnFamilyHandle(cfd_id);  
-    std::cout << "Destroy cfh : " << cfh->GetName() << std::endl;
-    DropColumnFamily(cfh);
+    auto cfhi = reinterpret_cast<ColumnFamilyHandleImpl*>(cfh);  
+    if (cfhi != nullptr) {
+      delete cfhi;
+      std::cout << "Delete cf[" << cfd_id << "]\n" ;
+    } else {
+      std::cout << "Cannot find cf[" << cfd_id << "]\n" ;
+    }
+    //DropColumnFamily(cfh);
+    //DestroyColumnFamilyHandle(cfh);
   }
   /*auto column_family_set = versions_->GetColumnFamilySet();
   

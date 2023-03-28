@@ -111,6 +111,10 @@ ifeq ($(filter -DROCKSDB_LITE,$(OPT)),)
 endif
 endif
 
+ifeq ($(DEBUG_LEVEL), 2)
+  OPT += -Wall -ggdb3
+endif
+
 # Figure out optimize level.
 ifneq ($(DEBUG_LEVEL), 2)
 ifeq ($(LITE), 0)

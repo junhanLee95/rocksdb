@@ -1362,6 +1362,7 @@ ColumnFamilySet::ColumnFamilySet(const std::string& dbname,
 }
 
 ColumnFamilySet::~ColumnFamilySet() {
+  partition_tree_.reset();
   while (column_family_data_.size() > 0) {
     // cfd destructor will delete itself from column_family_data_
     auto cfd = column_family_data_.begin()->second;
@@ -1764,7 +1765,7 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
     if (db_options_->allow_column_family_split) {
-      partition_tree_ = new PartitionTree(new_cfd);
+      partition_tree_.reset(new PartitionTree(new_cfd));
     }
   }
   return new_cfd;
@@ -1798,7 +1799,7 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   if (id == 0) {
     default_cfd_cache_ = new_cfd;
     if (db_options_->allow_column_family_split) {
-      partition_tree_ = new PartitionTree(new_cfd);
+      partition_tree_.reset(new PartitionTree(new_cfd));
     }
   }
   return new_cfd;

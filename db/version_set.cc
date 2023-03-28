@@ -2853,6 +2853,10 @@ VersionSet::~VersionSet() {
     file.DeleteMetadata();
   }
   obsolete_files_.clear();
+  for (auto& f: split_files_) {
+    f.DeleteInfo();
+  }
+  split_files_.clear();
 }
 
 void VersionSet::AppendVersion(ColumnFamilyData* column_family_data,
@@ -4725,25 +4729,14 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 
 void VersionSet::GetSplitFiles(std::vector<SplitFileInfo>* files) {
   for (auto& f: split_files_) {
-    /*fprintf(stdout, "GetSplitFiles meta smallest : %s\n", f.metadata->smallest.DebugString(false).c_str());
-    fprintf(stdout, "GetSplitFiles meta largest : %s\n", f.metadata->largest.DebugString(false).c_str());
-    fprintf(stdout, "GetSplitFiles cfd name : %s\n", f.cfd->GetName().c_str());*/
     files->push_back(std::move(f));
+    f.DeleteInfo();
   }
   split_files_.clear();
 }
 
 void VersionSet::AddSplitFile(FileMetaData* meta, ColumnFamilyData* cfd) {
-  FileMetaData* f = new FileMetaData;
-  f->fd = meta->fd;
-  f->smallest = meta->smallest;
-  f->largest = meta->largest;
-  f->fd.smallest_seqno = meta->fd.smallest_seqno;
-  f->fd.largest_seqno = meta->fd.largest_seqno;
-  f->compensated_file_size = meta->compensated_file_size;
-  f->refs = meta->refs;
-  
-  split_files_.push_back(SplitFileInfo(f, cfd));
+  split_files_.push_back(SplitFileInfo(std::move(meta), cfd));
 }
 
 void VersionSet::GetObsoleteFiles(std::vector<ObsoleteFileInfo>* files,
