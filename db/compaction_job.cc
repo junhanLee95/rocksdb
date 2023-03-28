@@ -1352,24 +1352,24 @@ Status CompactionJob::FinishCompactionOutputFile(
 
     // JH: If db allows column family split,
     // Generate split request if necessary
-    float threshold = 0.6 - 0.1 * cfd->GetPartitionTreeNode()->GetDepth();
-    if ( db_options_.allow_column_family_split &&
-         efficiency < threshold && compact_->compaction->output_level() == 1) {
-      ROCKS_LOG_INFO(db_options_.info_log,
+    if (db_options_.allow_column_family_split) {
+      float threshold = 0.6 - 0.1 * cfd->GetPartitionTreeNode()->GetDepth();
+      if (efficiency < threshold && compact_->compaction->output_level() == 1) {
+        ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Split table #%" PRIu64 " with range [%s,%s]",
                     cfd->GetName().c_str(), job_id_, output_number,
                     meta->smallest.DebugString(false).c_str(),
                     meta->largest.DebugString(false).c_str());
-      ROCKS_LOG_INFO(db_options_.info_log, "cfd(%s) efficiency : %f, threshold : %f", cfd->GetName().c_str(),
+        ROCKS_LOG_INFO(db_options_.info_log, "cfd(%s) efficiency : %f, threshold : %f", cfd->GetName().c_str(),
                     efficiency, threshold);
-      versions_->AddSplitFile(meta, cfd);
+        versions_->AddSplitFile(meta, cfd);
       //fprintf(stdout, "meta smallest : %s\n", meta->smallest.DebugString(false).c_str());
       //fprintf(stdout, "meta largest : %s\n", meta->largest.DebugString(false).c_str());
       /*
       auto vstorage = cfd->current()->storage_info();
       vstorage->AddToFilesMarkedForSplit(meta);*/
+      }
     }
-
   }
   std::string fname;
   FileDescriptor output_fd;

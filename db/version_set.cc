@@ -3553,16 +3553,18 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
       builders.insert(std::make_pair(
           edit.column_family_, std::unique_ptr<BaseReferencedVersionBuilder>(
                                    new BaseReferencedVersionBuilder(cfd))));
-      if (info->split_requested) {
+      if (info != nullptr && info->split_requested) {
         assert(info->parent != nullptr); 
         info->children.push_back(cfd);
       }
     }
   } else if (edit.is_column_family_split_) {
     uint32_t parent_id = edit.column_family_;
-    info->split_requested = true;
-    info->parent = column_family_set_->GetColumnFamily(parent_id);
-    assert(info->parent != nullptr);
+    if (info != nullptr) {
+      info->split_requested = true;
+      info->parent = column_family_set_->GetColumnFamily(parent_id);
+      assert(info->parent != nullptr);  
+    }
   } else if (edit.is_column_family_drop_) {
     if (cf_in_builders) {
       auto builder = builders.find(edit.column_family_);
