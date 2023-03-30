@@ -4728,15 +4728,50 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 }
 
 void VersionSet::GetSplitFiles(std::vector<SplitFileInfo>* files) {
-  for (auto& f: split_files_) {
+  /*for (auto& f: split_files_) {
+    ROCKS_LOG_INFO(db_options_->info_log,
+                     "GetSplitFile cfd[%s], meta[%ld]R[%s, %s]",
+                     f.cfd->GetName().c_str(), f.metadata->fd.GetNumber(),
+                     f.metadata->smallest.user_key().ToString(false).c_str(),
+                     f.metadata->largest.user_key().ToString(false).c_str()
+                     );
+
     files->push_back(std::move(f));
-    f.DeleteInfo();
+  }*/
+  files->reserve(split_files_.size());
+  files->insert(files->end(), std::make_move_iterator(split_files_.begin()), std::make_move_iterator(split_files_.end()));
+  for (auto& f: *files) {
+    ROCKS_LOG_INFO(db_options_->info_log,
+                     "GetSplitFile cfd[%s], meta[%ld]R[%s, %s]",
+                     f.cfd->GetName().c_str(), f.metadata->fd.GetNumber(),
+                     f.metadata->smallest.user_key().ToString(false).c_str(),
+                     f.metadata->largest.user_key().ToString(false).c_str()
+                     );
   }
+
   split_files_.clear();
 }
 
 void VersionSet::AddSplitFile(FileMetaData* meta, ColumnFamilyData* cfd) {
-  split_files_.push_back(SplitFileInfo(std::move(meta), cfd));
+  ROCKS_LOG_INFO(db_options_->info_log,
+                     "AddSplitFile cfd[%s], meta[%ld]R[%s, %s]",
+                     cfd->GetName().c_str(), meta->fd.GetNumber(),
+                     meta->smallest.user_key().ToString(false).c_str(),
+                     meta->largest.user_key().ToString(false).c_str()
+                     );
+
+  FileMetaData* f = new FileMetaData;
+  f->fd = meta->fd;
+  f->smallest = InternalKey(meta->smallest.user_key(), meta->fd.smallest_seqno, kTypeValue);
+  f->largest = InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
+
+  split_files_.push_back(SplitFileInfo(f, cfd));
+  ROCKS_LOG_INFO(db_options_->info_log,
+                     "AddSplitFile cfd[%s], meta[%ld]R[%s, %s]",
+                     cfd->GetName().c_str(), split_files_.back().metadata->fd.GetNumber(),
+                      split_files_.back().metadata->smallest.user_key().ToString(false).c_str(),
+                      split_files_.back().metadata->largest.user_key().ToString(false).c_str()
+                     );
 }
 
 void VersionSet::GetObsoleteFiles(std::vector<ObsoleteFileInfo>* files,

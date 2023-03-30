@@ -385,25 +385,32 @@ Status DBImpl::AtomicFlushMemTablesToOutputFiles(
     Status error_status;
     for (const auto& e : exec_status) {
       if (!e.second.ok()) {
+        //fprintf(stdout, "FlushJob : not ok\n");
         s = e.second;
         if (!e.second.IsShutdownInProgress()) {
           // If a flush job did not return OK, and the CF is not dropped, and
           // the DB is not shutting down, then we have to return this result to
           // caller later.
+          //fprintf(stdout, "FlushJob : not shutdown\n");
           error_status = e.second;
         }
-      }
+      }/* else {
+        fprintf(stdout, "FlushJob : ok\n");
+      }*/
     }
 
     s = error_status.ok() ? s : error_status;
   }
+  //fprintf(stdout, "FlushJob : ok? %d\n", s.ok());
+  //fprintf(stdout, "FlushJob : shutdown? %d\n", s.IsShutdownInProgress());
 
   if (s.ok() || s.IsShutdownInProgress()) {
     // Sync on all distinct output directories.
     for (auto dir : distinct_output_dirs) {
       if (dir != nullptr) {
-        s = dir->Fsync();
-        if (!s.ok()) {
+        Status error_status = dir->Fsync();
+        if (!error_status.ok()) {
+          s = error_status;
           break;
         }
       }
@@ -461,7 +468,7 @@ Status DBImpl::AtomicFlushMemTablesToOutputFiles(
         mems_list.emplace_back(&mems);
         mutable_cf_options_list.emplace_back(&all_mutable_cf_options[i]);
         tmp_file_meta.emplace_back(&file_meta[i]);
-        fprintf(stdout, "After atomic flush cf[%d] -> %" PRIu64 "\n", i, file_meta[i].fd.GetNumber());
+        //fprintf(stdout, "After atomic flush cf[%d] -> %" PRIu64 "\n", i, file_meta[i].fd.GetNumber());
       }
     }
 
@@ -2280,6 +2287,10 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
         arg.cfd_ = nullptr;
       }
     }
+  } else {
+    ROCKS_LOG_BUFFER(
+          log_buffer,
+          "BackgroundFlush: Flush Requests are now empty");
   }
   return status;
 }

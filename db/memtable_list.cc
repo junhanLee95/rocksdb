@@ -635,7 +635,7 @@ Status InstallMemtableAtomicFlushResults(
       assert(i == 0 || (*mems_list[k])[i]->GetEdits()->NumEntries() == 0);
       (*mems_list[k])[i]->SetFlushCompleted(true);
       (*mems_list[k])[i]->SetFileNumber(file_metas[k]->fd.GetNumber());
-      fprintf(stdout, "MT %" PRIu64 "  Set File Number : %" PRIu64 " \n",(*mems_list[k])[i]->GetID(), file_metas[k]->fd.GetNumber());
+      //fprintf(stdout, "MT %" PRIu64 "  Set File Number : %" PRIu64 " \n",(*mems_list[k])[i]->GetID(), file_metas[k]->fd.GetNumber());
     }
   }
 
@@ -671,13 +671,18 @@ Status InstallMemtableAtomicFlushResults(
   }
 
   if (s.ok() || s.IsShutdownInProgress()) {
+    /*if (s.IsShutdownInProgress()) {
+      fprintf(stdout, "Shutdown in progress\n");
+    }*/
     for (size_t i = 0; i != cfds.size(); ++i) {
       if (cfds[i]->IsDropped()) {
+        //fprintf(stdout, "InstallMemtable - cfd[%s] is dropped\n", cfds[i]->GetName().c_str());
         continue;
       }
+      //fprintf(stdout, "InstallMemtable - cfd[%s] is alive\n", cfds[i]->GetName().c_str());
       auto* imm = (imm_lists == nullptr) ? cfds[i]->imm() : imm_lists->at(i);
       for (auto m : *mems_list[i]) {
-        fprintf(stdout, "MT %" PRIu64 "  Verify File Number : %" PRIu64 " \n", m->GetID(), m->GetFileNumber());
+        //fprintf(stdout, "MT %" PRIu64 "  Verify File Number : %" PRIu64 " \n", m->GetID(), m->GetFileNumber());
         assert(!m->IsSplitInProgress());
         assert(m->GetFileNumber() > 0);
         uint64_t mem_id = m->GetID();

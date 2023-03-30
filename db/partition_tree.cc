@@ -23,7 +23,7 @@ PartitionTreeNode::PartitionTreeNode (
 
 PartitionTreeNode::~PartitionTreeNode() {
   // IMPLEMENT THIS
-  fprintf(stdout, "[PartitionTreeNode] delete partition tree node\n");
+  //fprintf(stdout, "[PartitionTreeNode] delete partition tree node\n");
   for (auto& n: lower_level_nodes_) {
     delete n;
   }
@@ -101,7 +101,7 @@ PartitionTree::PartitionTree(
 }
 
 PartitionTree::~PartitionTree() {
-  fprintf(stdout, "[PartitionTree] delete partition tree node\n");
+  //fprintf(stdout, "[PartitionTree] delete partition tree node\n");
   delete root_;
   partition_nodes_.clear();
 }

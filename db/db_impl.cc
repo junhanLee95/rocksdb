@@ -429,6 +429,7 @@ void DBImpl::WaitForBackgroundWork() {
                  "WaitForBackgroundWork : flu : %d", bg_flush_scheduled_);
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "WaitForBackgroundWork : sp : %d", bg_split_scheduled_);
+    LogFlush(immutable_db_options_.info_log);
 
     bg_cv_.Wait();
   }
@@ -516,6 +517,12 @@ Status DBImpl::CloseHelper() {
          bg_flush_scheduled_ || bg_purge_scheduled_ ||
          pending_purge_obsolete_files_ ||
          error_handler_.IsRecoveryInProgress()) {
+    /*fprintf(stdout, "bg_bottom_compaction_scheduled ? %d\n", bg_bottom_compaction_scheduled_);
+    fprintf(stdout, "bg_compaction_scheduled ? %d\n", bg_compaction_scheduled_);
+    fprintf(stdout, "bg_flush_scheduled ? %d\n", bg_flush_scheduled_);
+    fprintf(stdout, "bg_purge_scheduled ? %d\n", bg_purge_scheduled_);
+    fprintf(stdout, "pending_purge_obsolete_files_ ? %d\n", pending_purge_obsolete_files_);
+    fprintf(stdout, "recovery ? %d\n", error_handler_.IsRecoveryInProgress());*/
     TEST_SYNC_POINT("DBImpl::~DBImpl:WaitJob");
     bg_cv_.Wait();
   }

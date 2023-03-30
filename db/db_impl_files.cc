@@ -47,12 +47,26 @@ void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
 }
 
 Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_split_files) {
+
   assert(!sst_split_files.empty());
   Status s;
   Status persistent_options_status;
   ColumnFamilyData* cfd = sst_split_files[0].cfd;
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
   size_t split_cnt = sst_split_files.size();
+
+
+  std::string meta_str = "";
+  for(size_t i=0; i< split_cnt; i++) {
+    meta_str += "#"+std::to_string(sst_split_files[i].metadata->fd.GetNumber())+
+               "R[" + sst_split_files[i].metadata->smallest.user_key().ToString(false) + ", " +
+                      sst_split_files[i].metadata->largest.user_key().ToString(false) + "] , ";
+  }
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, 
+      "SplitColumnFamilyFromSstFiles: start cf [%s], meta : %s",
+      cfd->GetName().c_str(), meta_str.c_str());
+  LogFlush(immutable_db_options_.info_log);
+
   // fprintf(stdout, "split_cnt : %ld\n", split_cnt);
   s = CheckCompressionSupported(cf_options);
   if (s.ok() && immutable_db_options_.allow_concurrent_memtable_write) {
@@ -191,6 +205,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
 	  } // InstrumentedMutexLock l(&mutex_)
   }
+  LogFlush(immutable_db_options_.info_log);
 
   // Clean SuperVersionContext
   for (auto& sv: superversion_contexts) {
@@ -214,18 +229,18 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     if (!cfd->mem()->IsEmpty()) {
       cfd->Ref();
       s = SwitchMemtable(cfd, &context);
-      s = SplitMemtables(cfd);
+      //s = SplitMemtables(cfd);
       cfd->Unref();
     }
     //fprintf(stdout, "Split mt\n");
-    /*
+    
     if (s.ok()) {
       cfd->Ref();
       //fprintf(stdout, "Split mt(2)\n");
       s = SplitMemtables(cfd);
       //fprintf(stdout, "Split mt(3)\n");
       cfd->Unref();
-    } else */
+    } else 
     if (!s.ok()) {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
                  "SplitColumnFamilyFromSstFiles: Switching Memtable of cf [%s] (ID %u) FAILED -- %s",
@@ -278,6 +293,9 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
         AssignAtomicFlushSeq(column_family_datas);
         FlushRequest flush_req;
+        for (auto c: column_family_datas) {
+          c->imm()->FlushRequested(); 
+        }
         GenerateFlushRequest(column_family_datas, &flush_req);
         SchedulePendingFlush(flush_req, FlushReason::kSplitMemtable);
         MaybeScheduleFlushOrCompaction();  
@@ -303,11 +321,13 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
   for (auto& sst_split_file: sst_split_files) {
     FileMetaData* meta = sst_split_file.metadata;
     meta->marked_for_split = true;
-    //sst_split_file.DeleteInfo(); // free info
   }
   //fprintf(stdout, "Split sst(2)\n");
   vstorage->ComputeFilesMarkedForSplit();
   SchedulePendingSplit(cfd);
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, 
+      "SplitColumnFamilyFromSstFiles: finish cf [%s]",
+      cfd->GetName().c_str());
   return Status::OK();
 }
 

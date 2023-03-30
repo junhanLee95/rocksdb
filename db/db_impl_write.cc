@@ -1476,7 +1476,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
   mutex_.AssertHeld();
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "SplitMemtables: [%s] start", from_cfd->GetName().c_str());
-  
+  LogFlush(immutable_db_options_.info_log);
   // set from_cfd imms to be splitted.
   // these will be removed after be splitted, by calling ClearSplittedMemtables
   from_cfd->imm()->SetSplitInProgress();
@@ -1487,6 +1487,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
 
   for (size_t from = 0; from < from_imm_size; from++) {
     MemTable* from_imm = from_cfd->imm()->GetMemTableFromList(from);
+    assert(from_imm != nullptr);
     assert(from_imm->IsSplitInProgress() || from_imm->IsFlushInProgress());
     if (from_imm->IsFlushInProgress()) {
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -1496,9 +1497,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
     }
     
     auto factory = std::make_shared<SkipListFactory>();
-    ReadOptions ro;
-    Arena arena;
-    ro.total_order_seek = true;
+    
     Options options;
     options.memtable_factory = factory;
     ImmutableCFOptions ioptions(options);
@@ -1516,11 +1515,12 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
       // contexts
       contexts.push_back(new WriteContext());
       // memtables
-      WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
       if (to != to_size) { // imm for children nodes
         //fprintf(stdout, "to : %ld, cf id : %u\n", to, children_nodes[to]->cfd_->GetID());
-        MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
-                                     kMaxSequenceNumber, children_nodes[to]->cfd_->GetID());
+        MemTable* mem = children_nodes[to]->cfd_->ConstructNewMemtable(MutableCFOptions(options), kMaxSequenceNumber);
+        /*MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options),
+                                     //wb,
+                                     kMaxSequenceNumber, children_nodes[to]->cfd_->GetID());*/
         children_nodes[to]->cfd_->SetImmMemtable(mem);
         //fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
         new_mems.push_back(mem);
@@ -1528,8 +1528,10 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
         mem->Ref();  
       } else { // imm for from_cfd
         //fprintf(stdout, "to : %ld, cf id : %u\n", to, from_cfd->GetID());
-        MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
-                                     kMaxSequenceNumber, from_cfd->GetID());
+        MemTable* mem = from_cfd->ConstructNewMemtable(MutableCFOptions(options), kMaxSequenceNumber);
+        /*MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options),
+                                     //wb,
+                                     kMaxSequenceNumber, from_cfd->GetID());*/
         from_cfd->SetImmMemtable(mem);
         //fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
         new_mems.push_back(mem);
@@ -1537,92 +1539,97 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
         mem->Ref();         
       }
 
-      delete wb;
     }
 
     assert(new_mems.size() == to_size + 1); // number of children nodes (to_size) + parent node (1)
-
-    std::unique_ptr<InternalIterator> mem_iter(from_imm->NewIterator(ro, &arena));
-
-    to = 0; // index of children nodes that includes the key of the memtable
-    for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
-      Slice key = mem_iter->key();
-      Slice value = mem_iter->value();
-      ParsedInternalKey ikey;
-
-      if (!ParseInternalKey(key, &ikey)) {
-        ROCKS_LOG_ERROR(immutable_db_options_.info_log,
-                "SplitMemtables: [%s] parse error - internal key : %s",
-                from_cfd->GetName().c_str(),
-                key.ToString(true).c_str());
-        continue;
-      }
-
-      Slice user_key = ikey.user_key;
-      ValueType type = ikey.type;
-      SequenceNumber sequence = ikey.sequence;
-
-      // select memtable index to put the item
-      std::string user_key_str = user_key.ToString();
-      size_t select = to_size; // where to put. from_cfd for the default
-      while (to < to_size) {
-        std::string smallest_to = children_nodes[to]->cfd_->GetSmallestKey();
-        std::string largest_to = children_nodes[to]->cfd_->GetLargestKey();       
-        if (user_key_str.compare(smallest_to) < 0) {
-          // user key is within parent's key range, not children nodes
-          break;
-        }
-        else if (user_key_str.compare(smallest_to) >= 0 &&
-                 user_key_str.compare(largest_to) <= 0) {
-          // user key is within child's key range
-          select = to;
-          break; 
-        } else {
-          // user key is larger than child's largest
-          // increment the index
-          to ++;
-        }
-      }
+    {
+      Arena arena;
+      ScopedArenaIterator arena_iter_guard;
+      InternalIterator* mem_iter;
       
-      /*if (select == to_size) { // put to parent
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                      "SplitMemtables: %s(seq-%" PRIu64 " ) goes to cf[%u]-%s\n",
-                      user_key_str.c_str(), sequence, from_cfd->GetID(),
-                      from_cfd->GetName().c_str());       
-      } else { // put to children
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                      "SplitMemtables: %s(seq-%" PRIu64 " ) goes to cf[%u]-%s\n",
-                      user_key_str.c_str(), sequence, children_nodes[select]->cfd_->GetID(),
-                      children_nodes[select]->cfd_->GetName().c_str());  
-      }
-      LogFlush(immutable_db_options_.info_log);*/
+      mem_iter = from_imm->NewIterator(ReadOptions(), &arena);
+      arena_iter_guard.set(mem_iter);
+      assert(mem_iter != nullptr);
+      to = 0; // index of children nodes that includes the key of the memtable
+      for (mem_iter->SeekToFirst(); mem_iter->Valid(); mem_iter->Next()) {
+        Slice key = mem_iter->key();
+        Slice value = mem_iter->value();
+        ParsedInternalKey ikey;
 
-      switch (type) {
-        case kTypeValue:
-        case kTypeMerge:
-        {
-          new_mems[select]->Add(sequence/*seqs[select]++*/, type, user_key, value);
-          break;
-        }
-        case kTypeDeletion:
-        case kTypeSingleDeletion:
-        {
-          new_mems[select]->Add(sequence/*seqs[select]++*/, type, user_key, Slice(""));
-          break;
-        }
-        default: {
+        if (!ParseInternalKey(key, &ikey)) {
           ROCKS_LOG_ERROR(immutable_db_options_.info_log,
-                "SplitMemtables: [%s] invalid type %d\n",
-                from_cfd->GetName().c_str(),
-                type);
+              "SplitMemtables: [%s] parse error - internal key : %s",
+              from_cfd->GetName().c_str(),
+              key.ToString(true).c_str());
+          continue;
+        }
+
+        Slice user_key = ikey.user_key;
+        ValueType type = ikey.type;
+        SequenceNumber sequence = ikey.sequence;
+
+        // select memtable index to put the item
+        std::string user_key_str = user_key.ToString();
+        size_t select = to_size; // where to put. from_cfd for the default
+        while (to < to_size) {
+          std::string smallest_to = children_nodes[to]->cfd_->GetSmallestKey();
+          std::string largest_to = children_nodes[to]->cfd_->GetLargestKey();       
+          if (user_key_str.compare(smallest_to) < 0) {
+            // user key is within parent's key range, not children nodes
+            break;
+          }
+          else if (user_key_str.compare(smallest_to) >= 0 &&
+              user_key_str.compare(largest_to) <= 0) {
+            // user key is within child's key range
+            select = to;
+            break; 
+          } else {
+            // user key is larger than child's largest
+            // increment the index
+            to ++;
+          }
+        }
+
+        /*if (select == to_size) { // put to parent
+          ROCKS_LOG_INFO(immutable_db_options_.info_log,
+          "SplitMemtables: %s(seq-%" PRIu64 " ) goes to cf[%u]-%s\n",
+          user_key_str.c_str(), sequence, from_cfd->GetID(),
+          from_cfd->GetName().c_str());       
+          } else { // put to children
+          ROCKS_LOG_INFO(immutable_db_options_.info_log,
+          "SplitMemtables: %s(seq-%" PRIu64 " ) goes to cf[%u]-%s\n",
+          user_key_str.c_str(), sequence, children_nodes[select]->cfd_->GetID(),
+          children_nodes[select]->cfd_->GetName().c_str());  
+          }
+          LogFlush(immutable_db_options_.info_log);*/
+
+        switch (type) {
+          case kTypeValue:
+          case kTypeMerge:
+            {
+              new_mems[select]->Add(sequence/*seqs[select]++*/, type, user_key, value);
+              break;
+            }
+          case kTypeDeletion:
+          case kTypeSingleDeletion:
+            {
+              new_mems[select]->Add(sequence/*seqs[select]++*/, type, user_key, Slice(""));
+              break;
+            }
+          default: {
+                     ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                         "SplitMemtables: [%s] invalid type %d\n",
+                         from_cfd->GetName().c_str(),
+                         type);
+                   }
         }
       }
     }
 
     // delete existing imms in from_cfd
     from_cfd->imm()->ClearSplittedMemtables(immutable_db_options_.info_log,
-                                            &contexts[to_size]->memtables_to_free_,
-                                            from_imm->GetID());
+        &contexts[to_size]->memtables_to_free_,
+        from_imm->GetID());
 
     // add new_mems to target cfds
     for (to = 0; to < to_size + 1; to++) {
@@ -1631,12 +1638,13 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
 
         ColumnFamilyData* cfd = (to == to_size) ? from_cfd : children_nodes[to]->cfd_;
         cfd->imm()->Add(new_mems[to], &contexts[to]->memtables_to_free_);
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                 "[%s -> %s] SplitMemtables: New memtable created with num_entries: %" PRIu64
-                 ", log file: #%" PRIu64
+        ROCKS_LOG_INFO(immutable_db_options_.info_log, \
+                 "[%s -> %s] SplitMemtables: New memtable(id : %ld) created with num_entries: %" PRIu64 \
+                 ", log file: #%" PRIu64 \
                  ". Immutable memtables: %d.\n",
                  from_cfd->GetName().c_str(),
                  cfd->GetName().c_str(),
+                 new_mems[to]->GetID(),
                  new_mems[to]->num_entries(),
                  logfile_number_, cfd->imm()->NumNotFlushed());
         InstallSuperVersionAndScheduleWork(cfd, &contexts[to]->superversion_context,

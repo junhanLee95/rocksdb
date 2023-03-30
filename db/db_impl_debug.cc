@@ -140,7 +140,7 @@ Status DBImpl::TEST_WaitForSplit(void) {
   // OR flush to finish.
 
   InstrumentedMutexLock l(&mutex_);
-  while ((bg_split_scheduled_) &&
+  while (bg_split_scheduled_  &&
          (error_handler_.GetBGError() == Status::OK())) {
     bg_cv_.Wait();
   }

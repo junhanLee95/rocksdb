@@ -212,9 +212,14 @@ struct JobContext {
       delete l;
     }
 
+    for (size_t i=0; i<sst_split_files.size(); i++) {
+      sst_split_files[i].DeleteInfo(); 
+    }
+
     memtables_to_free.clear();
     logs_to_free.clear();
     job_snapshot.reset();
+    sst_split_files.clear();
   }
 
   ~JobContext() {

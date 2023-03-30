@@ -123,6 +123,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
 }
 
 MemTable::~MemTable() {
+  //fprintf(stdout, "delete memtable(id:%ld)\n", id_);
   mem_tracker_.FreeMem();
   assert(refs_ == 0);
 }

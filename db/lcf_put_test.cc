@@ -36,6 +36,8 @@ class LCFPutTest : public testing::Test {
 TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   Options options;
   options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =3;
   options.allow_column_family_split = true;
   options.atomic_flush = true;
 
@@ -77,9 +79,11 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
   f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f1, cfd));
+
+  fprintf(stdout, "[LCFPutTest] First Split Start (1/3)\n");
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
-  dbfull(db)->TEST_WaitForSplit();
-  sleep(5); 
+  fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
   ColumnFamilyData* cfd1 = cfd->GetColumnFamilySet()->GetColumnFamily(1);
   infos.clear();
 
@@ -98,9 +102,10 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
   f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f2, cfd1));
+  fprintf(stdout, "[LCFPutTest] Second Split Start (2/3)\n");
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
-  dbfull(db)->TEST_WaitForSplit();
-  sleep(5); 
+  fprintf(stdout, "[LCFPutTest] Second Split Finish (2/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
 
   for(int i = 0; i < numItem; i++) {
     db->Get(ReadOptions(), keys[i], &res);
@@ -117,9 +122,10 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   f3->smallest = InternalKey(Slice(s3), 0, kTypeValue);
   f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f3, cfd));
+  fprintf(stdout, "[LCFPutTest] Third Split Start (3/3)\n");
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
-  dbfull(db)->TEST_WaitForSplit();
-  sleep(5); 
+  fprintf(stdout, "[LCFPutTest] Third Split Finish (3/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
   infos.clear();
 
   for(int i = 0; i < numItem; i++) {
@@ -135,6 +141,8 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   values1.clear();
   values2.clear();
   values3.clear();
+  fprintf(stdout, "[LCFPutTest] now shutdown db\n");
+  //sleep(5);
   delete db;
   db = nullptr;
 }
@@ -183,7 +191,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
   f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f1, cfd));
+  fprintf(stdout, "[LCFPutTest] First Split Start (1/3)\n");
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
   dbfull(db)->TEST_WaitForSplit();
   sleep(5); 
   ColumnFamilyData* cfd1 = cfd->GetColumnFamilySet()->GetColumnFamily(1);
@@ -204,7 +214,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
   f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f2, cfd1));
+  fprintf(stdout, "[LCFPutTest] Second Split Start (2/3)\n");
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFPutTest] Second Split Finish (2/3)\n");
   dbfull(db)->TEST_WaitForSplit();
   sleep(5); 
 
@@ -223,7 +235,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   f3->smallest = InternalKey(Slice(s3), 0, kTypeValue);
   f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f3, cfd));
+  fprintf(stdout, "[LCFPutTest] Third Split Start (3/3)\n");
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFPutTest] Third Split Finish (3/3)\n");
   dbfull(db)->TEST_WaitForSplit();
   sleep(5); 
   infos.clear();
@@ -241,6 +255,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   values1.clear();
   values2.clear();
   values3.clear();
+  fprintf(stdout, "[LCFPutTest] now shutdown db\n");
   delete db;
 }
 

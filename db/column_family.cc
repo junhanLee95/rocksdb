@@ -1836,9 +1836,9 @@ void ColumnFamilySet::AddKeyRangeIfNecessary(std::string r1, std::string r2,
                                              size_t* split_cnt,
                                              std::string prefix_key
                                              ) {
-  fprintf(stdout, "prefix_key : %s\n", prefix_key.c_str());
-  fprintf(stdout, "r1 : %s\n", r1.c_str());
-  fprintf(stdout, "r2 : %s\n", r2.c_str());
+  //fprintf(stdout, "prefix_key : %s\n", prefix_key.c_str());
+  //fprintf(stdout, "r1 : %s\n", r1.c_str());
+  //fprintf(stdout, "r2 : %s\n", r2.c_str());
   size_t psize = prefix_key.size();
   long n1 = stol(r1.substr(psize, r1.size() - psize));
   long n2 = stol(r2.substr(psize, r2.size() - psize));
