@@ -579,6 +579,7 @@ Status CompactionJob::Run() {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_RUN);
   TEST_SYNC_POINT("CompactionJob::Run():Start");
+
   log_buffer_->FlushBufferToLog();
   LogCompaction();
 
@@ -709,7 +710,6 @@ Status CompactionJob::Run() {
   RecordCompactionIOStats();
   LogFlush(db_options_.info_log);
   TEST_SYNC_POINT("CompactionJob::Run():End");
-
   compact_->status = status;
   return status;
 }

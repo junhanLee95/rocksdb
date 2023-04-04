@@ -312,19 +312,24 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
                  (unsigned) cfd->GetID(),
                  s.ToString().c_str());
     }
+    // now we prepare sst split
+    auto vstorage = cfd->current()->storage_info();
+    /*for (auto& sst_split_file: sst_split_files) {
+      FileMetaData* meta = sst_split_file.metadata;
+      Slice smallest = meta->smallest.user_key();
+      Slice largest = meta->largest.user_key();
+    //meta->marked_for_split = true;
+    }*/
+
+    //fprintf(stdout, "Split sst(2)\n");
+    vstorage->ComputeFilesMarkedForSplit(sst_split_files);
+    SchedulePendingSplit(cfd);
+    MaybeScheduleFlushOrCompaction();  
   } // InstrumentedMutexLock l(&mutex_)
   PrintLogicalColumnFamily();
   //fprintf(stdout, "Split sst\n");
 
-  // now we prepare sst split
-  auto vstorage = cfd->current()->storage_info();
-  for (auto& sst_split_file: sst_split_files) {
-    FileMetaData* meta = sst_split_file.metadata;
-    meta->marked_for_split = true;
-  }
-  //fprintf(stdout, "Split sst(2)\n");
-  vstorage->ComputeFilesMarkedForSplit();
-  SchedulePendingSplit(cfd);
+
   ROCKS_LOG_INFO(immutable_db_options_.info_log, 
       "SplitColumnFamilyFromSstFiles: finish cf [%s]",
       cfd->GetName().c_str());

@@ -1593,8 +1593,20 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
   std::vector<FileMetaData*> std_metas;
   for (auto& meta: metas) {
     std_metas.push_back(meta);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GenerateSplitRequest : cfd(%s) R[%s, %s]",
+                   cfd->GetName().c_str(),
+                   meta->smallest.DebugString(false).c_str(),
+                   meta->largest.DebugString(false).c_str());
+
     //fprintf(stdout,"GenerateSplitReq: push meta s: %s\n", meta->smallest.DebugString(false).c_str());
     //fprintf(stdout,"GenerateSplitReq: push meta l: %s\n", meta->largest.DebugString(false).c_str());
+  }
+  if (std_metas.empty()) {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "GenerateSplitRequest : no request cfd(%s)",
+                   cfd->GetName().c_str()
+                   );
   }
   req->emplace_back(cfd, std_metas);
 
@@ -2049,7 +2061,10 @@ void DBImpl::AddToSplitQueue(SplitRequest& req) {
   auto cfd = req.front().first;
   assert(!cfd->queued_for_split());
   cfd->Ref();
-  //fprintf(stdout,"AddToSplitQueue add\n");
+  ROCKS_LOG_INFO(
+      immutable_db_options_.info_log, "AddToSplitQueue: cf [%s]", cfd->GetName().c_str());
+  LogFlush(immutable_db_options_.info_log);
+
   split_queue_.push_back(req);
   cfd->set_queued_for_split(true);
 }
@@ -2125,7 +2140,7 @@ void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
     //fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
     SplitRequest split_req;
     GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
-    assert(cfd->current()->storage_info()->FilesMarkedForSplit().empty());
+    //assert(cfd->current()->storage_info()->FilesMarkedForSplit().empty());
     assert(!split_req.empty());
 
     AddToSplitQueue(split_req);
@@ -2288,8 +2303,8 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
       }
     }
   } else {
-    ROCKS_LOG_BUFFER(
-          log_buffer,
+    ROCKS_LOG_INFO(
+          immutable_db_options_.info_log,
           "BackgroundFlush: Flush Requests are now empty");
   }
   return status;

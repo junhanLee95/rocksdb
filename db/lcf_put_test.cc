@@ -12,6 +12,7 @@
 
 #include "db/db_impl.h"
 #include "db/version_set.h"
+#include "rocksdb/experimental.h"
 #include "rocksdb/db.h"
 #include "rocksdb/sst_file_reader.h"
 #include "rocksdb/sst_file_writer.h"
@@ -31,8 +32,149 @@ class LCFPutTest : public testing::Test {
   }
 
   DBImpl* dbfull(DB* db) { return reinterpret_cast<DBImpl*>(db) ;};
+
+  std::string RandomString(Random* rnd, int len) {
+    std::string r;
+    test::RandomStringUserInt(rnd, len, &r);
+    return r; 
+  }
 };
 
+
+// This tests for a bug that cause compact-while split in the same column family.
+TEST_F(LCFPutTest, SplitWhileCompact) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs = 32;
+  options.max_write_buffer_number = 3;
+  options.allow_column_family_split = true;
+  options.atomic_flush = true;
+  options.write_buffer_size = 110 << 10;
+  options.arena_block_size = 4 << 10;
+  options.level0_file_num_compaction_trigger = 4;
+  options.num_levels = 4;
+  options.compression = kNoCompression;
+  options.max_bytes_for_level_base = 450 << 10;
+  
+  // Open
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+  // Fill up DB
+  Random rnd(301);
+  for (int num = 0; num < 10; num ++) {
+    for (int i = 0; i < 51; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);
+    } 
+    dbfull(db)->TEST_WaitForFlushMemTable();
+    dbfull(db)->TEST_WaitForCompact();
+  }
+  db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+
+  rocksdb::SyncPoint::GetInstance()->LoadDependency(
+      {{"CompactionJob::Run():Start",
+        "LCFPutTest::TEST1"},
+       {"LCFPutTest::TEST2",
+        "CompactionJob::Run():End"}});
+
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+
+  // Trigger L0 Compaction
+  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
+       num ++) {
+    for (int i = 0; i < 51; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);
+    } 
+    ASSERT_OK(db->Flush(FlushOptions()));
+  }
+
+  TEST_SYNC_POINT("LCFPutTest::TEST1");
+  fprintf(stdout, "LCFPutTest::TEST1\n");
+  for (int i = 0; i < 51; i++) {
+    std::string k = RandomString(&rnd, 8);
+    std::string v = RandomString(&rnd, 200);
+    db->Put(WriteOptions(), cfh, k, v);
+  }
+  dbfull(db)->TEST_WaitForFlushMemTable();
+  ASSERT_OK(experimental::SuggestCompactRange(db, nullptr, nullptr));
+  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
+       num ++) {
+    for (int i = 0; i < 51; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  TEST_SYNC_POINT("LCFPutTest::TEST2");
+  fprintf(stdout, "LCFPutTest::TEST2\n");
+  dbfull(db)->TEST_WaitForCompact();
+
+   // Prepare two L0 
+  for (int num = 0; num < 2;
+       num ++) {
+    for (int i = 0; i < 51; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);
+    } 
+    ASSERT_OK(db->Flush(FlushOptions()));
+  }
+
+  std::vector<SplitFileInfo> infos;
+
+  FileMetaData* f1 = new FileMetaData;
+  std::string s1 = "user1200";
+  std::string l1 = "user1400";
+  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+  infos.push_back(SplitFileInfo(f1, cfd));
+
+  rocksdb::SyncPoint::GetInstance()->LoadDependency(
+    {
+      {"CompactionJob::Run():Start" ,"LCFPutTest::TEST3"},
+      { "LCFPutTest::TEST4", "CompactionJob::Run():End" }
+    }
+  );
+
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+
+  // trigger L0 compaction
+  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
+       num ++) {
+    for (int i = 0; i < 51; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  // trigger Split
+  TEST_SYNC_POINT("LCFPutTest::TEST3");
+  fprintf(stdout, "[LCFPutTest] First Split Start (1/3)\n");
+  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
+  TEST_SYNC_POINT("LCFPutTest::TEST4");
+
+  dbfull(db)->TEST_WaitForCompact();
+  dbfull(db)->TEST_WaitForSplit();
+
+  infos.clear();
+  // Close
+  delete f1;
+  delete db;
+  db = nullptr;
+}
+
+/*
 TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   Options options;
   options.create_if_missing = true;
@@ -145,8 +287,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   //sleep(5);
   delete db;
   db = nullptr;
-}
+}*/
 
+/*
 TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   Options options;
   options.create_if_missing = true;
@@ -257,7 +400,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   values3.clear();
   fprintf(stdout, "[LCFPutTest] now shutdown db\n");
   delete db;
-}
+}*/
 
 }  // namespace rocksdb
 

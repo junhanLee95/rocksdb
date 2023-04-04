@@ -137,7 +137,7 @@ class VersionStorageInfo {
 
   // This computes files_marked_for_split_ and is called by
   // SplitColumnFamilyFromSstFiles()
-  void ComputeFilesMarkedForSplit();
+  void ComputeFilesMarkedForSplit(std::vector<SplitFileInfo>& sst_split_files);
 
   // This computes ttl_expired_files_ and is called by
   // ComputeCompactionScore()
@@ -284,7 +284,7 @@ class VersionStorageInfo {
     return level_files_brief_[level];
   }
 
-  Slice GetMedianKey(void);
+  Slice GetMedianKey(const ImmutableCFOptions& ioptions);
 
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
   const std::vector<int>& FilesByCompactionPri(int level) const {

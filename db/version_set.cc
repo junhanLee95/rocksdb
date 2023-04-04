@@ -1745,19 +1745,12 @@ void VersionStorageInfo::ComputeFilesMarkedForCompaction() {
   }
 }
 
-void VersionStorageInfo::ComputeFilesMarkedForSplit() {
+void VersionStorageInfo::ComputeFilesMarkedForSplit(std::vector<SplitFileInfo>& sst_split_files) {
   files_marked_for_split_.clear();
-  int last_qualify_level = 0;
-
-  // Do not include files from the last level with data
-  // If table properties collector suggests a file on the last level,
-  // we should not move it to a new level.
-  for (int level = num_levels() - 1; level >= 1; level--) {
-    if (!files_[level].empty()) {
-      last_qualify_level = level - 1;
-      break;
-    }
+  for (size_t i=0; i<sst_split_files.size(); i++) {
+    files_marked_for_split_.emplace_back(sst_split_files[i].metadata);
   }
+  /*int last_qualify_level = 0;
 
   for (int level = 0; level <= last_qualify_level; level++) {
     for (auto* f : files_[level]) {
@@ -1765,7 +1758,7 @@ void VersionStorageInfo::ComputeFilesMarkedForSplit() {
         files_marked_for_split_.emplace_back(f);
       }
     }
-  }
+  }*/
 }
 
 
@@ -2443,7 +2436,12 @@ uint64_t VersionStorageInfo::NumLevelBytes(int level) const {
   return TotalFileSize(files_[level]);
 }
 
-Slice VersionStorageInfo::GetMedianKey(void) {
+Slice VersionStorageInfo::GetMedianKey(const ImmutableCFOptions& ioptions) {
+  if (files_[base_level_].size() <= 1) {
+    ROCKS_LOG_WARN(ioptions.info_log,
+                   "No sufficient files_[base_level] to configure median key. Are you sure?");
+    return Slice();
+  }
   assert(files_[base_level_].size() > 1); // we suppose that the lsm tree exactly has level 1 and the number of sstables in level 1 is multiple.
   int ones_mid = files_[base_level_].size() / 2; 
   Slice med = files_[base_level_][ones_mid]->smallest.user_key();

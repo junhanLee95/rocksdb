@@ -292,7 +292,7 @@ struct SplitJob::SplitState {
   explicit SplitState(Compaction* c, std::vector<FileMetaData*> m)
       : compaction(c),
         metas(m),
-        median_key(c->column_family_data()->current()->storage_info()->GetMedianKey()),
+        median_key(c->column_family_data()->current()->storage_info()->GetMedianKey((*c->column_family_data()->ioptions()))),
         total_bytes(0),
         num_input_records(0),
         num_output_records(0) {}
@@ -925,12 +925,14 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
         break;
       }
       else {
-        /*ROCKS_LOG_INFO(
+        ROCKS_LOG_INFO(
           db_options_.info_log,
-          "SplitJob::ProcessKeyValueSplit child output_file_ended(%lu)",
-          sub_split->child_idx
+          "[JOB %d] SplitJob::ProcessKeyValueSplit %lu-th child[%s] output_file_ended",
+          job_id_, 
+          sub_split->child_idx,
+          sub_split->children_nodes[sub_split->child_idx]->cfd_->GetName().c_str()
         );
-        LogFlush(db_options_.info_log);*/
+        LogFlush(db_options_.info_log);
         // user key is larger than child's largest
         // finish the current child builder
         const Slice* next_key = nullptr;
@@ -952,8 +954,16 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
           if (!status.ok()) {
             break;
           }
+          assert(sub_split->child_builder != nullptr);
+        } else {
+          // no need to open file for split because children cfs to scan is now empty 
+          ROCKS_LOG_INFO(
+            db_options_.info_log,
+            "[JOB %d] SplitJob::ProcessKeyValueSplit %lu children scan is done",
+            job_id_,
+            children_cnt_
+          );
         }
-        assert(sub_split->child_builder != nullptr);
       }
     }
 
@@ -1011,7 +1021,8 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       output_file_ended = true;
       ROCKS_LOG_INFO(
           db_options_.info_log,
-          "SplitJob::ProcessKeyValueSplit output_file_ended(1)"
+          "[JOB %d] SplitJob::ProcessKeyValueSplit output_file_ended(1)",
+          job_id_
       );
       LogFlush(db_options_.info_log);
     }
@@ -1030,8 +1041,8 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       output_file_ended = true;
       ROCKS_LOG_INFO(
           db_options_.info_log,
-          "SplitJob::ProcessKeyValueSplit output_file_ended(2)"
-      );
+          "[JOB %d] SplitJob::ProcessKeyValueSplit output_file_ended(2)",
+          job_id_);
       LogFlush(db_options_.info_log);
     }
 
@@ -1048,7 +1059,8 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
                         &sub_split->split_job_stats);
       ROCKS_LOG_INFO(
         db_options_.info_log,
-        "SplitJob::ProcessKeyValueSplit finish output file"
+        "[JOB %d] SplitJob::ProcessKeyValueSplit finish output file",
+        job_id_
       );
       LogFlush(db_options_.info_log);
     }
@@ -1195,22 +1207,32 @@ Status SplitJob::FinishSplitOutputFile(
     assert(sub_split->child_current_output() != nullptr);
     output_number = sub_split->child_current_output()->meta.fd.GetNumber();
     cfd = sub_split->children_nodes[sub_split->child_idx]->cfd_;
+    ROCKS_LOG_INFO(
+      db_options_.info_log,
+      "[%s] [JOB %d] SplitJob::FinishSplitOutputFile child_idx(%ld) #%" PRIu64 "",
+      cfd->GetName().c_str(),
+      job_id_,
+      sub_split->child_idx,
+      output_number
+    );
   } else {
     assert(sub_split->parent_outfile);
     assert(sub_split->parent_builder != nullptr);
     assert(sub_split->parent_current_output() != nullptr);
     output_number = sub_split->parent_current_output()->meta.fd.GetNumber();
     cfd = sub_split->compaction->column_family_data();
+    ROCKS_LOG_INFO(
+      db_options_.info_log,
+      "[%s] [JOB %d] SplitJob::FinishSplitOutputFile parent #%" PRIu64 "",
+      cfd->GetName().c_str(),
+      job_id_,
+      output_number
+    );
+
   }
   assert(output_number != 0);
   const Comparator* ucmp = cfd->user_comparator();
-  ROCKS_LOG_INFO(
-      db_options_.info_log,
-      "SplitJob::FinishSplitOutputFile child_idx : %ld\n",
-      sub_split->child_idx
-  );
-
-
+ 
   // Check for iterator errors
   Status s = input_status;
   FileMetaData* meta;
@@ -1219,7 +1241,7 @@ Status SplitJob::FinishSplitOutputFile(
   } else {
     meta = &sub_split->parent_current_output()->meta;
   }
-  assert(meta != nullptr && !is_child);
+  assert(meta != nullptr);
   if (s.ok() && !is_child) { // tombstone always go to parent 
     Slice lower_bound_guard, upper_bound_guard;
     std::string smallest_user_key;
@@ -1654,9 +1676,10 @@ Status SplitJob::OpenSplitOutputFile(
   
   ROCKS_LOG_INFO(
       db_options_.info_log,
-      "SplitJob::OpenSplitOutputFile cfd name : %s",
-      cfd_out->GetName().c_str()
-  );
+      "[%s] [JOB %d] OpenSplitOutputFile #%" PRIu64"",
+      cfd_out->GetName().c_str(),
+      job_id_, file_number);
+
 #ifndef ROCKSDB_LITE
   EventHelpers::NotifyTableFileCreationStarted(
       cfd_out->ioptions()->listeners, dbname_, cfd_out->GetName(), fname, job_id_,
@@ -1673,7 +1696,7 @@ Status SplitJob::OpenSplitOutputFile(
   if (!s.ok()) {
     ROCKS_LOG_ERROR(
         db_options_.info_log,
-        "[%s] [JOB %d] OpenSplitOutputFiles for table #%" PRIu64
+        "[%s] [JOB %d] OpenSplitOutputFile for table #%" PRIu64
         " fails at NewWritableFile with status %s",
         cfd_out->GetName().c_str(),
         job_id_, file_number, s.ToString().c_str());
@@ -1699,10 +1722,15 @@ Status SplitJob::OpenSplitOutputFile(
   writable_file->SetWriteLifeTimeHint(write_hint_);
   writable_file->SetPreallocationBlockSize(static_cast<size_t>(
       sub_split->compaction->OutputFilePreallocationSize()));
+
   ROCKS_LOG_INFO(
-          db_options_.info_log,
-          " OpenSplitOutputFiles block size : %lu ",
-          sub_split->compaction->OutputFilePreallocationSize());
+      db_options_.info_log,
+      "[%s] [JOB %d] OpenSplitOutputFile #%" PRIu64" block size : %lu",
+      cfd_out->GetName().c_str(),
+      job_id_, file_number,
+      sub_split->compaction->OutputFilePreallocationSize()
+  );
+
   const auto& listeners =
       sub_split->compaction->immutable_cf_options()->listeners;
   if (is_child) {
@@ -1927,8 +1955,8 @@ void SplitJob::LogSplit() {
         compaction->InputLevelSummary(&inputs_summary), compaction->score());
     char scratch[2345];
     compaction->Summary(scratch, sizeof(scratch));
-    ROCKS_LOG_INFO(db_options_.info_log, "[%s] Split start summary: %s\n",
-                   cfd->GetName().c_str(), scratch);
+    ROCKS_LOG_INFO(db_options_.info_log, "[%s] [JOB %d] Split start summary: %s\n",
+                   cfd->GetName().c_str(), job_id_, scratch);
     // build event logger report
     auto stream = event_logger_->Log();
     stream << "job" << job_id_ << "event"

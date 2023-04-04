@@ -1366,7 +1366,7 @@ Status DBImpl::SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, 
 
 
   // get median key from cfd
-  Slice median_key = cfd->current()->storage_info()->GetMedianKey();
+  Slice median_key = cfd->current()->storage_info()->GetMedianKey((*cfd->ioptions()));
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                 "SplitMemtable: med key : %s", median_key.ToString().c_str());
 

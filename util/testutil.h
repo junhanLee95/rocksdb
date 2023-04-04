@@ -35,6 +35,8 @@ namespace test {
 extern const uint32_t kDefaultFormatVersion;
 extern const uint32_t kLatestFormatVersion;
 
+// This is for split test
+extern Slice RandomStringUserInt(Random* rnd, int len, std::string* dst);
 // Store in *dst a random string of length "len" and return a Slice that
 // references the generated data.
 extern Slice RandomString(Random* rnd, int len, std::string* dst);
