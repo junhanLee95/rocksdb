@@ -540,6 +540,15 @@ Status DBImpl::CloseHelper() {
       }
     }
   }
+  while (!split_queue_.empty()) {
+    const SplitRequest& split_req = PopFirstFromSplitQueue();
+    for (const auto& iter : split_req) {
+      ColumnFamilyData* cfd = iter.first; 
+      if (cfd->Unref()) {
+        delete cfd;
+      }
+    }
+  }
   while (!compaction_queue_.empty()) {
     auto cfd = PopFirstFromCompactionQueue();
     if (cfd->Unref()) {

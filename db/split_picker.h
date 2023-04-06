@@ -34,11 +34,13 @@ class SplitPicker {
               const MutableCFOptions& mutable_cf_options);
   virtual ~SplitPicker();
 
-  bool SetupL0FilesIfNeeded(VersionStorageInfo* vstorage,
+  bool SetupL0FilesIfNeeded(LogBuffer* log_buffer,
+                            VersionStorageInfo* vstorage,
                             std::vector<FileMetaData*> metas,
                             CompactionInputFiles& l0_files);
  
-  bool SetupL1FilesIfNeeded(VersionStorageInfo* vstorage,
+  bool SetupL1FilesIfNeeded(LogBuffer* log_buffer,
+                            VersionStorageInfo* vstorage,
                             CompactionInputFiles& l0_files,
                             CompactionInputFiles& l1_files);
                            

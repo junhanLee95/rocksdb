@@ -682,14 +682,25 @@ Status SplitJob::Install(void) {
         stats.bytes_written / static_cast<double>(stats.micros);
   }
 
+  // Prepare Level Summary for child cfds
+  std::string child_summary = "";
+  for (size_t i=0; i<children_cnt_; i++) {
+    ColumnFamilyData* cfd_c = split_->sub_split_states[0].children_nodes[i]->cfd_;
+    auto vstorage_c = cfd_c->current()->storage_info();
+    VersionStorageInfo::LevelSummaryStorage tmp_c;
+    child_summary += " [" + cfd_c->GetName() + "]";
+    child_summary += vstorage_c->LevelSummary(&tmp_c);
+  }
+
   ROCKS_LOG_BUFFER(
       log_buffer_,
-      "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
+      "[%s] splitted to: %s, child %s, MB/sec: %.1f rd, %.1f wr, level %d, "
       "files in(%d, %d) out(%d) "
       "MB in(%.1f, %.1f) out(%.1f), read-write-amplify(%.1f) "
       "write-amplify(%.1f) %s, records in: %" PRIu64
       ", records dropped: %" PRIu64 " output_compression: %s\n",
-      cfd->GetName().c_str(), vstorage->LevelSummary(&tmp), bytes_read_per_sec,
+      cfd->GetName().c_str(), vstorage->LevelSummary(&tmp), child_summary.c_str(),
+      bytes_read_per_sec,
       bytes_written_per_sec, split_->compaction->output_level(),
       stats.num_input_files_in_non_output_levels,
       stats.num_input_files_in_output_level, stats.num_output_files,

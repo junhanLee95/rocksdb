@@ -3558,6 +3558,8 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
       if (info != nullptr && info->split_requested) {
         assert(info->parent != nullptr); 
         info->children.push_back(cfd);
+        ROCKS_LOG_INFO(db_options_->info_log, "Recovering child - %d",
+                 cfd->GetID());
       }
     }
   } else if (edit.is_column_family_split_) {
@@ -3566,6 +3568,8 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
       info->split_requested = true;
       info->parent = column_family_set_->GetColumnFamily(parent_id);
       assert(info->parent != nullptr);  
+      ROCKS_LOG_INFO(db_options_->info_log, "Recovering parent - %d",
+                 parent_id);
     }
   } else if (edit.is_column_family_drop_) {
     if (cf_in_builders) {
@@ -3604,6 +3608,7 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
     assert(builder != builders.end());
     builder->second->version_builder()->Apply(&edit);
   }
+  LogFlush(db_options_->info_log);
 
   return ExtractInfoFromVersionEdit(
       cfd, edit, have_log_number, log_number, have_prev_log_number,
@@ -4343,8 +4348,85 @@ void VersionSet::MarkMinLogNumberToKeep2PC(uint64_t number) {
 
 Status VersionSet::WriteSnapshot(log::Writer* log) {
   // TODO: Break up into multiple records to reduce memory usage on recovery?
+  auto ApplyCFManipulationToLog = [](log::Writer* wlog, ColumnFamilyData* cfd,
+                                     bool split, bool add, bool comp,
+                                     bool atomic, uint32_t remaining_entries,
+                                     std::string lower, std::string upper) -> Status {
+    VersionEdit edit;
+    std::string record;
+    
+    if (split) {
+      edit.SplitColumnFamily(cfd->GetName()); 
+      edit.SetColumnFamily(cfd->GetID());
+    }
+    if (add) {
+      edit.AddColumnFamily(cfd->GetName()); 
+      edit.SetColumnFamily(cfd->GetID());
+      edit.SetColumnFamilyKeyRange(lower, upper);
+    }
+    if (comp) {
+      edit.SetComparatorName(cfd->internal_comparator().user_comparator()->Name()); 
+    }
+    if (atomic) {
+      edit.MarkAtomicGroup(remaining_entries); 
+    }
+
+    if (!edit.EncodeTo(&record)) {
+      return Status::Corruption(
+            "Unable to Encode VersionEdit:" + edit.DebugString(true));
+    }
+    return wlog->AddRecord(record);
+  };
 
   // WARNING: This method doesn't hold a mutex!!
+
+  // Record column family manipulations, including partition tree operations
+  // to the log
+  {
+    Status s;
+    PartitionTree* partition_tree = column_family_set_->get_partition_tree();
+    std::vector<PartitionTreeNode*> cnodes;
+
+    cnodes.push_back(partition_tree->root_);
+    ColumnFamilyData* default_cfd = partition_tree->root_->cfd_;
+    s = ApplyCFManipulationToLog(log, default_cfd, false, false, true, false, 0, "", "");
+    if (!s.ok()) {
+      return s; 
+    }
+
+    while (!cnodes.empty()) {
+      std::vector<PartitionTreeNode*> nnodes;
+      std::string lower;
+      std::string upper;
+
+      // recover cf manipulation
+      for (PartitionTreeNode* cnode: cnodes) {
+        std::vector<PartitionTreeNode*> lnodes = cnode->GetChildrenNodes();
+        if (!lnodes.empty()) {
+          uint32_t remaining_entries = 1 + lnodes.size();
+          lower = cnode->cfd_->GetSmallestKey();
+          upper = cnode->cfd_->GetLargestKey();
+          s = ApplyCFManipulationToLog(log, cnode->cfd_, true, false, true, true, --remaining_entries, lower, upper);
+          if (!s.ok()) {
+            return s;
+          }
+          for (PartitionTreeNode* lnode: lnodes) {
+            lower = lnode->cfd_->GetSmallestKey();
+            upper = lnode->cfd_->GetLargestKey();
+            s = ApplyCFManipulationToLog(log, lnode->cfd_, false, true, true, true, --remaining_entries, lower, upper);
+            if (!s.ok()) {
+              return s; 
+            }
+            nnodes.push_back(lnode);
+          }
+          assert (remaining_entries == 0);
+        }
+      }
+
+      cnodes = nnodes;
+      nnodes.clear();
+    }
+  }
 
   // This is done without DB mutex lock held, but only within single-threaded
   // LogAndApply. Column family manipulations can only happen within LogAndApply
@@ -4354,7 +4436,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
       continue;
     }
     assert(cfd->initialized());
-    {
+    /*{
       // Store column family info
       VersionEdit edit;
       if (cfd->GetID() != 0) {
@@ -4374,7 +4456,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
       if (!s.ok()) {
         return s;
       }
-    }
+    }*/
 
     {
       // Save files

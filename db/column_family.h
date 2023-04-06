@@ -619,6 +619,8 @@ class ColumnFamilySet {
 
   Cache* get_table_cache() { return table_cache_; }
 
+  PartitionTree* get_partition_tree() { return partition_tree_.get(); }
+
   ColumnFamilyData* GetLogicalColumnFamily(const Slice &key);
   std::vector<ColumnFamilyData*> GetAllLogicalColumnFamilies(const Slice &key);
   ColumnFamilyData* GetParentColumnFamily(ColumnFamilyData* cfd);

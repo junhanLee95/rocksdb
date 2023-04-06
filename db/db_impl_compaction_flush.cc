@@ -2059,10 +2059,19 @@ DBImpl::FlushRequest DBImpl::PopFirstFromFlushQueue() {
 
 void DBImpl::AddToSplitQueue(SplitRequest& req) {
   auto cfd = req.front().first;
+  auto metas = req.front().second;
   assert(!cfd->queued_for_split());
   cfd->Ref();
+  std::string meta_info_str = "";
+  for (auto meta: metas) {
+    meta_info_str += "#" + std::to_string(meta->fd.GetNumber()) +
+                     "[" + meta->smallest.user_key().ToString() +
+                     ", " + meta->largest.user_key().ToString() +
+                     "], ";
+  }
   ROCKS_LOG_INFO(
-      immutable_db_options_.info_log, "AddToSplitQueue: cf [%s]", cfd->GetName().c_str());
+      immutable_db_options_.info_log, "AddToSplitQueue: cf [%s] meta [%s]",
+      cfd->GetName().c_str(), meta_info_str.c_str());
   LogFlush(immutable_db_options_.info_log);
 
   split_queue_.push_back(req);
@@ -2073,11 +2082,25 @@ DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   assert(!split_queue_.empty());
   SplitRequest split_req = split_queue_.front();
   ColumnFamilyData* cfd = split_req.front().first;
+  auto metas = split_req.front().second;
+  std::string meta_info_str = "";
+
+  for (auto meta: metas) {
+    meta_info_str += "#" + std::to_string(meta->fd.GetNumber()) +
+                     "[" + meta->smallest.user_key().ToString() +
+                     ", " + meta->largest.user_key().ToString() +
+                     "], ";
+  }
   //assert(unscheduled_splits_ >= static_cast<int>(split_req.size()));
   //unscheduled_splits_ -= static_cast<int>(split_req.size());
   unscheduled_splits_ -= 1;
   split_queue_.pop_front();
   assert(cfd->queued_for_split());
+  ROCKS_LOG_INFO(
+      immutable_db_options_.info_log, "PopFirstFromSplitQueue: cf [%s] meta [%s]",
+      cfd->GetName().c_str(), meta_info_str.c_str());
+  LogFlush(immutable_db_options_.info_log);
+
   cfd->set_queued_for_split(false);
   // TODO: need to unset split reason?
   return split_req;

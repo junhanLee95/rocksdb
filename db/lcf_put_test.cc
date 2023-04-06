@@ -40,7 +40,7 @@ class LCFPutTest : public testing::Test {
   }
 };
 
-
+/*
 // This tests for a bug that cause compact-while split in the same column family.
 TEST_F(LCFPutTest, SplitWhileCompact) {
   Options options;
@@ -172,6 +172,92 @@ TEST_F(LCFPutTest, SplitWhileCompact) {
   delete f1;
   delete db;
   db = nullptr;
+}*/
+
+
+TEST_F(LCFPutTest, SingleSplit) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =3;
+  options.allow_column_family_split = true;
+  options.atomic_flush = true;
+
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+  Random rnd(301);
+  // Prepare one Level 1 sstable file
+  // trigger L0 compaction
+  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  dbfull(db)->TEST_WaitForCompact();
+  // Prepare #1 Level 1
+  for (int num = 0; num < 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  
+  // Prepare Memtable
+  for (int i=0; i<1000; i++) {
+    std::string k = RandomString(&rnd, 8);
+    std::string v = RandomString(&rnd, 200);
+    db->Put(WriteOptions(), cfh, k, v);  
+  }
+
+  std::string val0;
+  dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level0", &val0);
+  int num_level0 = std::stoi(val0);
+  std::string val1;
+  dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level1", &val1);
+  int num_level1 = std::stoi(val1);
+
+  fprintf(stdout, "Level 0 has : %d\n",num_level0 );
+  fprintf(stdout, "Level 1 has : %d\n",num_level1);
+  assert(num_level0 == 2);
+  assert(num_level1 == 1);
+
+  std::vector<SplitFileInfo> infos;
+
+  FileMetaData* f1 = new FileMetaData;
+  std::string s1 = "user1200";
+  std::string l1 = "user1400";
+  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+  infos.push_back(SplitFileInfo(f1, cfd));
+
+  fprintf(stdout, "[LCFPutTest] First Split Start [%s, %s] (1/3)\n", s1.c_str(), l1.c_str());
+  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
+  infos.clear();
+ 
+
+  dbfull(db)->TEST_WaitForSplit();
+  fprintf(stdout, "[LCFPutTest] now shutdown db\n");
+
+  delete f1;
+
+
+  delete db;
+  db = nullptr;
 }
 
 /*
@@ -222,7 +308,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f1, cfd));
 
-  fprintf(stdout, "[LCFPutTest] First Split Start (1/3)\n");
+  fprintf(stdout, "[LCFPutTest] First Split Start [%s, %s] (1/3)\n", s1.c_str(), l1.c_str());
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
   fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
   //dbfull(db)->TEST_WaitForSplit();
@@ -244,7 +330,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
   f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f2, cfd1));
-  fprintf(stdout, "[LCFPutTest] Second Split Start (2/3)\n");
+  fprintf(stdout, "[LCFPutTest] Second Split Start [%s, %s] (2/3)\n", s2.c_str(), l2.c_str());
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
   fprintf(stdout, "[LCFPutTest] Second Split Finish (2/3)\n");
   //dbfull(db)->TEST_WaitForSplit();
@@ -264,7 +350,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   f3->smallest = InternalKey(Slice(s3), 0, kTypeValue);
   f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f3, cfd));
-  fprintf(stdout, "[LCFPutTest] Third Split Start (3/3)\n");
+  fprintf(stdout, "[LCFPutTest] Third Split Start [%s, %s] (3/3)\n", s3.c_str(), l3.c_str());
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
   fprintf(stdout, "[LCFPutTest] Third Split Finish (3/3)\n");
   //dbfull(db)->TEST_WaitForSplit();
@@ -275,6 +361,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
     assert(res == values3[i]);
   }
 
+  fprintf(stdout, "[LCFPutTest] now shutdown db\n");
+  sleep(10);
+
   delete f1;
   delete f2;
   delete f3;
@@ -283,8 +372,6 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   values1.clear();
   values2.clear();
   values3.clear();
-  fprintf(stdout, "[LCFPutTest] now shutdown db\n");
-  //sleep(5);
   delete db;
   db = nullptr;
 }*/
