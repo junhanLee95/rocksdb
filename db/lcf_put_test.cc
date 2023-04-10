@@ -40,7 +40,7 @@ class LCFPutTest : public testing::Test {
   }
 };
 
-/*
+
 // This tests for a bug that cause compact-while split in the same column family.
 TEST_F(LCFPutTest, SplitWhileCompact) {
   Options options;
@@ -167,12 +167,14 @@ TEST_F(LCFPutTest, SplitWhileCompact) {
   dbfull(db)->TEST_WaitForCompact();
   dbfull(db)->TEST_WaitForSplit();
 
+  //dbfull(db)->DestroyLogicalColumnFamilies();
+
   infos.clear();
   // Close
   delete f1;
   delete db;
   db = nullptr;
-}*/
+}
 
 
 TEST_F(LCFPutTest, SingleSplit) {
@@ -255,12 +257,13 @@ TEST_F(LCFPutTest, SingleSplit) {
 
   delete f1;
 
+  //dbfull(db)->DestroyLogicalColumnFamilies();
 
   delete db;
   db = nullptr;
 }
 
-/*
+
 TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   Options options;
   options.create_if_missing = true;
@@ -361,6 +364,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
     assert(res == values3[i]);
   }
 
+  //dbfull(db)->DestroyLogicalColumnFamilies();
+
+
   fprintf(stdout, "[LCFPutTest] now shutdown db\n");
   sleep(10);
 
@@ -374,9 +380,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   values3.clear();
   delete db;
   db = nullptr;
-}*/
+}
 
-/*
+
 TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   Options options;
   options.create_if_missing = true;
@@ -477,6 +483,8 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
     assert(res == values3[i]);
   }
 
+  //dbfull(db)->DestroyLogicalColumnFamilies();
+
   delete f1;
   delete f2;
   delete f3;
@@ -487,7 +495,7 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   values3.clear();
   fprintf(stdout, "[LCFPutTest] now shutdown db\n");
   delete db;
-}*/
+}
 
 }  // namespace rocksdb
 

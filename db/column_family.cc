@@ -1462,6 +1462,7 @@ bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
 
 // under a DB mutex AND write thread
 bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs) {
+  assert(!c_outs.empty());
   std::string s_outs="[";
   for (auto c: c_outs) {
     s_outs += c->GetName();

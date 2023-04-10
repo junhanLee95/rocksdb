@@ -146,7 +146,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
 	  // LogAndApply will both write the creation in MANIFEST and create
 	  // ColumnFamilyData object
-	  {
+    // Apply to Manifest file only if new children is necessary
+    if (new_children_cnt > 0) {
 		  WriteThread::Writer w;
 		  write_thread_.EnterUnbatched(&w, &mutex_);
 
@@ -154,7 +155,11 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 				  edit_lists, &mutex_, directories_.GetDbDir(), false,
 				  &cf_options);
 		  write_thread_.ExitUnbatched(&w);
-	  }
+	  } else {
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+			  "SplitColumnFamilyFromSstFiles[%s]: skip writing manifest file since children is not cessary to be created",
+        cfd->GetName().c_str());
+    }
 
 	  // Add Directories if the CF creation is successful
 	  for (size_t i = 0; i < new_children_cnt; i++) {

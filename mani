@@ -1,4 +1,4 @@
-Processing Manifest file /tmp/rocksdbtest-1000/test_db_9831130555226326740/MANIFEST-000053
+Processing Manifest file /tmp/rocksdbtest-1000/test_db_1848989238996144867/MANIFEST-000053
 VersionEdit {
   Comparator: leveldb.BytewiseComparator
   ColumnFamily: 0
@@ -8,12 +8,14 @@ VersionEdit {
   Comparator: leveldb.BytewiseComparator
   ColumnFamily: 0
   ColumnFamilySplit: default
+  AtomicGroup: 1 entries remains
 }
 
 VersionEdit {
   Comparator: leveldb.BytewiseComparator
   ColumnFamily: 1
   ColumnFamilyAdd: default1
+  AtomicGroup: 0 entries remains
 }
 
 VersionEdit {
@@ -46,502 +48,211 @@ VersionEdit {
 }
 
 VersionEdit {
-  NextFileNumber: 57
+  LogNumber: 57
+  PrevLogNumber: 0
+  NextFileNumber: 59
   LastSeq: 2428
-  ColumnFamily: 0
-  ColumnFamilySplit: default
-  AtomicGroup: 0 entries remains
-}
-
-VersionEdit {
-  LogNumber: 57
-  PrevLogNumber: 0
-  NextFileNumber: 59
-  LastSeq: 3212
-  AddFile: 0 58 7639 'user1000' seq:1429, type:1 .. 'user1999' seq:2428, type:1
+  AddFile: 0 58 203333 'user0016' seq:1495, type:1 .. 'user9994' seq:2141, type:1
   ColumnFamily: 0
 }
 
 VersionEdit {
-  NextFileNumber: 59
+  LogNumber: 59
+  PrevLogNumber: 0
+  NextFileNumber: 61
   LastSeq: 3428
-  ColumnFamily: 1
-  ColumnFamilySplit: default1
-  AtomicGroup: 1 entries remains
+  AddFile: 0 60 202300 'user0005' seq:2896, type:1 .. 'user9992' seq:2495, type:1
+  ColumnFamily: 0
 }
 
 VersionEdit {
-  LogNumber: 57
-  NextFileNumber: 59
-  LastSeq: 3428
-  ColumnFamily: 2
-  ColumnFamilyAdd: default2
-  AtomicGroup: 0 entries remains
+  LogNumber: 61
+  PrevLogNumber: 0
+  NextFileNumber: 63
+  LastSeq: 4428
+  AddFile: 0 62 202279 'user0007' seq:4306, type:1 .. 'user9962' seq:3877, type:1
+  ColumnFamily: 0
+}
+
+VersionEdit {
+  LogNumber: 63
+  PrevLogNumber: 0
+  NextFileNumber: 65
+  LastSeq: 5428
+  AddFile: 0 64 201629 'user0000' seq:4483, type:1 .. 'user9996' seq:4924, type:1
+  ColumnFamily: 0
 }
 
 VersionEdit {
   PrevLogNumber: 0
-  NextFileNumber: 62
-  LastSeq: 4140
+  NextFileNumber: 68
+  LastSeq: 6428
   DeleteFile: 0 58
+  DeleteFile: 0 60
+  DeleteFile: 0 62
+  DeleteFile: 0 64
   DeleteFile: 1 50
-  AddFile: 1 59 264255 'user0009' seq:0, type:1 .. 'user9994' seq:0, type:1
+  AddFile: 1 65 706400 'user0000' seq:0, type:1 .. 'user9996' seq:0, type:1
   ColumnFamily: 0
-  AtomicGroup: 0 entries remains
 }
 
 VersionEdit {
-  NextFileNumber: 64
-  LastSeq: 4428
+  LogNumber: 66
+  PrevLogNumber: 0
+  NextFileNumber: 68
+  LastSeq: 6428
+  AddFile: 0 67 203094 'user0000' seq:5553, type:1 .. 'user9971' seq:6005, type:1
   ColumnFamily: 0
-  ColumnFamilySplit: default
-  AtomicGroup: 2 entries remains
 }
 
 VersionEdit {
-  LogNumber: 61
-  NextFileNumber: 64
-  LastSeq: 4428
-  ColumnFamily: 3
-  ColumnFamilyAdd: default3
-  AtomicGroup: 1 entries remains
-}
-
-VersionEdit {
-  LogNumber: 61
-  NextFileNumber: 64
-  LastSeq: 4428
-  ColumnFamily: 4
-  ColumnFamilyAdd: default4
-  AtomicGroup: 0 entries remains
-}
-
-VersionEdit {
-  LogNumber: 61
+  LogNumber: 68
   PrevLogNumber: 0
-  NextFileNumber: 68
-  LastSeq: 4428
-  AddFile: 0 62 2200 'user1200' seq:2629, type:1 .. 'user1400' seq:2829, type:1
-  ColumnFamily: 1
-  AtomicGroup: 1 entries remains
-}
-
-VersionEdit {
-  LogNumber: 61
-  PrevLogNumber: 0
-  NextFileNumber: 68
-  LastSeq: 4428
-  AddFile: 0 63 1112 'user1250' seq:2679, type:1 .. 'user1280' seq:2709, type:1
-  ColumnFamily: 2
-  AtomicGroup: 0 entries remains
-}
-
-VersionEdit {
-  LogNumber: 64
-  PrevLogNumber: 0
-  NextFileNumber: 68
-  LastSeq: 4428
-  AddFile: 0 65 5037 'user1000' seq:3429, type:1 .. 'user1999' seq:4428, type:1
+  NextFileNumber: 70
+  LastSeq: 7428
+  AddFile: 0 69 201817 'user0000' seq:6721, type:1 .. 'user9997' seq:6889, type:1
   ColumnFamily: 0
-  AtomicGroup: 2 entries remains
-}
-
-VersionEdit {
-  LogNumber: 64
-  PrevLogNumber: 0
-  NextFileNumber: 68
-  LastSeq: 4428
-  AddFile: 0 66 2524 'user1001' seq:3430, type:1 .. 'user1199' seq:3628, type:1
-  ColumnFamily: 3
-  AtomicGroup: 1 entries remains
-}
-
-VersionEdit {
-  LogNumber: 64
-  PrevLogNumber: 0
-  NextFileNumber: 68
-  LastSeq: 4428
-  AddFile: 0 67 1639 'user1401' seq:3830, type:1 .. 'user1500' seq:3929, type:1
-  ColumnFamily: 4
-  AtomicGroup: 0 entries remains
-}
-
-VersionEdit {
-  PrevLogNumber: 0
-  NextFileNumber: 72
-  LastSeq: 4428
-  DeleteFile: 0 65
-  DeleteFile: 1 59
-  AddFile: 1 68 262417 'user0009' seq:0, type:1 .. 'user9994' seq:0, type:1
-  ColumnFamily: 0
-  AtomicGroup: 2 entries remains
-}
-
-VersionEdit {
-  PrevLogNumber: 0
-  NextFileNumber: 72
-  LastSeq: 4428
-  AddFile: 1 69 2099 'user1001' seq:0, type:1 .. 'user1199' seq:0, type:1
-  ColumnFamily: 3
-  AtomicGroup: 1 entries remains
-}
-
-VersionEdit {
-  PrevLogNumber: 0
-  NextFileNumber: 72
-  LastSeq: 4428
-  AddFile: 1 71 1423 'user1401' seq:0, type:1 .. 'user1500' seq:0, type:1
-  ColumnFamily: 4
-  AtomicGroup: 0 entries remains
 }
 
 --------------- Column family "default"  (ID 0) --------------
-log number: 64
+log number: 68
 comparator: leveldb.BytewiseComparator
---- level 0 --- version# 5 ---
---- level 1 --- version# 5 ---
- 68:262417['user0009' seq:0, type:1 .. 'user9994' seq:0, type:1]
---- level 2 --- version# 5 ---
---- level 3 --- version# 5 ---
---- level 4 --- version# 5 ---
---- level 5 --- version# 5 ---
---- level 6 --- version# 5 ---
---- level 7 --- version# 5 ---
---- level 8 --- version# 5 ---
---- level 9 --- version# 5 ---
---- level 10 --- version# 5 ---
---- level 11 --- version# 5 ---
---- level 12 --- version# 5 ---
---- level 13 --- version# 5 ---
---- level 14 --- version# 5 ---
---- level 15 --- version# 5 ---
---- level 16 --- version# 5 ---
---- level 17 --- version# 5 ---
---- level 18 --- version# 5 ---
---- level 19 --- version# 5 ---
---- level 20 --- version# 5 ---
---- level 21 --- version# 5 ---
---- level 22 --- version# 5 ---
---- level 23 --- version# 5 ---
---- level 24 --- version# 5 ---
---- level 25 --- version# 5 ---
---- level 26 --- version# 5 ---
---- level 27 --- version# 5 ---
---- level 28 --- version# 5 ---
---- level 29 --- version# 5 ---
---- level 30 --- version# 5 ---
---- level 31 --- version# 5 ---
---- level 32 --- version# 5 ---
---- level 33 --- version# 5 ---
---- level 34 --- version# 5 ---
---- level 35 --- version# 5 ---
---- level 36 --- version# 5 ---
---- level 37 --- version# 5 ---
---- level 38 --- version# 5 ---
---- level 39 --- version# 5 ---
---- level 40 --- version# 5 ---
---- level 41 --- version# 5 ---
---- level 42 --- version# 5 ---
---- level 43 --- version# 5 ---
---- level 44 --- version# 5 ---
---- level 45 --- version# 5 ---
---- level 46 --- version# 5 ---
---- level 47 --- version# 5 ---
---- level 48 --- version# 5 ---
---- level 49 --- version# 5 ---
---- level 50 --- version# 5 ---
---- level 51 --- version# 5 ---
---- level 52 --- version# 5 ---
---- level 53 --- version# 5 ---
---- level 54 --- version# 5 ---
---- level 55 --- version# 5 ---
---- level 56 --- version# 5 ---
---- level 57 --- version# 5 ---
---- level 58 --- version# 5 ---
---- level 59 --- version# 5 ---
---- level 60 --- version# 5 ---
---- level 61 --- version# 5 ---
---- level 62 --- version# 5 ---
---- level 63 --- version# 5 ---
+--- level 0 --- version# 2 ---
+ 69:201817['user0000' seq:6721, type:1 .. 'user9997' seq:6889, type:1]
+ 67:203094['user0000' seq:5553, type:1 .. 'user9971' seq:6005, type:1]
+--- level 1 --- version# 2 ---
+ 65:706400['user0000' seq:0, type:1 .. 'user9996' seq:0, type:1]
+--- level 2 --- version# 2 ---
+--- level 3 --- version# 2 ---
+--- level 4 --- version# 2 ---
+--- level 5 --- version# 2 ---
+--- level 6 --- version# 2 ---
+--- level 7 --- version# 2 ---
+--- level 8 --- version# 2 ---
+--- level 9 --- version# 2 ---
+--- level 10 --- version# 2 ---
+--- level 11 --- version# 2 ---
+--- level 12 --- version# 2 ---
+--- level 13 --- version# 2 ---
+--- level 14 --- version# 2 ---
+--- level 15 --- version# 2 ---
+--- level 16 --- version# 2 ---
+--- level 17 --- version# 2 ---
+--- level 18 --- version# 2 ---
+--- level 19 --- version# 2 ---
+--- level 20 --- version# 2 ---
+--- level 21 --- version# 2 ---
+--- level 22 --- version# 2 ---
+--- level 23 --- version# 2 ---
+--- level 24 --- version# 2 ---
+--- level 25 --- version# 2 ---
+--- level 26 --- version# 2 ---
+--- level 27 --- version# 2 ---
+--- level 28 --- version# 2 ---
+--- level 29 --- version# 2 ---
+--- level 30 --- version# 2 ---
+--- level 31 --- version# 2 ---
+--- level 32 --- version# 2 ---
+--- level 33 --- version# 2 ---
+--- level 34 --- version# 2 ---
+--- level 35 --- version# 2 ---
+--- level 36 --- version# 2 ---
+--- level 37 --- version# 2 ---
+--- level 38 --- version# 2 ---
+--- level 39 --- version# 2 ---
+--- level 40 --- version# 2 ---
+--- level 41 --- version# 2 ---
+--- level 42 --- version# 2 ---
+--- level 43 --- version# 2 ---
+--- level 44 --- version# 2 ---
+--- level 45 --- version# 2 ---
+--- level 46 --- version# 2 ---
+--- level 47 --- version# 2 ---
+--- level 48 --- version# 2 ---
+--- level 49 --- version# 2 ---
+--- level 50 --- version# 2 ---
+--- level 51 --- version# 2 ---
+--- level 52 --- version# 2 ---
+--- level 53 --- version# 2 ---
+--- level 54 --- version# 2 ---
+--- level 55 --- version# 2 ---
+--- level 56 --- version# 2 ---
+--- level 57 --- version# 2 ---
+--- level 58 --- version# 2 ---
+--- level 59 --- version# 2 ---
+--- level 60 --- version# 2 ---
+--- level 61 --- version# 2 ---
+--- level 62 --- version# 2 ---
+--- level 63 --- version# 2 ---
  
 --------------- Column family "default1"  (ID 1) --------------
-log number: 61
+log number: 49
 comparator: leveldb.BytewiseComparator
---- level 0 --- version# 6 ---
- 62:2200['user1200' seq:2629, type:1 .. 'user1400' seq:2829, type:1]
---- level 1 --- version# 6 ---
+--- level 0 --- version# 3 ---
+--- level 1 --- version# 3 ---
  51:8307['user1202' seq:0, type:1 .. 'user1399' seq:0, type:1]
---- level 2 --- version# 6 ---
---- level 3 --- version# 6 ---
---- level 4 --- version# 6 ---
---- level 5 --- version# 6 ---
---- level 6 --- version# 6 ---
---- level 7 --- version# 6 ---
---- level 8 --- version# 6 ---
---- level 9 --- version# 6 ---
---- level 10 --- version# 6 ---
---- level 11 --- version# 6 ---
---- level 12 --- version# 6 ---
---- level 13 --- version# 6 ---
---- level 14 --- version# 6 ---
---- level 15 --- version# 6 ---
---- level 16 --- version# 6 ---
---- level 17 --- version# 6 ---
---- level 18 --- version# 6 ---
---- level 19 --- version# 6 ---
---- level 20 --- version# 6 ---
---- level 21 --- version# 6 ---
---- level 22 --- version# 6 ---
---- level 23 --- version# 6 ---
---- level 24 --- version# 6 ---
---- level 25 --- version# 6 ---
---- level 26 --- version# 6 ---
---- level 27 --- version# 6 ---
---- level 28 --- version# 6 ---
---- level 29 --- version# 6 ---
---- level 30 --- version# 6 ---
---- level 31 --- version# 6 ---
---- level 32 --- version# 6 ---
---- level 33 --- version# 6 ---
---- level 34 --- version# 6 ---
---- level 35 --- version# 6 ---
---- level 36 --- version# 6 ---
---- level 37 --- version# 6 ---
---- level 38 --- version# 6 ---
---- level 39 --- version# 6 ---
---- level 40 --- version# 6 ---
---- level 41 --- version# 6 ---
---- level 42 --- version# 6 ---
---- level 43 --- version# 6 ---
---- level 44 --- version# 6 ---
---- level 45 --- version# 6 ---
---- level 46 --- version# 6 ---
---- level 47 --- version# 6 ---
---- level 48 --- version# 6 ---
---- level 49 --- version# 6 ---
---- level 50 --- version# 6 ---
---- level 51 --- version# 6 ---
---- level 52 --- version# 6 ---
---- level 53 --- version# 6 ---
---- level 54 --- version# 6 ---
---- level 55 --- version# 6 ---
---- level 56 --- version# 6 ---
---- level 57 --- version# 6 ---
---- level 58 --- version# 6 ---
---- level 59 --- version# 6 ---
---- level 60 --- version# 6 ---
---- level 61 --- version# 6 ---
---- level 62 --- version# 6 ---
---- level 63 --- version# 6 ---
+--- level 2 --- version# 3 ---
+--- level 3 --- version# 3 ---
+--- level 4 --- version# 3 ---
+--- level 5 --- version# 3 ---
+--- level 6 --- version# 3 ---
+--- level 7 --- version# 3 ---
+--- level 8 --- version# 3 ---
+--- level 9 --- version# 3 ---
+--- level 10 --- version# 3 ---
+--- level 11 --- version# 3 ---
+--- level 12 --- version# 3 ---
+--- level 13 --- version# 3 ---
+--- level 14 --- version# 3 ---
+--- level 15 --- version# 3 ---
+--- level 16 --- version# 3 ---
+--- level 17 --- version# 3 ---
+--- level 18 --- version# 3 ---
+--- level 19 --- version# 3 ---
+--- level 20 --- version# 3 ---
+--- level 21 --- version# 3 ---
+--- level 22 --- version# 3 ---
+--- level 23 --- version# 3 ---
+--- level 24 --- version# 3 ---
+--- level 25 --- version# 3 ---
+--- level 26 --- version# 3 ---
+--- level 27 --- version# 3 ---
+--- level 28 --- version# 3 ---
+--- level 29 --- version# 3 ---
+--- level 30 --- version# 3 ---
+--- level 31 --- version# 3 ---
+--- level 32 --- version# 3 ---
+--- level 33 --- version# 3 ---
+--- level 34 --- version# 3 ---
+--- level 35 --- version# 3 ---
+--- level 36 --- version# 3 ---
+--- level 37 --- version# 3 ---
+--- level 38 --- version# 3 ---
+--- level 39 --- version# 3 ---
+--- level 40 --- version# 3 ---
+--- level 41 --- version# 3 ---
+--- level 42 --- version# 3 ---
+--- level 43 --- version# 3 ---
+--- level 44 --- version# 3 ---
+--- level 45 --- version# 3 ---
+--- level 46 --- version# 3 ---
+--- level 47 --- version# 3 ---
+--- level 48 --- version# 3 ---
+--- level 49 --- version# 3 ---
+--- level 50 --- version# 3 ---
+--- level 51 --- version# 3 ---
+--- level 52 --- version# 3 ---
+--- level 53 --- version# 3 ---
+--- level 54 --- version# 3 ---
+--- level 55 --- version# 3 ---
+--- level 56 --- version# 3 ---
+--- level 57 --- version# 3 ---
+--- level 58 --- version# 3 ---
+--- level 59 --- version# 3 ---
+--- level 60 --- version# 3 ---
+--- level 61 --- version# 3 ---
+--- level 62 --- version# 3 ---
+--- level 63 --- version# 3 ---
  
---------------- Column family "default2"  (ID 2) --------------
-log number: 61
-comparator: <NO COMPARATOR>
---- level 0 --- version# 7 ---
- 63:1112['user1250' seq:2679, type:1 .. 'user1280' seq:2709, type:1]
---- level 1 --- version# 7 ---
---- level 2 --- version# 7 ---
---- level 3 --- version# 7 ---
---- level 4 --- version# 7 ---
---- level 5 --- version# 7 ---
---- level 6 --- version# 7 ---
---- level 7 --- version# 7 ---
---- level 8 --- version# 7 ---
---- level 9 --- version# 7 ---
---- level 10 --- version# 7 ---
---- level 11 --- version# 7 ---
---- level 12 --- version# 7 ---
---- level 13 --- version# 7 ---
---- level 14 --- version# 7 ---
---- level 15 --- version# 7 ---
---- level 16 --- version# 7 ---
---- level 17 --- version# 7 ---
---- level 18 --- version# 7 ---
---- level 19 --- version# 7 ---
---- level 20 --- version# 7 ---
---- level 21 --- version# 7 ---
---- level 22 --- version# 7 ---
---- level 23 --- version# 7 ---
---- level 24 --- version# 7 ---
---- level 25 --- version# 7 ---
---- level 26 --- version# 7 ---
---- level 27 --- version# 7 ---
---- level 28 --- version# 7 ---
---- level 29 --- version# 7 ---
---- level 30 --- version# 7 ---
---- level 31 --- version# 7 ---
---- level 32 --- version# 7 ---
---- level 33 --- version# 7 ---
---- level 34 --- version# 7 ---
---- level 35 --- version# 7 ---
---- level 36 --- version# 7 ---
---- level 37 --- version# 7 ---
---- level 38 --- version# 7 ---
---- level 39 --- version# 7 ---
---- level 40 --- version# 7 ---
---- level 41 --- version# 7 ---
---- level 42 --- version# 7 ---
---- level 43 --- version# 7 ---
---- level 44 --- version# 7 ---
---- level 45 --- version# 7 ---
---- level 46 --- version# 7 ---
---- level 47 --- version# 7 ---
---- level 48 --- version# 7 ---
---- level 49 --- version# 7 ---
---- level 50 --- version# 7 ---
---- level 51 --- version# 7 ---
---- level 52 --- version# 7 ---
---- level 53 --- version# 7 ---
---- level 54 --- version# 7 ---
---- level 55 --- version# 7 ---
---- level 56 --- version# 7 ---
---- level 57 --- version# 7 ---
---- level 58 --- version# 7 ---
---- level 59 --- version# 7 ---
---- level 60 --- version# 7 ---
---- level 61 --- version# 7 ---
---- level 62 --- version# 7 ---
---- level 63 --- version# 7 ---
- 
---------------- Column family "default3"  (ID 3) --------------
-log number: 64
-comparator: <NO COMPARATOR>
---- level 0 --- version# 8 ---
- 66:2524['user1001' seq:3430, type:1 .. 'user1199' seq:3628, type:1]
---- level 1 --- version# 8 ---
- 69:2099['user1001' seq:0, type:1 .. 'user1199' seq:0, type:1]
---- level 2 --- version# 8 ---
---- level 3 --- version# 8 ---
---- level 4 --- version# 8 ---
---- level 5 --- version# 8 ---
---- level 6 --- version# 8 ---
---- level 7 --- version# 8 ---
---- level 8 --- version# 8 ---
---- level 9 --- version# 8 ---
---- level 10 --- version# 8 ---
---- level 11 --- version# 8 ---
---- level 12 --- version# 8 ---
---- level 13 --- version# 8 ---
---- level 14 --- version# 8 ---
---- level 15 --- version# 8 ---
---- level 16 --- version# 8 ---
---- level 17 --- version# 8 ---
---- level 18 --- version# 8 ---
---- level 19 --- version# 8 ---
---- level 20 --- version# 8 ---
---- level 21 --- version# 8 ---
---- level 22 --- version# 8 ---
---- level 23 --- version# 8 ---
---- level 24 --- version# 8 ---
---- level 25 --- version# 8 ---
---- level 26 --- version# 8 ---
---- level 27 --- version# 8 ---
---- level 28 --- version# 8 ---
---- level 29 --- version# 8 ---
---- level 30 --- version# 8 ---
---- level 31 --- version# 8 ---
---- level 32 --- version# 8 ---
---- level 33 --- version# 8 ---
---- level 34 --- version# 8 ---
---- level 35 --- version# 8 ---
---- level 36 --- version# 8 ---
---- level 37 --- version# 8 ---
---- level 38 --- version# 8 ---
---- level 39 --- version# 8 ---
---- level 40 --- version# 8 ---
---- level 41 --- version# 8 ---
---- level 42 --- version# 8 ---
---- level 43 --- version# 8 ---
---- level 44 --- version# 8 ---
---- level 45 --- version# 8 ---
---- level 46 --- version# 8 ---
---- level 47 --- version# 8 ---
---- level 48 --- version# 8 ---
---- level 49 --- version# 8 ---
---- level 50 --- version# 8 ---
---- level 51 --- version# 8 ---
---- level 52 --- version# 8 ---
---- level 53 --- version# 8 ---
---- level 54 --- version# 8 ---
---- level 55 --- version# 8 ---
---- level 56 --- version# 8 ---
---- level 57 --- version# 8 ---
---- level 58 --- version# 8 ---
---- level 59 --- version# 8 ---
---- level 60 --- version# 8 ---
---- level 61 --- version# 8 ---
---- level 62 --- version# 8 ---
---- level 63 --- version# 8 ---
- 
---------------- Column family "default4"  (ID 4) --------------
-log number: 64
-comparator: <NO COMPARATOR>
---- level 0 --- version# 9 ---
- 67:1639['user1401' seq:3830, type:1 .. 'user1500' seq:3929, type:1]
---- level 1 --- version# 9 ---
- 71:1423['user1401' seq:0, type:1 .. 'user1500' seq:0, type:1]
---- level 2 --- version# 9 ---
---- level 3 --- version# 9 ---
---- level 4 --- version# 9 ---
---- level 5 --- version# 9 ---
---- level 6 --- version# 9 ---
---- level 7 --- version# 9 ---
---- level 8 --- version# 9 ---
---- level 9 --- version# 9 ---
---- level 10 --- version# 9 ---
---- level 11 --- version# 9 ---
---- level 12 --- version# 9 ---
---- level 13 --- version# 9 ---
---- level 14 --- version# 9 ---
---- level 15 --- version# 9 ---
---- level 16 --- version# 9 ---
---- level 17 --- version# 9 ---
---- level 18 --- version# 9 ---
---- level 19 --- version# 9 ---
---- level 20 --- version# 9 ---
---- level 21 --- version# 9 ---
---- level 22 --- version# 9 ---
---- level 23 --- version# 9 ---
---- level 24 --- version# 9 ---
---- level 25 --- version# 9 ---
---- level 26 --- version# 9 ---
---- level 27 --- version# 9 ---
---- level 28 --- version# 9 ---
---- level 29 --- version# 9 ---
---- level 30 --- version# 9 ---
---- level 31 --- version# 9 ---
---- level 32 --- version# 9 ---
---- level 33 --- version# 9 ---
---- level 34 --- version# 9 ---
---- level 35 --- version# 9 ---
---- level 36 --- version# 9 ---
---- level 37 --- version# 9 ---
---- level 38 --- version# 9 ---
---- level 39 --- version# 9 ---
---- level 40 --- version# 9 ---
---- level 41 --- version# 9 ---
---- level 42 --- version# 9 ---
---- level 43 --- version# 9 ---
---- level 44 --- version# 9 ---
---- level 45 --- version# 9 ---
---- level 46 --- version# 9 ---
---- level 47 --- version# 9 ---
---- level 48 --- version# 9 ---
---- level 49 --- version# 9 ---
---- level 50 --- version# 9 ---
---- level 51 --- version# 9 ---
---- level 52 --- version# 9 ---
---- level 53 --- version# 9 ---
---- level 54 --- version# 9 ---
---- level 55 --- version# 9 ---
---- level 56 --- version# 9 ---
---- level 57 --- version# 9 ---
---- level 58 --- version# 9 ---
---- level 59 --- version# 9 ---
---- level 60 --- version# 9 ---
---- level 61 --- version# 9 ---
---- level 62 --- version# 9 ---
---- level 63 --- version# 9 ---
- 
-next_file_number 73 last_sequence 4428  prev_log_number 0 max_column_family 4 min_log_number_to_keep 0
-Processing Manifest file /tmp/rocksdbtest-1000/test_db_9831130555226326740/MANIFEST-000053 done
+next_file_number 71 last_sequence 7428  prev_log_number 0 max_column_family 1 min_log_number_to_keep 0
+Processing Manifest file /tmp/rocksdbtest-1000/test_db_1848989238996144867/MANIFEST-000053 done
