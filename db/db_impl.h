@@ -527,6 +527,9 @@ class DBImpl : public DB {
   // Returns the list of to-split files in the version set
   void FindSplitFiles(JobContext* job_context, bool valid);
 
+  // MergeColumnFamily when delete LCFIterator.
+  ColumnFamilyData* MergeColumnFamily(std::vector<int> source_cfds,int target_cfd, ColumnFamilyData* cfd);
+
   // Split Column Family From sst split files
   // This is called from BackgroundCallCompaction()
   Status SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_split_files);
@@ -1084,6 +1087,10 @@ class DBImpl : public DB {
   Status ScheduleFlushes(WriteContext* context);
 
   Status SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context);
+
+  Status IterToMem(std::vector<std::pair<std::string,std::string>> kvpair, std::vector<ColumnFamilyData*> cfds,std::vector<ValueType> type);
+
+  Status IterToMemImpl(std::vector<std::pair<std::string,std::string>> kvpair, ColumnFamilyData* cfd,std::vector<ValueType> type);
 
   Status SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, ColumnFamilyData* cfd_out1);
 

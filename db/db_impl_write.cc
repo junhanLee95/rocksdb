@@ -1355,6 +1355,107 @@ void DBImpl::NotifyOnMemTableSealed(ColumnFamilyData* /*cfd*/,
 }
 #endif  // ROCKSDB_LITE
 
+Status DBImpl::IterToMem(std::vector<std::pair<std::string,std::string>> kvpair, std::vector<ColumnFamilyData*> cfds,std::vector<ValueType> type){
+  Status s;
+	for(auto cfd : cfds){
+	WriteContext context;
+	{
+	  InstrumentedMutexLock l(&mutex_);
+	  cfd->Ref();
+	  s = IterToMemImpl(kvpair, cfd,type);
+	  cfd->Unref();
+	}
+	assert(s.ok());
+  }
+  return Status::OK();
+}
+Status DBImpl::IterToMemImpl(std::vector<std::pair<std::string,std::string>> kvpair, ColumnFamilyData* cfd,std::vector<ValueType> type){
+  mutex_.AssertHeld();
+  assert(cfd->mem()->IsEmpty());
+  assert(!cfd->imm()->HasFlushRequested());
+
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, "IterToMem: start");
+
+  std::string small_key =cfd->GetSmallestKey();
+  std::string large_key =cfd->GetLargestKey();
+  WriteContext* contexts = new WriteContext();
+
+  InternalKeyComparator cmp(BytewiseComparator());
+  auto factory = std::make_shared<SkipListFactory>();
+  WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
+
+  Options options;
+  options.memtable_factory = factory;
+  ImmutableCFOptions ioptions(options);
+
+  auto mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
+                                     kMaxSequenceNumber, cfd->GetID());
+  cfd->SetImmMemtable(mem);
+
+  fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
+  int seq=1;
+  mem->Ref();
+
+  for(int i=0;i<int(kvpair.size());i++){
+    auto pair = kvpair[i];
+	std::string user_key_str = pair.first;
+	std::string value_str = pair.second;
+    Slice user_key = Slice(user_key_str);
+	Slice value = Slice(value_str);
+    //ParsedInternalKey ikey;
+	//std::cout << key.ToString() << std::endl;
+    //if (!ParseInternalKey(key, &ikey)) {
+    //    continue;
+    //}
+    //Slice user_key = ikey.user_key;
+    //ValueType type = ikey.type;
+
+	if( user_key_str.compare(large_key) > 0)
+		break;
+    if(user_key_str.compare(small_key) >= 0 ){
+      switch (type[i]) {
+        case kTypeValue:
+        case kTypeMerge:
+        {
+          mem->Add(seq++, type[i], user_key, value);
+          break;
+        }
+        case kTypeDeletion:
+        case kTypeSingleDeletion:
+        {
+          mem->Add(seq++, type[i], user_key, Slice(""));
+          break;
+        }
+        default: {
+          fprintf(stderr, "IterToMem: invalid type %d\n",
+                  type[i]);
+        }
+      }
+    }
+  }
+
+  //Add memtables to target column family.
+  if (!mem->IsEmpty()) {
+    mem->SetNextLogNumber(logfile_number_);
+    cfd->imm()->Add(mem, &contexts->memtables_to_free_);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+             "[%s] SplitMemtables: New memtable created with log file: #%" PRIu64
+             ". Immutable memtables: %d.\n",
+             cfd->GetName().c_str(), logfile_number_, cfd->imm()->NumNotFlushed());
+    InstallSuperVersionAndScheduleWork(cfd, &contexts->superversion_context,
+                                      *cfd->GetLatestMutableCFOptions());
+   }
+  else{
+    mem->Unref();
+    delete mem;
+  }
+
+  // clear write contexts
+  delete contexts;
+
+  return Status::OK();
+}
+
 // REQUIRES: mutex_ is held
 // REQUIRES: this thread is currently at the front of the writer queue
 Status DBImpl::SplitMemtable(ColumnFamilyData* cfd, ColumnFamilyData* cfd_out0, ColumnFamilyData* cfd_out1) {

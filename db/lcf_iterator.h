@@ -128,7 +128,7 @@ class LCFIterator : public InternalIterator {
   std::string max_key_="";
   std::vector<PartitionTreeNode*> tree_nodes_;
 
-  SuperVersion* sv_;
+  SuperVersion* sv_ = nullptr;
   /*InternalIterator* mutable_iter_;
   std::vector<InternalIterator*> imm_iters_;
   std::vector<InternalIterator*> l0_iters_;

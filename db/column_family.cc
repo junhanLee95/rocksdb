@@ -360,6 +360,8 @@ bool SuperVersion::Unref() {
   return previous_refs == 1;
 }
 
+int SuperVersion::ref() { return refs.load(std::memory_order_relaxed);}
+
 void SuperVersion::Cleanup() {
   assert(refs.load(std::memory_order_relaxed) == 0);
   imm->Unref(&to_delete);
@@ -508,7 +510,7 @@ ColumnFamilyData::ColumnFamilyData(
       name_(name),
 	  now_num_range_(0),
 	  sliding_window_size_(20),
-	  hot_threshold_(0.3),
+	  hot_threshold_(0.2),
 	  is_hot_(false),
       dummy_versions_(_dummy_versions),
       current_(nullptr),
@@ -619,6 +621,8 @@ ColumnFamilyData::~ColumnFamilyData() {
   // compaction_queue_ and we destroyed it
   assert(!queued_for_flush_);
   assert(!queued_for_compaction_);
+  assert(!queued_for_split_);
+  //assert(!need_split_);
 
   if (super_version_ != nullptr) {
     // Release SuperVersion reference kept in ThreadLocalPtr.
@@ -1194,6 +1198,7 @@ SuperVersion* ColumnFamilyData::GetReferencedSuperVersion(
     // when the thread-local pointer was populated. So, the Ref() earlier in
     // this function still prevents the returned SuperVersion* from being
     // deleted out from under the caller.
+	fprintf(stdout,"Is real?\n");
     sv->Unref();
   }
   return sv;
@@ -1501,6 +1506,15 @@ bool ColumnFamilySet::AddLogicalColumnFamily(ColumnFamilyData* c_in) {
   }*/
 }
 
+void ColumnFamilySet::DeleteFromTree(uint32_t id){
+  partition_tree_->DeleteFromTree(id);
+}
+
+bool ColumnFamilySet::MergeLogicalColumnFamily(ColumnFamilyData* c_in,ColumnFamilyData* c_out) {
+  partition_tree_->InsertMergedColumnFamily(c_in, c_out);
+  PrintLogicalColumnFamily();
+  return true;
+}
 
 // under a DB mutex AND write thread
 bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs) {

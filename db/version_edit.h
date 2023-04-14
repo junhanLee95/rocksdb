@@ -278,7 +278,7 @@ class VersionEdit {
   size_t NumEntries() { return new_files_.size() + deleted_files_.size(); }
 
   bool IsColumnFamilyManipulation() {
-    return is_column_family_add_ || is_column_family_drop_ || is_column_family_split_;
+    return is_column_family_add_ || is_column_family_drop_ || is_column_family_split_ || is_column_family_merge_;
   }
 
   bool IsColumnFamilyAdd() {
@@ -287,6 +287,10 @@ class VersionEdit {
 
   bool IsColumnFamilySplit() {
     return is_column_family_split_;
+  }
+
+  bool IsColumnFamilyMerge() {
+    return is_column_family_merge_;
   }
 
   void SetColumnFamily(uint32_t column_family_id) {
@@ -303,6 +307,7 @@ class VersionEdit {
     assert(!is_column_family_drop_);
     assert(!is_column_family_add_);
     assert(!is_column_family_split_);
+    assert(!is_column_family_merge_);
     assert(NumEntries() == 0);
     is_column_family_add_ = true;
     column_family_name_ = name;
@@ -313,6 +318,7 @@ class VersionEdit {
     assert(!is_column_family_drop_);
     assert(!is_column_family_add_);
     assert(!is_column_family_split_);
+    assert(!is_column_family_merge_);
     is_column_family_split_ = true;
     column_family_name_ = name;
   }
@@ -322,9 +328,20 @@ class VersionEdit {
     assert(!is_column_family_drop_);
     assert(!is_column_family_add_);
     assert(!is_column_family_split_);
+    assert(!is_column_family_merge_);
     assert(NumEntries() == 0);
     is_column_family_drop_ = true;
   }
+
+  void MergeColumnFamily(const std::string& name) {
+    assert(!is_column_family_drop_);
+    assert(!is_column_family_add_);
+    assert(!is_column_family_split_);
+    assert(!is_column_family_merge_);
+    is_column_family_merge_ = true;
+    column_family_name_ = name;
+  }
+
 
   // return true on success.
   bool EncodeTo(std::string* dst) const;
@@ -342,6 +359,10 @@ class VersionEdit {
   void MarkAtomicGroup(uint32_t remaining_entries) {
     is_in_atomic_group_ = true;
     remaining_entries_ = remaining_entries;
+  }
+
+  void print(){
+    fprintf(stdout,"entries is %d\n",remaining_entries_);
   }
 
   std::string DebugString(bool hex_key = false) const;
@@ -386,6 +407,7 @@ class VersionEdit {
   // it also includes column family name.
   bool is_column_family_split_;
   bool is_split_move_;
+  bool is_column_family_merge_;
   std::string smallest_user_key_;
   std::string largest_user_key_;
 

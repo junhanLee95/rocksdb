@@ -113,6 +113,7 @@ struct SuperVersion {
   // If Unref() returns true, Cleanup() should be called with mutex held
   // before deleting this SuperVersion.
   bool Unref();
+  int ref();
 
   // call these two methods with db mutex held
   // Cleanup unrefs mem, imm and current. Also, it stores all memtables
@@ -610,6 +611,8 @@ class ColumnFamilySet {
 
   bool AddLogicalColumnFamily(ColumnFamilyData* c_in); // return true if successfully update lcf vector 
   void DestroyLogicalColumnFamily(void); // clear lcf vector
+  void DeleteFromTree(uint32_t id);
+  bool MergeLogicalColumnFamily(ColumnFamilyData* c_in,ColumnFamilyData* c_out);
   bool SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vector<ColumnFamilyData*> c_outs); // return true if successfully update lcf vector 
   void PrintLogicalColumnFamily(void);
   bool AllowColumnFamilySplit(void);

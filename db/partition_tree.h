@@ -36,6 +36,8 @@ class PartitionTreeNode {
 
   std::vector<PartitionTreeNode *> Traversal();
   void TraversalImpl(std::vector<PartitionTreeNode*> *nodes);
+  std::vector<std::pair<int,int>> Traversal(bool hot);
+  void TraversalImpl(std::vector<std::pair<int,int>> *jobs,bool hot);
 
 };
 
@@ -50,8 +52,10 @@ class PartitionTree {
   ~PartitionTree() {};
 
   void SetRootColumnFamily(ColumnFamilyData*);
+  Status InsertMergedColumnFamily(ColumnFamilyData* base_cfd, ColumnFamilyData* new_cfd);
   Status InsertSplittedColumnFamily (ColumnFamilyData *base_cfd, const std::vector<ColumnFamilyData*> &new_cfds);
-  ColumnFamilyData *SearchColumnFamily (const Slice &key); 
+  void DeleteFromTree(uint32_t id);
+  ColumnFamilyData *SearchColumnFamily (const Slice &key);
   std::vector<ColumnFamilyData*> SearchAllColumnFamilies (const Slice &key); 
   
   void PrintAll();

@@ -2887,7 +2887,12 @@ Status VersionSet::ProcessManifestWrites(
       LogAndApplyCFHelper(writer.edit_list.front());
       batch_edits.push_back(writer.edit_list.front());
     }
-  } else if (first_writer.edit_list.front()->IsColumnFamilyManipulation()) {
+  } else if (first_writer.edit_list.front()->IsColumnFamilyMerge()) {
+    for (auto writer: writers){
+      LogAndApplyCFHelper(writer.edit_list.front());
+      batch_edits.push_back(writer.edit_list.front());
+    }
+  }  else if (first_writer.edit_list.front()->IsColumnFamilyManipulation()) {
     // No group commits for column family add or drop, except for ColumnFamilySplit
     LogAndApplyCFHelper(first_writer.edit_list.front());
     batch_edits.push_back(first_writer.edit_list.front());
@@ -2986,6 +2991,7 @@ Status VersionSet::ProcessManifestWrites(
   }
 
   ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2)");
+
 #ifndef NDEBUG
   // Verify that version edits of atomic groups have correct
   // remaining_entries_.
@@ -3208,7 +3214,38 @@ Status VersionSet::ProcessManifestWrites(
 
       // update logical column family data
       column_family_set_->SplitLogicalColumnFamily(cfd, cfd_outs);
-    } else {
+
+    } else if (first_writer.edit_list.front()->is_column_family_merge_) {
+      assert(new_cf_options != nullptr);
+
+	  auto cfds = writers[0].cfd;
+	  
+	  int i;
+	  std::vector<ColumnFamilyData *>cfd_ins;
+	  for(i = 0 ; i < int(writers.size())-1 ;i++)
+		cfd_ins.push_back(writers[i].cfd);
+
+	  while(cfds!=nullptr){
+	    if(column_family_set_->GetParentColumnFamily(cfds)==nullptr)
+		  break; //not be reached
+		if( find(cfd_ins.begin(), cfd_ins.end(), cfds) != cfd_ins.end() )
+	      cfds = column_family_set_->GetParentColumnFamily(cfds);
+		else
+	      break;
+	  }
+
+	  for(i = 0 ; i < int(writers.size())-1 ;i++){
+        writers[i].cfd->SetDropped();
+        if (writers[i].cfd->Unref()) {
+		  column_family_set_->DeleteFromTree(writers[i].cfd->GetID()); 
+          delete writers[i].cfd;
+        }
+	  }
+     
+      auto cfd_out = CreateColumnFamily(*new_cf_options, writers[i].edit_list.front());
+      column_family_set_->MergeLogicalColumnFamily(cfds, cfd_out);
+
+	} else {
       // Each version in versions corresponds to a column family.
       // For each column family, update its log number indicating that logs
       // with number smaller than this should be ignored.
@@ -3310,6 +3347,7 @@ Status VersionSet::LogAndApply(
     const ColumnFamilyOptions* new_cf_options) {
   mu->AssertHeld();
   bool is_split_column_family = false;
+  bool is_merge_column_family = false;
   int num_edits = 0;
   for (const auto& elist : edit_lists) {
     num_edits += static_cast<int>(elist.size());
@@ -3320,10 +3358,15 @@ Status VersionSet::LogAndApply(
     if (edit_lists[0][0]->is_column_family_split_) {
       is_split_column_family = true;
     }
+
+    if (edit_lists[0][0]->is_column_family_merge_) {
+      is_merge_column_family = true;
+    }
  
 #ifndef NDEBUG
-    if (!edit_lists[0][0]->is_column_family_split_) {
-      is_split_column_family = false;
+    if (!edit_lists[0][0]->is_column_family_split_ &&!edit_lists[0][0]->is_column_family_merge_) {
+      is_split_column_family = edit_lists[0][0]->is_column_family_split_;
+      is_merge_column_family = edit_lists[0][0]->is_column_family_merge_;
       for (const auto& edit_list : edit_lists) {
         for (const auto& edit : edit_list) {
           assert(!edit->IsColumnFamilyManipulation());
@@ -3332,7 +3375,8 @@ Status VersionSet::LogAndApply(
     }
     else {
       // SplitColumnFamily
-      is_split_column_family = true;
+      is_split_column_family = edit_lists[0][0]->is_column_family_split_;
+      is_merge_column_family = edit_lists[0][0]->is_column_family_merge_;
     }
 #endif /* ! NDEBUG */
   }
@@ -3375,18 +3419,18 @@ Status VersionSet::LogAndApply(
   }
 
   std::deque<ManifestWriter> writers;
-  if (!is_split_column_family && num_cfds > 0) {
+  if (!is_split_column_family && !is_merge_column_family && num_cfds > 0) {
     assert(static_cast<size_t>(num_cfds) == mutable_cf_options_list.size());
     assert(static_cast<size_t>(num_cfds) == edit_lists.size());
   }
-  if (!is_split_column_family) {
+  if (!is_split_column_family && !is_merge_column_family) {
     for (int i = 0; i < num_cfds; ++i) {
       writers.emplace_back(mu, column_family_datas[i],
                            *mutable_cf_options_list[i], edit_lists[i]);
       manifest_writers_.push_back(&writers[i]);
     }
   }
-  else{ // SplitColumnFamily
+  else if(is_split_column_family){ // SplitColumnFamily
     writers.emplace_back(mu, column_family_datas[0],
                          *mutable_cf_options_list[0], edit_lists[0]);
     manifest_writers_.push_back(&writers[0]);
@@ -3394,6 +3438,16 @@ Status VersionSet::LogAndApply(
       writers.emplace_back(mu, nullptr,
                            *mutable_cf_options_list[i], edit_lists[i]);
     }
+  }
+  else if(is_merge_column_family){ // MergeColumnFamily
+	int i=0;
+	for (i =0; i < int(edit_lists.size()) - 1; i++){
+      writers.emplace_back(mu, column_family_datas[i],
+                           *mutable_cf_options_list[i], edit_lists[i]);
+	}
+    manifest_writers_.push_back(&writers[0]);///ask to?????
+    writers.emplace_back(mu, nullptr,
+                         *mutable_cf_options_list[i], edit_lists[i]);
   }
   assert(!writers.empty());
   ManifestWriter& first_writer = writers.front();

@@ -47,6 +47,122 @@ void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
   versions_->GetSplitFiles(&job_context->sst_split_files);
 }
 
+ColumnFamilyData* DBImpl::MergeColumnFamily(std::vector<int> source_cfds, 
+							int target_cfd, ColumnFamilyData* cfd) {
+  Status s;
+
+  ColumnFamilySet *cfs =cfd->GetColumnFamilySet();
+  ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
+  std::vector<SuperVersionContext> superversion_contexts;
+  autovector<autovector<VersionEdit*>> edit_lists;
+  autovector<const MutableCFOptions*> mutable_cf_options_list;
+  autovector<std::string> cf_name_list;
+  autovector<ColumnFamilyData*> column_family_datas;
+
+  // 1.call LogAndApply to create column family
+
+  autovector<VersionEdit*> edits_in;
+  std::vector<VersionEdit> edit_in(1024);
+  int i=0;
+  // Put source
+  for(auto id : source_cfds){
+    
+	cfd = cfs->GetColumnFamily(id);
+    column_family_datas.push_back(cfd);
+  
+	edit_in[i].MergeColumnFamily(cfd->GetName());
+    edit_in[i].SetColumnFamily(cfd->GetID());
+    edits_in.push_back(&edit_in[i++]);
+    edit_lists.push_back(edits_in);
+    edits_in.clear();
+    mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+
+    }   
+
+  {
+    InstrumentedMutexLock l(&mutex_);
+
+    autovector<VersionEdit*> edits_out;
+    VersionEdit edit_out;
+  
+    mutex_.AssertHeld();
+    cfd = cfs->GetColumnFamily(target_cfd);
+    std::string smallest=cfd->GetSmallestKey();
+    std::string largest=cfd->GetLargestKey();
+    uint32_t next_cf_id = cfs->GetNextColumnFamilyID();
+    edit_out.SetColumnFamily(next_cf_id);
+    std::string cf_name = "default" + std::to_string(next_cf_id);
+
+    edit_out.AddColumnFamily(cf_name);
+    edit_out.SetLogNumber(0);
+    edit_out.SetColumnFamilyKeyRange(smallest, largest);
+    edits_out.push_back(&edit_out);
+    edit_lists.push_back(edits_out);
+    mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+    cf_name_list.push_back(cf_name);
+
+    superversion_contexts.emplace_back(SuperVersionContext(true));
+    
+
+    uint32_t entries = source_cfds.size() + 1;
+    for (auto& edits: edit_lists){
+      edits[0]->MarkAtomicGroup(--entries);
+    }
+	
+	assert(entries == 0);
+	
+	for(i=0;i<int(column_family_datas.size());i++){
+      EraseThreadStatusCfInfo(column_family_datas[i]);
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+			"Dropped column family with id %u\n", column_family_datas[i]->GetID());
+	}
+
+    {
+      WriteThread::Writer w;
+      write_thread_.EnterUnbatched(&w, &mutex_);
+      s = versions_->LogAndApply(column_family_datas, mutable_cf_options_list,
+              edit_lists, &mutex_, directories_.GetDbDir(), false,
+              &cf_options);
+      write_thread_.ExitUnbatched(&w); //version_set.cc:142
+    }
+ 
+	
+    if (s.ok()) {
+      auto* cfd_out_i = versions_->GetColumnFamilySet()->GetColumnFamily(cf_name_list[0]);
+      s = cfd_out_i->AddDirectories();
+    }
+
+    fprintf(stdout, "Install SuperVersion\n");
+
+    if (s.ok()) {
+	  single_column_family_mode_ = false;
+      auto* cfd_out_i = versions_->GetColumnFamilySet()->GetColumnFamily(cf_name_list[0]);
+	  column_family_datas.push_back(cfd_out_i);
+	  fprintf(stdout,"Left Split is %d\n",unscheduled_splits_);
+	  InstallSuperVersionAndScheduleWork(cfd_out_i, &superversion_contexts[0],*cfd_out_i->GetLatestMutableCFOptions());
+	  if (!cfd_out_i->mem()->IsSnapshotSupported()) {
+	     is_snapshot_supported_ = false;
+	  }
+	  cfd_out_i->set_initialized();
+    }
+  } // end of InstrumentedMutex 
+
+  for (auto& sv: superversion_contexts) {
+    sv.Clean();
+  }
+  if (s.ok()){
+    NewThreadStatusCfInfo(column_family_datas.back());
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+		  "Added column family with id %u\n", column_family_datas.back()->GetID());
+  }
+  fprintf(stdout,"finished\n");
+  //PrintLogicalColumnFamily();
+  auto* cfd_out = versions_->GetColumnFamilySet()->GetColumnFamily(cf_name_list[0]);
+  return cfd_out;
+}
+
+
+
 Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_split_files) {
   assert(!sst_split_files.empty());
   Status s;

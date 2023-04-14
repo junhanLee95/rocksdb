@@ -9,6 +9,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <algorithm>
 
 #include "db/column_family.h"
 #include "db/db_impl.h"
@@ -47,42 +48,100 @@ LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
 	  nodes_(nodes),
 	  merge_iter_builder_(MergeIteratorBuilder(&root_->internal_comparator(),&arena_))
       {
-	//for(int i=0;i<num;i++)
-		//iterators_[i]->SeekToFirst();
-	//iterators_[1]->Next();
-    /*size_t id = 0;
-	for (auto& iter: iterator) {
-	  while(iter->Valid()){
-		fprintf(stdout,"[LCF%ld]now value is %s\n", id, iter->value().data());
-		iter->Next();
-	  }
-	  id++;
-	}*/
-	//Arena arena;
-    //MergeIteratorBuilder builder(&root_->internal_comparator(),&arena);
-	//merge_iter_builder_=builder;
-	//fprintf(stdout,"number is %d\n",int(iterators_.size()));
 	tree_nodes_=root_->GetPartitionTreeNode()->Traversal();
 	for(auto iter: iterators_)
 	  merge_iter_builder_.AddIterator(iter);
 	merge_iter_=merge_iter_builder_.GetMergeIter();
-
-	//merge_iter_=NewMergingIterator(&root_->internal_comparator(),&iterators_[0],num_);
-	
-	
   /*if (sv_) {
 	  RebuildIterators(false);
   }*/
 }
 
 LCFIterator::~LCFIterator() {
+  std::vector<std::pair<std::string,std::string>> kvpair;
+  std::vector<ValueType> type;
+  for(merge_iter_->SeekToFirst(); merge_iter_->Valid(); merge_iter_->Next()){
+	Slice key = merge_iter_->key();
+    Slice value = merge_iter_->value();
+	ParsedInternalKey ikey;
+
+    ParseInternalKey(key, &ikey);
+	kvpair.push_back(std::make_pair(ikey.user_key.ToString(),value.ToString()));
+	type.push_back(ikey.type);
+  }
+  this->Cleanup(true);
+  merge_iter_=nullptr;
   for(auto cnodes : tree_nodes_){
 	  //fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
 	  cnodes->cfd_->SetHot();
-	  //fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
+	  fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
   }
-  this->Cleanup(true);
+
+  std::vector<std::pair<int,int>> jobs = root_->GetPartitionTreeNode()->Traversal(true);
+  //for(auto pair : jobs)
+  //	  fprintf(stdout,"(%d -> %d)\n",pair.first,pair.second);
+  //std::vector<std::pair<int,int>> sibling_jobs = root_->GetPartitionTreeNode()->Traversal(false);
+  std::vector<int> target_cfd;
+  for(auto pair : jobs)
+    target_cfd.push_back(pair.second);
+  sort(target_cfd.begin(),target_cfd.end());
+  target_cfd.erase(unique(target_cfd.begin(),target_cfd.end()),target_cfd.end());
+
+  std::vector<std::vector<int>> source_cfds;
+  int size=int(target_cfd.size());
+  for(int i=0;i<size;i++){
+	std::vector<int>imm;
+	for(auto pair : jobs){
+      if(pair.second==target_cfd[i])
+        imm.push_back(pair.first);
+	}
+    sort(imm.begin(),imm.end());
+    imm.erase(unique(imm.begin(),imm.end()),imm.end());
+	source_cfds.push_back(imm);
+  }
+  
+  int i=0;
+  for(auto vec : source_cfds){
+    for(auto a : vec){
+	  fprintf(stdout,"%d ",a);
+    }
+
+	fprintf(stdout,"-> ");
+	fprintf(stdout,"%d\n",target_cfd[i++]);
+  }
+  std::vector<ColumnFamilyData*> new_cfds; 
+  if(source_cfds.size()!=0){
+	for(i=0;i<int(source_cfds.size());i++)
+      new_cfds.push_back(db_->MergeColumnFamily(source_cfds[i],target_cfd[i],root_));
+  }
+  for(auto cf:new_cfds)
+    fprintf(stdout,"ID is %d\n",cf->GetID());
+  Status s = db_->IterToMem(kvpair, new_cfds,type);
+  assert(s.ok());
   fprintf(stdout,"Success to delete LCFIterator\n");
+  merge_iter_builder_.Finish();
+  /*
+  for(auto pair : jobs)
+	  fprintf(stdout,"(%d -> %d)\n",pair.first,pair.second);
+  for(auto pair : sibilng_jobs)
+	  fprintf(stdout,"(%d -> %d)\n",pair.first,pair.second);
+  */
+  /*std::vector<int> target_cfd;
+  for(auto pair : jobs)
+    target_cfd.push_back(pair.second);
+  sort(target_cfd.begin(),target_cfd.end());
+  target_cfd.erase(unique(target_cfd.begin(),target_cfd.end()),target_cfd.end());
+
+  std::vector<HotRange(target_cfd);
+  for(auto pair : sibling_jobs)
+    target_cfd.push_back(pair.second);
+  sort(target_cfd.begin(),target_cfd.end());
+  target_cfd.erase(unique(target_cfd.begin(),target_cfd.end()),target_cfd.end());*/
+
+  //for(auto a : target_cfd)
+  //  fprintf(stdout,"element is %d\n",a);
+  
+  //MakeNewPartition(jobs, sibiling_jobs);
 }
 
 void LCFIterator::SVCleanup(DBImpl* db, SuperVersion* sv,
@@ -129,11 +188,8 @@ void LCFIterator::SVCleanup() {
   bool background_purge =
       read_options_.background_purge_on_iterator_cleanup ||
       db_->immutable_db_options().avoid_unnecessary_blocking_io;
-  if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
-    // pinned_iters_mgr_ tells us to make sure that all visited key-value slices
-    // are alive until pinned_iters_mgr_->ReleasePinnedData() is called.
-      read_options_.background_purge_on_iterator_cleanup ||
-      db_->immutable_db_options().avoid_unnecessary_blocking_io;
+  if(pinned_iters_mgr_->PinningEnabled())
+    fprintf(stdout,"YesYes\n");
   if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
     // pinned_iters_mgr_ tells us to make sure that all visited key-value slices
     // are alive until pinned_iters_mgr_->ReleasePinnedData() is called.
@@ -144,7 +200,6 @@ void LCFIterator::SVCleanup() {
   } else {
     SVCleanup(db_, sv_, background_purge);
   }
-}
 }
 
 void LCFIterator::Cleanup(bool release_sv) {
