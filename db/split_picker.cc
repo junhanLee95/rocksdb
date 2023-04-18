@@ -38,18 +38,18 @@ SplitPicker::~SplitPicker() {}
 
 bool SplitPicker::SetupL0FilesIfNeeded(LogBuffer* log_buffer,
                                        VersionStorageInfo* vstorage,
-                                       std::vector<FileMetaData*> metas,
+                                       std::vector<std::pair<std::string, std::string>> metas,
                                        CompactionInputFiles& l0_files) {
   bool exists = false;
   for (FileMetaData* f: vstorage->LevelFiles(0)) {
     fprintf(stdout,"L0 Setup: l0 s: %s\n", f->smallest.DebugString(false).c_str());
     fprintf(stdout,"L0 Setup: l0 l: %s\n", f->largest.DebugString(false).c_str());
   
-    for (FileMetaData* f1: metas) {
-      fprintf(stdout,"L0 Setup: meta s: %s\n", f1->smallest.DebugString(false).c_str());
-      fprintf(stdout,"L0 Setup: meta l: %s\n", f1->largest.DebugString(false).c_str());
+    for (auto meta: metas) {
+      fprintf(stdout,"L0 Setup: meta s: %s\n", meta.first.c_str());
+      fprintf(stdout,"L0 Setup: meta l: %s\n", meta.second.c_str());
 
-      if (!f->being_compacted && HaveOverlappingKeyRanges(f, f1)) {
+      if (!f->being_compacted && HaveOverlappingKeyRanges(f, meta.first, meta.second)) {
         l0_files.files.push_back(f);
         l0_files.level = 0;
         exists = true;
@@ -78,7 +78,10 @@ bool SplitPicker::SetupL1FilesIfNeeded(LogBuffer* log_buffer,
       //fprintf(stdout,"L1 Setup: push meta s: %s\n", f1->smallest.DebugString(false).c_str());
       //fprintf(stdout,"L1 Setup: push meta l: %s\n", f1->largest.DebugString(false).c_str());
       
-      if (!f->being_compacted && HaveOverlappingKeyRanges(f, f1)) {
+      if (!f->being_compacted && HaveOverlappingKeyRanges(f,
+                                                          f1->smallest.user_key().ToString(),
+                                                          f1->largest.user_key().ToString()
+      )) {
         l1_files.files.push_back(f);
         l1_files.level = 1;
         exists = true;
@@ -95,7 +98,7 @@ bool SplitPicker::SetupL1FilesIfNeeded(LogBuffer* log_buffer,
 
 Compaction* SplitPicker::PickSplit(const std::string& cf_name,
                               VersionStorageInfo* vstorage,
-                              std::vector<FileMetaData*> metas,
+                              std::vector<std::pair<std::string, std::string>> metas,
                               LogBuffer* log_buffer) {
   /*
   CompactionInputFiles input_files;
@@ -141,11 +144,10 @@ Compaction* SplitPicker::PickSplit(const std::string& cf_name,
 }
 
 
-bool SplitPicker::HaveOverlappingKeyRanges(FileMetaData* a, FileMetaData* b) {
-  Slice s_a = a->smallest.user_key();
-  Slice l_a = a->largest.user_key();
-  Slice s_b = b->smallest.user_key();
-  Slice l_b = b->largest.user_key();
+bool SplitPicker::HaveOverlappingKeyRanges(FileMetaData* a,
+                                           std::string s_b, std::string l_b) {
+  std::string s_a = a->smallest.user_key().ToString();
+  std::string l_a = a->largest.user_key().ToString();
 
   if (s_a.compare(s_b) >= 0) {
     if (s_a.compare(l_b) <= 0) {

@@ -277,7 +277,7 @@ struct SplitJob::SubsplitState {
 // Maintains state for the entire compaction
 struct SplitJob::SplitState {
   Compaction* const compaction;
-  std::vector<FileMetaData*> metas;
+  /*std::vector<FileMetaData*> metas;*/
   Slice median_key;
 
   // REQUIRED: subcompaction states are stored in order of increasing
@@ -289,9 +289,9 @@ struct SplitJob::SplitState {
   uint64_t num_input_records;
   uint64_t num_output_records;
 
-  explicit SplitState(Compaction* c, std::vector<FileMetaData*> m)
+  explicit SplitState(Compaction* c/*, std::vector<FileMetaData*> m*/)
       : compaction(c),
-        metas(m),
+       /* metas(m),*/
         median_key(c->column_family_data()->current()->storage_info()->GetMedianKey((*c->column_family_data()->ioptions()))),
         total_bytes(0),
         num_input_records(0),
@@ -360,7 +360,7 @@ void SplitJob::AggregateStatistics() {
 }
 
 SplitJob::SplitJob(
-    int job_id, Compaction* compaction, std::vector<FileMetaData*> metas,
+    int job_id, Compaction* compaction, /*std::vector<FileMetaData*> metas,*/
     const ImmutableDBOptions& db_options,
     const EnvOptions env_options, VersionSet* versions,
     const std::atomic<bool>* shutting_down,
@@ -374,7 +374,7 @@ SplitJob::SplitJob(
     const std::string& dbname, SplitJobStats* split_job_stats,
     Env::Priority thread_pri)
     : job_id_(job_id),
-      split_(new SplitState(compaction, metas)),
+      split_(new SplitState(compaction/*, metas*/)),
       children_cnt_(compaction->column_family_data()->GetChildrenNodes().size()),
       split_job_stats_(split_job_stats),
       compaction_stats_(compaction->compaction_reason(), 1),

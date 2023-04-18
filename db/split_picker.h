@@ -36,7 +36,7 @@ class SplitPicker {
 
   bool SetupL0FilesIfNeeded(LogBuffer* log_buffer,
                             VersionStorageInfo* vstorage,
-                            std::vector<FileMetaData*> metas,
+                            std::vector<std::pair<std::string, std::string>> metas,
                             CompactionInputFiles& l0_files);
  
   bool SetupL1FilesIfNeeded(LogBuffer* log_buffer,
@@ -50,11 +50,11 @@ class SplitPicker {
   // describes the split.  Caller should delete the result.
   Compaction* PickSplit(const std::string& cf_name,
                    VersionStorageInfo* vstorage,
-                   std::vector<FileMetaData*> metas,
+                   std::vector<std::pair<std::string, std::string>> metas,
                    LogBuffer* log_buffer);
 
 
-  bool HaveOverlappingKeyRanges(FileMetaData* a, FileMetaData* b);
+  bool HaveOverlappingKeyRanges(FileMetaData* a, std::string s_b, std::string l_b);
 
   Compaction* GetSplit(VersionStorageInfo* vstorage);
 

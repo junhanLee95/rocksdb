@@ -1023,7 +1023,7 @@ bool ColumnFamilyData::NeedsSplit() const {
 }
 
 Compaction* ColumnFamilyData::PickSplit(
-     std::vector<FileMetaData*> metas,
+     std::vector<std::pair<std::string, std::string>> metas,
      LogBuffer* log_buffer) {
   auto* result = split_picker_->PickSplit(
       GetName(), current_->storage_info(),  metas, log_buffer);

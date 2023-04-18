@@ -1590,26 +1590,27 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
                                   SplitRequest* req) {
   assert(req != nullptr);
   req->reserve(1);
-  std::vector<FileMetaData*> std_metas;
+  std::vector<std::pair<std::string, std::string>> key_ranges;
   for (auto& meta: metas) {
-    std_metas.push_back(meta);
+    std::string smallest = meta->smallest.DebugString(false);
+    std::string largest  = meta->largest.DebugString(false);
+    key_ranges.push_back(std::make_pair(smallest, largest));
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GenerateSplitRequest : cfd(%s) R[%s, %s]",
                    cfd->GetName().c_str(),
-                   meta->smallest.DebugString(false).c_str(),
-                   meta->largest.DebugString(false).c_str());
+                   smallest.c_str(),
+                   largest.c_str());
 
     //fprintf(stdout,"GenerateSplitReq: push meta s: %s\n", meta->smallest.DebugString(false).c_str());
     //fprintf(stdout,"GenerateSplitReq: push meta l: %s\n", meta->largest.DebugString(false).c_str());
   }
-  if (std_metas.empty()) {
+  if (key_ranges.empty()) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GenerateSplitRequest : no request cfd(%s)",
                    cfd->GetName().c_str()
                    );
   }
-  req->emplace_back(cfd, std_metas);
-
+  req->emplace_back(cfd, key_ranges);
 }
 
 Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
@@ -2057,20 +2058,19 @@ DBImpl::FlushRequest DBImpl::PopFirstFromFlushQueue() {
   return flush_req;
 }
 
-void DBImpl::AddToSplitQueue(SplitRequest& req) {
+void DBImpl::AddToSplitQueue(const SplitRequest& req) {
   auto cfd = req.front().first;
   auto metas = req.front().second;
   assert(!cfd->queued_for_split());
   cfd->Ref();
   std::string meta_info_str = "";
   for (auto meta: metas) {
-    meta_info_str += "#" + std::to_string(meta->fd.GetNumber()) +
-                     "[" + meta->smallest.user_key().ToString() +
-                     ", " + meta->largest.user_key().ToString() +
+    meta_info_str += "[" + meta.first +
+                     ", " + meta.second +
                      "], ";
   }
   ROCKS_LOG_INFO(
-      immutable_db_options_.info_log, "AddToSplitQueue: cf [%s] meta [%s]",
+      immutable_db_options_.info_log, "AddToSplitQueue: cf [%s] key range [%s]",
       cfd->GetName().c_str(), meta_info_str.c_str());
   LogFlush(immutable_db_options_.info_log);
 
@@ -2086,9 +2086,8 @@ DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   std::string meta_info_str = "";
 
   for (auto meta: metas) {
-    meta_info_str += "#" + std::to_string(meta->fd.GetNumber()) +
-                     "[" + meta->smallest.user_key().ToString() +
-                     ", " + meta->largest.user_key().ToString() +
+    meta_info_str += "[" + meta.first +
+                     ", " + meta.second +
                      "], ";
   }
   //assert(unscheduled_splits_ >= static_cast<int>(split_req.size()));
@@ -2154,20 +2153,35 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   }
 }
 
-void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd) {
+void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd, const SplitRequest& split_req) {
   //fprintf(stdout, "split queued : %d\n", cfd->queued_for_split() );
   //fprintf(stdout, "split need : %d\n", cfd->NeedsSplit() );
   //fprintf(stdout, "comp queued : %d\n", cfd->queued_for_compaction() );
-  if (!cfd->queued_for_split() && cfd->NeedsSplit()
-      && !cfd->queued_for_compaction()) {
-    //fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
-    SplitRequest split_req;
-    GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
-    //assert(cfd->current()->storage_info()->FilesMarkedForSplit().empty());
-    assert(!split_req.empty());
-
-    AddToSplitQueue(split_req);
-    ++unscheduled_splits_;
+  if (split_req.empty()) {
+    ROCKS_LOG_INFO(
+          immutable_db_options_.info_log,
+          "SchedulePendingSplit: cfd[%s] split req is empty", cfd->GetName().c_str());
+    return;
+  }
+  else {
+    if (!cfd->queued_for_split() && cfd->NeedsSplit()
+        /* && !cfd->queued_for_compaction()*/) {
+      //fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
+      //SplitRequest split_req;
+      //GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
+      //assert(cfd->current()->storage_info()->FilesMarkedForSplit().empty());
+      assert(!split_req.empty());
+      ROCKS_LOG_INFO(
+          immutable_db_options_.info_log,
+          "SchedulePendingSplit: cfd[%s] add to split queue", cfd->GetName().c_str());
+      AddToSplitQueue(split_req);
+      ++unscheduled_splits_;
+    } else {
+      ROCKS_LOG_INFO(
+          immutable_db_options_.info_log,
+          "SchedulePendingSplit: cfd[%s] split is not queued for split nor split is needed",
+          cfd->GetName().c_str());
+    }
   }
 }
 
@@ -2649,7 +2663,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
   TEST_SYNC_POINT("DBImpl::BackgroundSplit:Start");
 
   std::unique_ptr<Compaction> c;
-  std::vector<FileMetaData*> metas;
+  std::vector<std::pair<std::string, std::string>> metas;
   ColumnFamilyData* cfd;
 
   SplitJobStats split_job_stats;
@@ -2735,7 +2749,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
                        &earliest_write_conflict_snapshot, &snapshot_checker);
     assert(is_snapshot_supported_ || snapshots_.empty());
     SplitJob split_job(
-        job_context->job_id, c.get(), metas, immutable_db_options_,
+        job_context->job_id, c.get(),/* metas,*/ immutable_db_options_,
         env_options_for_compaction_, versions_.get(), &shutting_down_,
         preserve_deletes_seqnum_.load(), log_buffer, directories_.GetDbDir(),
         GetDataDir(c->column_family_data(), c->output_path_id()), stats_,

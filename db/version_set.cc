@@ -4383,48 +4383,52 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
   // Record column family manipulations, including partition tree operations
   // to the log
   {
-    Status s;
     PartitionTree* partition_tree = column_family_set_->get_partition_tree();
     std::vector<PartitionTreeNode*> cnodes;
 
-    cnodes.push_back(partition_tree->root_);
-    ColumnFamilyData* default_cfd = partition_tree->root_->cfd_;
-    s = ApplyCFManipulationToLog(log, default_cfd, false, false, true, false, 0, "", "");
-    if (!s.ok()) {
-      return s; 
-    }
+    if (partition_tree != nullptr) {
+      fprintf(stdout, "root exist? :%d\n", partition_tree->root_!=nullptr);
+      fprintf(stdout, "root id? :%d\n", partition_tree->root_->cfd_->GetID());
 
-    while (!cnodes.empty()) {
-      std::vector<PartitionTreeNode*> nnodes;
-      std::string lower;
-      std::string upper;
-
-      // recover cf manipulation
-      for (PartitionTreeNode* cnode: cnodes) {
-        std::vector<PartitionTreeNode*> lnodes = cnode->GetChildrenNodes();
-        if (!lnodes.empty()) {
-          uint32_t remaining_entries = 1 + lnodes.size();
-          lower = cnode->cfd_->GetSmallestKey();
-          upper = cnode->cfd_->GetLargestKey();
-          s = ApplyCFManipulationToLog(log, cnode->cfd_, true, false, true, true, --remaining_entries, lower, upper);
-          if (!s.ok()) {
-            return s;
-          }
-          for (PartitionTreeNode* lnode: lnodes) {
-            lower = lnode->cfd_->GetSmallestKey();
-            upper = lnode->cfd_->GetLargestKey();
-            s = ApplyCFManipulationToLog(log, lnode->cfd_, false, true, true, true, --remaining_entries, lower, upper);
-            if (!s.ok()) {
-              return s; 
-            }
-            nnodes.push_back(lnode);
-          }
-          assert (remaining_entries == 0);
-        }
+      cnodes.push_back(partition_tree->root_);
+      ColumnFamilyData* default_cfd = partition_tree->root_->cfd_;
+      Status s = ApplyCFManipulationToLog(log, default_cfd, false, false, true, false, 0, "", "");
+      if (!s.ok()) {
+        return s; 
       }
 
-      cnodes = nnodes;
-      nnodes.clear();
+      while (!cnodes.empty()) {
+        std::vector<PartitionTreeNode*> nnodes;
+        std::string lower;
+        std::string upper;
+
+        // recover cf manipulation
+        for (PartitionTreeNode* cnode: cnodes) {
+          std::vector<PartitionTreeNode*> lnodes = cnode->GetChildrenNodes();
+          if (!lnodes.empty()) {
+            uint32_t remaining_entries = 1 + lnodes.size();
+            lower = cnode->cfd_->GetSmallestKey();
+            upper = cnode->cfd_->GetLargestKey();
+            s = ApplyCFManipulationToLog(log, cnode->cfd_, true, false, true, true, --remaining_entries, lower, upper);
+            if (!s.ok()) {
+              return s;
+            }
+            for (PartitionTreeNode* lnode: lnodes) {
+              lower = lnode->cfd_->GetSmallestKey();
+              upper = lnode->cfd_->GetLargestKey();
+              s = ApplyCFManipulationToLog(log, lnode->cfd_, false, true, true, true, --remaining_entries, lower, upper);
+              if (!s.ok()) {
+                return s; 
+              }
+              nnodes.push_back(lnode);
+            }
+            assert (remaining_entries == 0);
+          }
+        }
+
+        cnodes = nnodes;
+        nnodes.clear();
+      }
     }
   }
 

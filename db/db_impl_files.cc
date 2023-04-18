@@ -226,6 +226,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
   //fprintf(stdout, "Split mt\n");
 
   // 2.split memtables
+  SplitRequest split_req;
   WriteContext context;
   {
     InstrumentedMutexLock l(&mutex_);
@@ -328,7 +329,9 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
     //fprintf(stdout, "Split sst(2)\n");
     vstorage->ComputeFilesMarkedForSplit(sst_split_files);
-    SchedulePendingSplit(cfd);
+    GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(),
+                         &split_req);
+    SchedulePendingSplit(cfd, split_req);
     MaybeScheduleFlushOrCompaction();  
   } // InstrumentedMutexLock l(&mutex_)
   PrintLogicalColumnFamily();

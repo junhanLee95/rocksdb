@@ -2300,10 +2300,13 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
           (*handle_in0)->GetName().c_str(), s.ToString().c_str());
     }
     // STEP 4. Split SSTable
+    SplitRequest split_req;
     if (s.ok()) {
       // generate split req
+      GenerateSplitRequest(cfd_in0, cfd_in0->current()->storage_info()->FilesMarkedForSplit(),
+                           &split_req);
       // add to schedule
-      SchedulePendingSplit(cfd_in0);
+      SchedulePendingSplit(cfd_in0, split_req);
       MaybeScheduleFlushOrCompaction();
       // activate scheduler
     }

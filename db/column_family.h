@@ -285,7 +285,7 @@ class ColumnFamilyData {
   bool NeedsSplit() const;
 
   // REQUIRES: DB mutex held
-  Compaction* PickSplit( std::vector<FileMetaData*> metas,
+  Compaction* PickSplit( std::vector<std::pair<std::string, std::string>> metas,
                    LogBuffer* log_buffer);
 
   // thread-safe

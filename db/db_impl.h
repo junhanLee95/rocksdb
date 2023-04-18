@@ -1188,11 +1188,11 @@ class DBImpl : public DB {
   typedef std::vector<std::pair<ColumnFamilyData*, uint64_t>> FlushRequest;
 
   // A split request specifies the column families to split as well as the
-  // file metadata to specify the key range.
+  // key range.
   // Note that the file must exist in Level 0 and not compacting.
   // After completing the work for all
   // column families in this request, this split is considered complete.
-  typedef std::vector<std::pair<ColumnFamilyData*, std::vector<FileMetaData*>>> SplitRequest;
+  typedef std::vector<std::pair<ColumnFamilyData*, std::vector<std::pair<std::string, std::string>>>> SplitRequest;
 
   void GenerateFlushRequest(const autovector<ColumnFamilyData*>& cfds,
                             FlushRequest* req);
@@ -1203,7 +1203,7 @@ class DBImpl : public DB {
   void SchedulePendingFlush(const FlushRequest& req, FlushReason flush_reason);
 
   void SchedulePendingCompaction(ColumnFamilyData* cfd);
-  void SchedulePendingSplit(ColumnFamilyData* cfd);
+  void SchedulePendingSplit(ColumnFamilyData* cfd, const SplitRequest& req);
   void SchedulePendingPurge(std::string fname, std::string dir_to_sync,
                             FileType type, uint64_t number, int job_id);
   static void BGWorkCompaction(void* arg);
@@ -1269,7 +1269,7 @@ class DBImpl : public DB {
 
   // helper functions for adding and removing from flush & compaction queues
   void AddToCompactionQueue(ColumnFamilyData* cfd);
-  void AddToSplitQueue(SplitRequest& req);
+  void AddToSplitQueue(const SplitRequest& req);
   ColumnFamilyData* PopFirstFromCompactionQueue();
   SplitRequest PopFirstFromSplitQueue();
   FlushRequest PopFirstFromFlushQueue();

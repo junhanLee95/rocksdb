@@ -57,7 +57,7 @@ class VersionSet;
 
 class SplitJob {
  public:
-  SplitJob(int job_id, Compaction* compaction, std::vector<FileMetaData*> metas,
+  SplitJob(int job_id, Compaction* compaction, /*std::vector<FileMetaData*> metas,*/
                 const ImmutableDBOptions& db_options,
                 const EnvOptions env_options, VersionSet* versions,
                 const std::atomic<bool>* shutting_down,
