@@ -1592,8 +1592,8 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
   req->reserve(1);
   std::vector<std::pair<std::string, std::string>> key_ranges;
   for (auto& meta: metas) {
-    std::string smallest = meta->smallest.DebugString(false);
-    std::string largest  = meta->largest.DebugString(false);
+    std::string smallest = meta->smallest.user_key().ToString();
+    std::string largest  = meta->largest.user_key().ToString();
     key_ranges.push_back(std::make_pair(smallest, largest));
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GenerateSplitRequest : cfd(%s) R[%s, %s]",

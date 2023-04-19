@@ -42,24 +42,33 @@ bool SplitPicker::SetupL0FilesIfNeeded(LogBuffer* log_buffer,
                                        CompactionInputFiles& l0_files) {
   bool exists = false;
   for (FileMetaData* f: vstorage->LevelFiles(0)) {
-    fprintf(stdout,"L0 Setup: l0 s: %s\n", f->smallest.DebugString(false).c_str());
-    fprintf(stdout,"L0 Setup: l0 l: %s\n", f->largest.DebugString(false).c_str());
-  
+    //fprintf(stdout,"L0 Setup: l0 s: %s\n", f->smallest.DebugString(false).c_str());
+    //fprintf(stdout,"L0 Setup: l0 l: %s\n", f->largest.DebugString(false).c_str());
+    ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit L0 Setup: l0 [%s, %s] ",
+                     f->smallest.DebugString(false).c_str(),
+                     f->largest.DebugString(false).c_str()
+                     );
+
     for (auto meta: metas) {
-      fprintf(stdout,"L0 Setup: meta s: %s\n", meta.first.c_str());
-      fprintf(stdout,"L0 Setup: meta l: %s\n", meta.second.c_str());
+      //fprintf(stdout,"L0 Setup: meta s: %s\n", meta.first.c_str());
+      //fprintf(stdout,"L0 Setup: meta l: %s\n", meta.second.c_str());
+      ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit Meta Setup: l0 [%s, %s] ",
+                     meta.first.c_str(),
+                     meta.second.c_str()
+                     );
 
       if (!f->being_compacted && HaveOverlappingKeyRanges(f, meta.first, meta.second)) {
+        ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit [#%" PRIu64 "] is overlapped",
+                         f->fd.GetNumber());
         l0_files.files.push_back(f);
         l0_files.level = 0;
         exists = true;
         break;
       } else if (f->being_compacted) {
-        ROCKS_LOG_BUFFER(log_buffer, "SplitPicker: L0 input[%" PRIu64 "] is being compacted",
+        ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit input[%" PRIu64 "] is being compacted",
                          f->fd.GetNumber());
       }
     }
-
   }
   return exists;
 }
