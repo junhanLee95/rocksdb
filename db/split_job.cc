@@ -1789,7 +1789,7 @@ Status SplitJob::OpenSplitOutputFile(
         output_file_creation_time, 0 /* oldest_key_time */,
         sub_split->compaction->max_output_file_size()));
   } else{
-   sub_split->parent_builder.reset(NewTableBuilder(
+    sub_split->parent_builder.reset(NewTableBuilder(
         *cfd_out->ioptions(), *(sub_split->compaction->mutable_cf_options()),
         cfd_out->internal_comparator(), cfd_out->int_tbl_prop_collector_factories(),
         cfd_out->GetID(), cfd_out->GetName(), sub_split->parent_outfile.get(),

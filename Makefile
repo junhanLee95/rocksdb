@@ -554,6 +554,7 @@ TESTS = \
 	sst_file_reader_test \
 	sst_file_split_test \
 	lcf_put_test \
+	lcf_flush_test \
 	db_secondary_test \
 
 PARALLEL_TEST = \
@@ -1583,6 +1584,9 @@ sst_file_split_test: table/sst_file_split_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 lcf_put_test: db/lcf_put_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+lcf_flush_test: db/lcf_flush_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 db_secondary_test: db/db_secondary_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
