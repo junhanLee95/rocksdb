@@ -227,10 +227,10 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
   // 2.split memtables
   SplitRequest split_req;
-  WriteContext context;
+  //WriteContext context;
   {
     InstrumentedMutexLock l(&mutex_);
-
+    /*
     //fprintf(stdout, "Switch mt\n");
     if (!cfd->mem()->IsEmpty()) {
       cfd->Ref();
@@ -239,6 +239,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
       cfd->Unref();
     }
     //fprintf(stdout, "Split mt\n");
+
     
     if (s.ok()) {
       cfd->Ref();
@@ -317,7 +318,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
                  cfd->GetName().c_str(),
                  (unsigned) cfd->GetID(),
                  s.ToString().c_str());
-    }
+    }*/
     // now we prepare sst split
     auto vstorage = cfd->current()->storage_info();
     /*for (auto& sst_split_file: sst_split_files) {

@@ -486,13 +486,24 @@ Status DBImpl::AtomicFlushMemTablesToOutputFiles(
         continue;
       }
       InstallSuperVersionAndScheduleWork(cfds[i],
-                                         &job_context->superversion_contexts[i],
-                                         all_mutable_cf_options[i]);
+          &job_context->superversion_contexts[i],
+          all_mutable_cf_options[i]);
       VersionStorageInfo::LevelSummaryStorage tmp;
       ROCKS_LOG_BUFFER(log_buffer, "[%s] Level summary: %s\n",
-                       cfds[i]->GetName().c_str(),
-                       cfds[i]->current()->storage_info()->LevelSummary(&tmp));
+          cfds[i]->GetName().c_str(),
+          cfds[i]->current()->storage_info()->LevelSummary(&tmp));
+
+      // check level summary of children's partition nodes
+      std::vector<PartitionTreeNode*> children_nodes = cfds[i]->GetChildrenNodes();
+      for (size_t j=0; j<children_nodes.size(); j++) {
+        VersionStorageInfo::LevelSummaryStorage tmp_c;
+        ColumnFamilyData* c_cfd = children_nodes[j]->cfd_; 
+        ROCKS_LOG_BUFFER(log_buffer, "[%s] Level summary: %s\n",
+            c_cfd->GetName().c_str(),
+            c_cfd->current()->storage_info()->LevelSummary(&tmp_c));
+      }
     }
+    
     if (made_progress) {
       *made_progress = true;
     }
