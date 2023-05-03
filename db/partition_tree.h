@@ -11,6 +11,9 @@
 
 #include "db/column_family.h"
 
+#define get_lmost_key(n) ((n)->cfd_->GetSmallestKey())
+#define get_rmost_key(n) ((n)->cfd_->GetLargestKey())
+
 namespace rocksdb {
 
 class ColumnFamilyData;

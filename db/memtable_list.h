@@ -240,6 +240,17 @@ class MemTableList {
       autovector<MemTable*>* to_delete, Directory* db_directory,
       LogBuffer* log_buffer);
 
+  // commit a successful split-then-flush in the manifest file.
+  Status InstallMemtableSplitThenFlushResults(
+      const autovector<autovector<VersionEdit*>>& edit_lists,
+      const autovector<ColumnFamilyData*>& cfds,
+      const autovector<const MutableCFOptions*>& mutable_cf_options_list,
+      const autovector<MemTable*>& m, VersionSet* vset,
+      InstrumentedMutex* mu, const autovector<FileMetaData*>& file_metas,
+      autovector<MemTable*>* to_delete, Directory* db_directory,
+      LogBuffer* log_buffer);
+
+
   // New memtables are inserted at the front of the list.
   // Takes ownership of the referenced held on *m by the caller of Add().
   void Add(MemTable* m, autovector<MemTable*>* to_delete);

@@ -141,7 +141,7 @@ Status DBImpl::FlushMemTableToOutputFile(
   mutex_.AssertHeld();
   assert(cfd->imm()->NumNotFlushed() != 0);
   assert(cfd->imm()->IsFlushPending());
-
+  
   FlushJob flush_job(
       dbname_, cfd, immutable_db_options_, mutable_cf_options,
       nullptr /* memtable_id */, env_options_for_compaction_, versions_.get(),
@@ -150,7 +150,18 @@ Status DBImpl::FlushMemTableToOutputFile(
       GetDataDir(cfd, 0U),
       GetCompressionFlush(*cfd->ioptions(), mutable_cf_options), stats_,
       &event_logger_, mutable_cf_options.report_bg_io_stats,
-      true /* sync_output_directory */, true /* write_manifest */, thread_pri);
+      true /* sync_output_directory */, true /* write_manifest */, thread_pri);  
+
+  if (immutable_db_options_.allow_column_family_split) {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "FlushJob w/ column family split");
+    flush_job.SetChildrenNodes();
+    LogFlush(immutable_db_options_.info_log);
+  } else {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "FlushJob w/o column family split");
+    LogFlush(immutable_db_options_.info_log);
+  }
 
   FileMetaData file_meta;
 

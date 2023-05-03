@@ -52,7 +52,7 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   options.max_background_jobs =32;
   options.max_write_buffer_number =2;
   options.allow_column_family_split = true;
-  options.atomic_flush = true;
+  options.atomic_flush = false;
 
   std::string db_name = test::PerThreadDBPath("test_db");
   DB* db;

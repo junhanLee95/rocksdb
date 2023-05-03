@@ -426,6 +426,7 @@ Status MemTableList::TryInstallMemtableFlushResults(
     size_t batch_count = 0;
     autovector<VersionEdit*> edit_list;
     autovector<MemTable*> memtables_to_flush;
+
     // enumerate from the last (earliest) element to see how many batch finished
     for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
       MemTable* m = *it;
@@ -453,9 +454,8 @@ Status MemTableList::TryInstallMemtableFlushResults(
             vset, *cfd, edit_list, memtables_to_flush, prep_tracker));
       }
 
-      // this can release and reacquire the mutex.
       s = vset->LogAndApply(cfd, mutable_cf_options, edit_list, mu,
-                            db_directory);
+                            db_directory);  
 
       // we will be changing the version in the next code path,
       // so we better create a new one, since versions are immutable
@@ -508,6 +508,100 @@ Status MemTableList::TryInstallMemtableFlushResults(
     }
   }
   commit_in_progress_ = false;
+  return s;
+}
+
+// Commit a successful split-then-flush in the manifest file.
+// Note that this is allowed only for the situation that allow_column_family_split=true
+Status MemTableList::InstallMemtableSplitThenFlushResults(
+  const autovector<autovector<VersionEdit*>>& edit_lists,
+  const autovector<ColumnFamilyData*>& cfds, 
+  const autovector<const MutableCFOptions*>& mutable_cf_options_list,
+  const autovector<MemTable*> &m, VersionSet* vset,
+  InstrumentedMutex* mu, const autovector<FileMetaData*>& file_metas,
+  autovector<MemTable*>* to_delete, Directory* db_directory,
+  LogBuffer* log_buffer) {
+
+  AutoThreadOperationStageUpdater stage_updater(
+      ThreadStatus::STAGE_MEMTABLE_INSTALL_FLUSH_RESULTS);
+  mu->AssertHeld();
+  assert(vset->db_options()->allow_column_family_split);
+  assert(cfds.size() == mutable_cf_options_list.size());
+  assert(cfds.size() == file_metas.size());
+  assert(cfds.size() == edit_lists.size());
+
+  fprintf(stdout, "InstallMemtableSplitThenFlushResults -edit size : %ld\n", edit_lists.size());
+  for(auto es: edit_lists) {
+    for(auto e: es) {
+      fprintf(stdout, "[I]%s\n", e->DebugString().c_str()); 
+    } 
+  }
+
+  // Flush was successful
+  // Record the status on the memtable object. Either this call or a call by a 
+  // concurrent flush thread will read the status and write it to manifest.
+  for (size_t i = 0; i < m.size(); i++) {
+    // All the edits are associated with the first memtable of this batch
+    assert(i == 0 || m[i]->GetEdits()->NumEntries() == 0);
+    // TODO(JH): actually, when split-then-flush, these memtables are
+    // associated with multiple L0 tables.
+    // We need to modify file number of memtables to lists
+    // so that it reflects those situations.
+    m[i]->SetFlushCompleted(true);
+    m[i]->SetFileNumber(file_metas[0]->fd.GetNumber());
+  }
+
+  Status s;
+
+  for (size_t i = 0; i < cfds.size(); i++) {
+   ROCKS_LOG_BUFFER(log_buffer,
+                    "[%s] Install Memtables Split-then-flush results : %s",
+                    cfds[i]->GetName().c_str(),
+                    edit_lists[i][0]->DebugString().c_str());
+  }
+
+  // this can release and reacquire the mutex
+  s = vset->LogAndApply(cfds, mutable_cf_options_list, edit_lists, mu,
+                        db_directory);
+
+  InstallNewVersion();
+
+
+  // If Logging to MANIFEST is successful,
+  // Clean up memtables after InstallNewVersion.
+  // Else, check commit-fail.
+  if (s.ok() || s.IsShutdownInProgress()) {
+    // success and remove memtable
+    for (size_t i = 0; i < m.size(); i++) {
+      current_->Remove(m[i], to_delete);   
+      for (size_t j=0; j < cfds.size(); j++) {
+        ROCKS_LOG_BUFFER(log_buffer,
+                         "[%s] Level-0 commit table #%" PRIu64
+                         ": memtable #%" PRIu64 " done",
+                         cfds[j]->GetName().c_str(), m[i]->GetFileNumber(),
+                         m[i]->GetID());
+      }
+    }
+  } else {
+    // check fail 
+    for (size_t i = 0; i < m.size(); i++) {
+      current_->Remove(m[i], to_delete);   
+      for (size_t j=0; j < cfds.size(); j++) {
+        ROCKS_LOG_BUFFER(log_buffer,
+                         "[%s] Level-0 commit table #%" PRIu64
+                         ": memtable #%" PRIu64 " failed",
+                         cfds[j]->GetName().c_str(), m[i]->GetFileNumber(),
+                         m[i]->GetID());
+      }
+      m[i]->SetFlushCompleted(false);
+      m[i]->SetFlushInProgress(false);
+      m[i]->GetEdits()->Clear();
+      m[i]->SetFileNumber(0);
+      num_flush_not_started_++;
+    }
+    imm_flush_needed.store(true, std::memory_order_release);
+  }
+
   return s;
 }
 
