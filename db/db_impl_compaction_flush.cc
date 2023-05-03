@@ -211,6 +211,15 @@ Status DBImpl::FlushMemTableToOutputFile(
     ROCKS_LOG_BUFFER(log_buffer, "[%s] Level summary: %s\n",
                      cfd->GetName().c_str(),
                      cfd->current()->storage_info()->LevelSummary(&tmp));
+    if (immutable_db_options_.allow_column_family_split) {
+      auto children_nodes = cfd->GetChildrenNodes();
+      for(auto node: children_nodes) {
+        ROCKS_LOG_BUFFER(log_buffer, "[%s] children Level summary: %s\n",
+                         node->cfd_->GetName().c_str(),
+                         node->cfd_->current()->storage_info()->LevelSummary(&tmp));  
+      }
+      
+    }
   }
 
   if (!s.ok() && !s.IsShutdownInProgress()) {

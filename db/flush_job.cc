@@ -358,18 +358,50 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   RecordFlushIOStats();
 
   auto stream = event_logger_->LogToBuffer(log_buffer_);
-  stream << "job" << job_context_->job_id << "event"
-         << "flush_finished";
-  stream << "output_compression"
-         << CompressionTypeToString(output_compression_);
-  stream << "lsm_state";
-  stream.StartArray();
-  auto vstorage = cfd_->current()->storage_info();
-  for (int level = 0; level < vstorage->num_levels(); ++level) {
-    stream << vstorage->NumLevelFiles(level);
+  if (db_options_.allow_column_family_split) {
+    stream << "job" << job_context_->job_id << "event"
+           << "flush_finished";
+    stream << "output_compression"
+           << CompressionTypeToString(output_compression_);
+    stream << "lsm_state";
+    stream.StartArray();
+    auto vstorage = cfd_->current()->storage_info();
+    stream << cfd_->GetName();
+    for (int level = 0; level < vstorage->num_levels(); ++level) {
+      stream << vstorage->NumLevelFiles(level);
+    }
+    // also, include children cfds
+    for (auto child: children_nodes_) {
+      ColumnFamilyData* child_cfd = child->cfd_;
+      stream << child_cfd->GetName();
+      auto child_vstorage = child_cfd->current()->storage_info();
+      for (int level = 0; level < child_vstorage->num_levels(); ++level) {
+        stream << child_vstorage->NumLevelFiles(level);
+      }
+    }
+    stream.EndArray();
+    stream << "cfd" << cfd_->GetName();  
+    stream << "immutable_memtables" << cfd_->imm()->NumNotFlushed();  
+    // also, include children cfds
+    for (auto child: children_nodes_) {
+      ColumnFamilyData* child_cfd = child->cfd_;
+      stream << "cfd" << child_cfd->GetName();  
+      stream << "immutable_memtables" << child_cfd->imm()->NumNotFlushed();  
+    }
+  } else {
+    stream << "job" << job_context_->job_id << "event"
+           << "flush_finished";
+    stream << "output_compression"
+           << CompressionTypeToString(output_compression_);
+    stream << "lsm_state";
+    stream.StartArray();
+    auto vstorage = cfd_->current()->storage_info();
+    for (int level = 0; level < vstorage->num_levels(); ++level) {
+      stream << vstorage->NumLevelFiles(level);
+    }
+    stream.EndArray();
+    stream << "immutable_memtables" << cfd_->imm()->NumNotFlushed();  
   }
-  stream.EndArray();
-  stream << "immutable_memtables" << cfd_->imm()->NumNotFlushed();
 
   if (measure_io_stats_) {
     if (prev_perf_level != PerfLevel::kEnableTime) {
