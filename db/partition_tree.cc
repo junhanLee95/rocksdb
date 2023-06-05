@@ -44,7 +44,7 @@ PartitionTreeNode *PartitionTreeNode::SearchNextNode (
     // Right most key is "" or key is less than or equal to right most key. 
     if (get_rmost_key(nodes).empty() || key_str.compare(get_rmost_key(nodes)) <= 0) { 
     // Left most key is "" or key is greater than or equal to left most key. 
-      if (get_lmost_key(nodes).empty() || key.compare(get_lmost_key(nodes)) >= 0)
+      if (get_lmost_key(nodes).empty() || key_str.compare(get_lmost_key(nodes)) >= 0)
         return nodes;
       else 
         return nullptr;

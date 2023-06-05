@@ -436,12 +436,13 @@ Status BuildTables(
     // Finish and check for builder(JH: including children builders) errors
     tp = builder->GetTableProperties();
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
-    ROCKS_LOG_INFO(ioptions.info_log, "FlushJob: parent's num_entries : %ld",
-                   builder->NumEntries());
+    ROCKS_LOG_INFO(ioptions.info_log, "[%s] FlushJob: parent's num_entries : %ld",
+                   column_family_name.c_str(), builder->NumEntries());
     bool children_empty[children_size];
     for (size_t i=0; i<children_size; i++) {
       children_empty[i] = children_builders[i]->NumEntries() == 0;// JH: Skip considering rangedel
-      ROCKS_LOG_INFO(ioptions.info_log, "FlushJob: child[%ld]'s num_entries : %ld",
+      ROCKS_LOG_INFO(ioptions.info_log, "[%s] FlushJob: child[%ld]'s num_entries : %ld",
+                     children_nodes[i]->cfd_->GetName().c_str(),
                      i, children_builders[i]->NumEntries());
     }
     Status iter_s = c_iter.status();

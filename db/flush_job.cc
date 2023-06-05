@@ -193,8 +193,8 @@ void FlushJob::PickMemTable() {
   meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
   // path 0 for level 0 file of children nodes
   if (db_options_.allow_column_family_split) {
-    ROCKS_LOG_BUFFER(log_buffer_, "Prepare children_metas_ for split-then-flush and its size is %d",
-                     children_metas_.size());
+    ROCKS_LOG_BUFFER(log_buffer_, "Prepare children_metas_ for split-then-flush and its capacity is %d",
+                     children_metas_.capacity());
     for (size_t i = 0; i < children_nodes_.size(); i++) {
       FileMetaData meta;
       TableProperties tp;
@@ -204,8 +204,9 @@ void FlushJob::PickMemTable() {
       children_edits_.push_back(VersionEdit());
     }
   }
-  fprintf(stdout, "children node size : %ld\n", children_nodes_.size() );
-  fprintf(stdout, "children meta size : %ld\n", children_metas_.size() );
+  assert(children_metas_.size() == children_nodes_.size());
+  //fprintf(stdout, "children node size : %ld\n", children_nodes_.size() );
+  //fprintf(stdout, "children meta size : %ld\n", children_metas_.size() );
 
   base_ = cfd_->current();
   base_->Ref();  // it is likely that we do not need this reference
@@ -331,11 +332,11 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
       // column families.
       // This function involves LogAndApply().
 
-      for(auto es: edit_lists) {
+      /*for(auto es: edit_lists) {
         for(auto e: es) {
           fprintf(stdout, "%s\n" , e->DebugString().c_str());
         } 
-      }
+      }*/
       s = cfd_->imm()->InstallMemtableSplitThenFlushResults(
         edit_lists, tmp_cfds, mutable_cf_options_list, mems_, versions_,
         db_mutex_, tmp_file_meta, &job_context_->memtables_to_free,
@@ -668,14 +669,27 @@ Status FlushJob::WriteLevel0Tables() {
           oldest_key_time, write_hint);
       LogFlush(db_options_.info_log);
     }
+
     ROCKS_LOG_INFO(db_options_.info_log,
-                   "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
-                   " bytes %s"
-                   "%s",
-                   cfd_->GetName().c_str(), job_context_->job_id,
-                   meta_.fd.GetNumber(), meta_.fd.GetFileSize(),
-                   s.ToString().c_str(),
-                   meta_.marked_for_compaction ? " (needs compaction)" : "");
+        "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
+        " bytes %s"
+        "%s",
+        cfd_->GetName().c_str(), job_context_->job_id,
+        meta_.fd.GetNumber(), meta_.fd.GetFileSize(),
+        s.ToString().c_str(),
+        meta_.marked_for_compaction ? " (needs compaction)" : "");
+    if (db_options_.allow_column_family_split) {
+      for (size_t i = 0; i < children_nodes_.size(); i++) {
+        ROCKS_LOG_INFO(db_options_.info_log,
+          "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
+          " bytes %s"
+          "%s",
+          children_nodes_[i]->cfd_->GetName().c_str(), job_context_->job_id,
+          children_metas_[i].fd.GetNumber(), children_metas_[i].fd.GetFileSize(),
+          s.ToString().c_str(),
+          children_metas_[i].marked_for_compaction ? " (needs compaction)" : "");
+      }
+    }
 
     if (s.ok() && output_file_directory_ != nullptr && sync_output_directory_) {
       s = output_file_directory_->Fsync();
@@ -714,7 +728,7 @@ Status FlushJob::WriteLevel0Tables() {
                                   children_metas_[i].fd.smallest_seqno,
                                   children_metas_[i].fd.largest_seqno,
                                   children_metas_[i].marked_for_compaction);
-      fprintf(stdout, "[c]%s\n", children_edits_[i].DebugString().c_str());
+      //fprintf(stdout, "[c]%s\n", children_edits_[i].DebugString().c_str());
     }
   }
   

@@ -530,12 +530,12 @@ Status MemTableList::InstallMemtableSplitThenFlushResults(
   assert(cfds.size() == file_metas.size());
   assert(cfds.size() == edit_lists.size());
 
-  fprintf(stdout, "InstallMemtableSplitThenFlushResults -edit size : %ld\n", edit_lists.size());
+  /*fprintf(stdout, "InstallMemtableSplitThenFlushResults -edit size : %ld\n", edit_lists.size());
   for(auto es: edit_lists) {
     for(auto e: es) {
       fprintf(stdout, "[I]%s\n", e->DebugString().c_str()); 
     } 
-  }
+  }*/
 
   // Flush was successful
   // Record the status on the memtable object. Either this call or a call by a 

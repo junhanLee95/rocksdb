@@ -46,6 +46,101 @@ class LCFFlushTest : public testing::Test {
   }
 };
 
+// why default3 has overlapping ranges..
+TEST_F(LCFFlushTest, Search) { 
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =2;
+  options.allow_column_family_split = true;
+  options.atomic_flush = false;
+
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+  // Prepare Memtable
+  for(int i = 1000; i< 2000; i++) {
+    std::string key = "user" + std::to_string(i); 
+    std::string value = "abcdef" + std::to_string(i) + "ghijk";
+    db->Put(WriteOptions(), cfh, key, value);
+  } 
+
+  // Next, we construct three-level partition tree.
+  std::vector<SplitFileInfo> infos;
+
+  FileMetaData* f1 = new FileMetaData;
+  std::string s1 = "user1200";
+  std::string l1 = "user1400";
+  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+  infos.push_back(SplitFileInfo(f1, cfd));
+
+  fprintf(stdout, "[LCFFlushTest] First Split Start [%s, %s] (1/3)\n", s1.c_str(), l1.c_str());
+  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFFlushTest] First Split Finish (1/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
+  ColumnFamilyData* cfd1 = cfd->GetColumnFamilySet()->GetColumnFamily(1);
+  infos.clear();
+  
+  FileMetaData* f2 = new FileMetaData;
+  std::string s2 = "user1250";
+  std::string l2 = "user1280";
+  f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
+  f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
+  infos.push_back(SplitFileInfo(f2, cfd1));
+  fprintf(stdout, "[LCFFlushTest] Second Split Start [%s, %s] (2/3)\n", s2.c_str(), l2.c_str());
+  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFFlushTest] Second Split Finish (2/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
+
+  FileMetaData* f3 = new FileMetaData;
+  std::string s3 = "user1001";
+  std::string l3 = "user1500";
+  f3->smallest = InternalKey(Slice(s3), 0, kTypeValue);
+  f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
+  infos.push_back(SplitFileInfo(f3, cfd));
+  fprintf(stdout, "[LCFFlushTest] Third Split Start [%s, %s] (3/3)\n", s3.c_str(), l3.c_str());
+  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  fprintf(stdout, "[LCFFlushTest] Third Split Finish (3/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
+  infos.clear();
+
+
+
+  // Flush Memtable
+  db->Flush(FlushOptions(), cfh);
+
+  // we need to verify the number of L0 within default column family and its child
+  // is 1, whereas other grandchildren's L0 cnt is zero.
+  for (size_t i=0; i<5 ;i++) {
+    ColumnFamilyHandle* c_cfh = dbfull(db)->GetColumnFamilyHandle(i);
+    int c_l0_cnt = NumTableFilesAtLevel(db, c_cfh, 0);
+    fprintf(stdout, "[LCFFlushTest] cf[%s] L0 count : %d\n",
+            c_cfh->GetName().c_str(),
+            c_l0_cnt);
+    if (i == 0 || i == 1) {
+      assert(c_l0_cnt == 1); 
+    } else {
+      assert(c_l0_cnt == 0); 
+    }
+  }
+
+  fprintf(stdout, "[LCFFlushTest] now shutdown db\n");
+
+  delete f1;
+  delete f2;
+  delete f3;
+
+  delete db;
+  db = nullptr;
+
+}
+
 TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   Options options;
   options.create_if_missing = true;
