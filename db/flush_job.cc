@@ -648,25 +648,43 @@ Status FlushJob::WriteLevel0Tables() {
       // JH: We need to build multiple tables from single iter
       // which is involved from cfd and its children nodes
       // Therefore, we call other function, BuildTables() to achive this.
-      s = BuildTables(
-          dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
-          env_options_, cfd_->table_cache(), iter.get(),
-          std::move(range_del_iters), &meta_,
-          cfd_->internal_comparator(),
-          cfd_->int_tbl_prop_collector_factories(), cfd_->GetID(),
-          cfd_->GetName(), existing_snapshots_,
-          earliest_write_conflict_snapshot_, snapshot_checker_,
-          output_compression_, mutable_cf_options_.sample_for_compression,
-          cfd_->ioptions()->compression_opts,
-          mutable_cf_options_.paranoid_file_checks, cfd_->internal_stats(),
-          TableFileCreationReason::kFlush,
-          children_metas_,
-          children_nodes_,
-          children_table_properties_,
-          event_logger_, job_context_->job_id,
-          Env::IO_HIGH, &table_properties_,
-          0 /* level */, current_time,
-          oldest_key_time, write_hint);
+      if (children_nodes_.empty()) {
+        s = BuildTable(
+            dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
+            env_options_, cfd_->table_cache(), iter.get(),
+            std::move(range_del_iters), &meta_, cfd_->internal_comparator(),
+            cfd_->int_tbl_prop_collector_factories(), cfd_->GetID(),
+            cfd_->GetName(), existing_snapshots_,
+            earliest_write_conflict_snapshot_, snapshot_checker_,
+            output_compression_, mutable_cf_options_.sample_for_compression,
+            cfd_->ioptions()->compression_opts,
+            mutable_cf_options_.paranoid_file_checks, cfd_->internal_stats(),
+            TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
+            Env::IO_HIGH, &table_properties_, 0 /* level */, current_time,
+            oldest_key_time, write_hint
+            );
+      } else {
+        s = BuildTables(
+            dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
+            env_options_, cfd_->table_cache(), iter.get(),
+            std::move(range_del_iters), &meta_,
+            cfd_->internal_comparator(),
+            cfd_->int_tbl_prop_collector_factories(), cfd_->GetID(),
+            cfd_->GetName(), existing_snapshots_,
+            earliest_write_conflict_snapshot_, snapshot_checker_,
+            output_compression_, mutable_cf_options_.sample_for_compression,
+            cfd_->ioptions()->compression_opts,
+            mutable_cf_options_.paranoid_file_checks, cfd_->internal_stats(),
+            TableFileCreationReason::kFlush,
+            children_metas_,
+            children_nodes_,
+            children_table_properties_,
+            event_logger_, job_context_->job_id,
+            Env::IO_HIGH, &table_properties_,
+            0 /* level */, current_time,
+            oldest_key_time, write_hint);  
+      }
+      
       LogFlush(db_options_.info_log);
     }
 

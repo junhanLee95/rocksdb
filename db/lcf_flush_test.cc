@@ -9,6 +9,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <chrono>
 
 #include "db/db_impl.h"
 #include "db/version_set.h"
@@ -47,6 +48,7 @@ class LCFFlushTest : public testing::Test {
 };
 
 // why default3 has overlapping ranges..
+/*
 TEST_F(LCFFlushTest, Search) { 
   Options options;
   options.create_if_missing = true;
@@ -139,8 +141,9 @@ TEST_F(LCFFlushTest, Search) {
   delete db;
   db = nullptr;
 
-}
+}*/
 
+/*
 TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   Options options;
   options.create_if_missing = true;
@@ -232,8 +235,81 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
 
   delete db;
   db = nullptr;
-}
+}*/
 
+TEST_F(LCFFlushTest, TimeAnalysis) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =2;
+  options.allow_column_family_split = true;
+  //options.allow_column_family_split = true;
+  options.atomic_flush = false;
+
+  std::string db_name = test::PerThreadDBPath("test_db");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  /*ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();*/
+
+  // Prepare Memtable
+  for(int i = 1000; i< 8000; i++) {
+    std::string key = "user" + std::to_string(i); 
+    std::string value = "abcdef" + std::to_string(i) + "ghijk";
+    db->Put(WriteOptions(), cfh, key, value);
+  } 
+
+  // Next, we construct three-level partition tree.
+  /*
+  std::vector<SplitFileInfo> infos;
+  double total_split_time = 0.0;
+  for (size_t i = 1000 ; i < 2000; i++) {
+    FileMetaData* f1 = new FileMetaData;
+    std::string s1 = "user" + std::to_string(i + 100);
+    std::string l1 = "user" + std::to_string(i + 500);
+    f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+    f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+    infos.push_back(SplitFileInfo(f1, cfd));
+
+    auto t0 = std::chrono::steady_clock::now();
+    dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+    auto t1 = std::chrono::steady_clock::now();
+    total_split_time += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    std::cout << "Time for SplitColumnFamilyFromSstFiles() = " <<  std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "[us]" << std::endl;
+    infos.clear();  
+    delete f1;
+  }*/
+ 
+  // Flush Memtable
+  //std::cout << "Time for Split() = " << total_split_time << "[us]" << std::endl;
+  auto f0 = std::chrono::steady_clock::now();
+  db->Flush(FlushOptions(), cfh);
+  auto f1 = std::chrono::steady_clock::now();
+  std::cout << "Time for Flush() = " << std::chrono::duration_cast<std::chrono::microseconds>(f1 - f0).count() << "[us]" << std::endl;
+
+  // Time for creating column family
+  /*ColumnFamilyHandle* cfh;
+  std::string cf_name = "cf_anon";
+
+  std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
+  cfo->compaction_style = kCompactionStyleLevel;
+  cfo->num_levels = 7;
+  cfo->write_buffer_size = 64 << 20; // 64MB
+  cfo->level0_file_num_compaction_trigger = 4;
+  cfo->target_file_size_base = 64 << 20; // 4MB
+  cfo->report_bg_io_stats = true;
+  auto t0 = std::chrono::steady_clock::now();
+  db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);
+  auto t1 = std::chrono::steady_clock::now();
+
+  std::cout << "Time for CreateColumnFamily() = " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "[us]" << std::endl;
+  */
+
+  delete db;
+  db = nullptr;
+}
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
