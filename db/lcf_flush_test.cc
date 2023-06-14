@@ -251,8 +251,8 @@ TEST_F(LCFFlushTest, TimeAnalysis) {
   ASSERT_OK(DB::Open(options, db_name, &db));
 
   ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
-  /*ColumnFamilyData* cfd =
-      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();*/
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
 
   // Prepare Memtable
   for(int i = 1000; i< 8000; i++) {
@@ -261,14 +261,14 @@ TEST_F(LCFFlushTest, TimeAnalysis) {
     db->Put(WriteOptions(), cfh, key, value);
   } 
 
-  // Next, we construct three-level partition tree.
-  /*
-  std::vector<SplitFileInfo> infos;
+  // Next, we construct two-level partition tree.
+  
   double total_split_time = 0.0;
-  for (size_t i = 1000 ; i < 2000; i++) {
+  for (size_t i = 0 ; i < 8; i++) {
+    std::vector<SplitFileInfo> infos;
     FileMetaData* f1 = new FileMetaData;
-    std::string s1 = "user" + std::to_string(i + 100);
-    std::string l1 = "user" + std::to_string(i + 500);
+    std::string s1 = "user" + std::to_string((i+1) * 1000);
+    std::string l1 = "user" + std::to_string((i+2) * 1000);
     f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
     f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
     infos.push_back(SplitFileInfo(f1, cfd));
@@ -280,10 +280,10 @@ TEST_F(LCFFlushTest, TimeAnalysis) {
     std::cout << "Time for SplitColumnFamilyFromSstFiles() = " <<  std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "[us]" << std::endl;
     infos.clear();  
     delete f1;
-  }*/
+  }
  
   // Flush Memtable
-  //std::cout << "Time for Split() = " << total_split_time << "[us]" << std::endl;
+  std::cout << "Time for Split() = " << total_split_time << "[us]" << std::endl;
   auto f0 = std::chrono::steady_clock::now();
   db->Flush(FlushOptions(), cfh);
   auto f1 = std::chrono::steady_clock::now();
