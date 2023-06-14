@@ -89,7 +89,7 @@ const char* GetFlushReasonString (FlushReason flush_reason) {
 FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
                    const ImmutableDBOptions& db_options,
                    const MutableCFOptions& mutable_cf_options,
-                   const uint64_t* max_memtable_id,
+                   uint64_t max_memtable_id,
                    const EnvOptions& env_options, VersionSet* versions,
                    InstrumentedMutex* db_mutex,
                    std::atomic<bool>* shutting_down,

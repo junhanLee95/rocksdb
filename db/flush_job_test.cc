@@ -120,7 +120,7 @@ TEST_F(FlushJobTest, Empty) {
   SnapshotChecker* snapshot_checker = nullptr;  // not relavant
   FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
                      db_options_, *cfd->GetLatestMutableCFOptions(),
-                     nullptr /* memtable_id */, env_options_, versions_.get(),
+                     port::kMaxUint64 /* memtable_id */, env_options_, versions_.get(),
                      &mutex_, &shutting_down_, {}, kMaxSequenceNumber,
                      snapshot_checker, &job_context, nullptr, nullptr, nullptr,
                      kNoCompression, nullptr, &event_logger, false,
@@ -168,7 +168,7 @@ TEST_F(FlushJobTest, NonEmpty) {
   SnapshotChecker* snapshot_checker = nullptr;  // not relavant
   FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
                      db_options_, *cfd->GetLatestMutableCFOptions(),
-                     nullptr /* memtable_id */, env_options_, versions_.get(),
+                     port::kMaxUint64 /* memtable_id */, env_options_, versions_.get(),
                      &mutex_, &shutting_down_, {}, kMaxSequenceNumber,
                      snapshot_checker, &job_context, nullptr, nullptr, nullptr,
                      kNoCompression, db_options_.statistics.get(),
@@ -232,7 +232,7 @@ TEST_F(FlushJobTest, FlushMemTablesSingleColumnFamily) {
 
   FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
                      db_options_, *cfd->GetLatestMutableCFOptions(),
-                     &flush_memtable_id, env_options_, versions_.get(), &mutex_,
+                     flush_memtable_id, env_options_, versions_.get(), &mutex_,
                      &shutting_down_, {}, kMaxSequenceNumber, snapshot_checker,
                      &job_context, nullptr, nullptr, nullptr, kNoCompression,
                      db_options_.statistics.get(), &event_logger, true,
@@ -303,7 +303,7 @@ TEST_F(FlushJobTest, FlushMemtablesMultipleColumnFamilies) {
     std::vector<SequenceNumber> snapshot_seqs;
     flush_jobs.emplace_back(
         dbname_, cfd, db_options_, *cfd->GetLatestMutableCFOptions(),
-        &memtable_ids[k], env_options_, versions_.get(), &mutex_,
+        memtable_ids[k], env_options_, versions_.get(), &mutex_,
         &shutting_down_, snapshot_seqs, kMaxSequenceNumber, snapshot_checker,
         &job_context, nullptr, nullptr, nullptr, kNoCompression,
         db_options_.statistics.get(), &event_logger, true,
@@ -419,7 +419,7 @@ TEST_F(FlushJobTest, Snapshots) {
   SnapshotChecker* snapshot_checker = nullptr;  // not relavant
   FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
                      db_options_, *cfd->GetLatestMutableCFOptions(),
-                     nullptr /* memtable_id */, env_options_, versions_.get(),
+                     port::kMaxUint64 /* memtable_id */, env_options_, versions_.get(),
                      &mutex_, &shutting_down_, snapshots, kMaxSequenceNumber,
                      snapshot_checker, &job_context, nullptr, nullptr, nullptr,
                      kNoCompression, db_options_.statistics.get(),

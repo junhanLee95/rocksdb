@@ -1376,7 +1376,7 @@ TEST_F(DBWALTest, RestoreTotalLogSizeAfterRecoverWithoutFlush) {
 
     void OnFlushBegin(DB* /*db*/, const FlushJobInfo& flush_job_info) override {
       count++;
-      assert(FlushReason::kWriteBufferManager == flush_job_info.flush_reason);
+      ASSERT_EQ(FlushReason::kWriteBufferManager, flush_job_info.flush_reason);
     }
   };
   std::shared_ptr<TestFlushListener> test_listener =
@@ -1421,6 +1421,9 @@ TEST_F(DBWALTest, RestoreTotalLogSizeAfterRecoverWithoutFlush) {
   // Write one more key to trigger flush.
   ASSERT_OK(Put(0, "foo", "v2"));
   dbfull()->TEST_WaitForFlushMemTable();
+  for (auto* h : handles_) {
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(h));
+  }
   // Flushed two column families.
   ASSERT_EQ(2, test_listener->count.load());
 }
