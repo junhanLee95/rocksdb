@@ -1620,7 +1620,7 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
                    c_smallest.c_str(),
                    c_largest.c_str());
 
-          bool overlap = !(s_largest.compare(c_smallest) <= 0 || c_largest.compare(s_smallest) <= 0);
+          bool overlap = !(s_largest.compare(c_smallest) < 0 || c_largest.compare(s_smallest) < 0);
           if (overlap) {
             if (!found_overlap) {
               from = c_i;

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <deque>
 #include <vector>
+#include <inttypes.h>
 
 #include "db/compaction_iterator.h"
 #include "db/dbformat.h"
@@ -144,6 +145,7 @@ Status BuildTable(
                       snapshots.empty() ? 0 : snapshots.back(),
                       snapshot_checker);
 
+    uint64_t merge_start_micros = env->NowMicros();
     CompactionIterator c_iter(
         iter, internal_comparator.user_comparator(), &merge, kMaxSequenceNumber,
         &snapshots, earliest_write_conflict_snapshot, snapshot_checker, env,
@@ -163,6 +165,12 @@ Status BuildTable(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
     }
+    uint64_t merge_micros = env->NowMicros() - merge_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush table #%" PRIu64
+        " : %" PRIu64 " bytes merge time : %" PRIu64 " us",
+        column_family_name.c_str(), job_id, meta->fd.GetNumber(),
+        builder->FileSize(), merge_micros);
 
     auto range_del_it = range_del_agg->NewIterator();
     for (range_del_it->SeekToFirst(); range_del_it->Valid();
@@ -181,7 +189,14 @@ Status BuildTable(
     if (!s.ok() || empty) {
       builder->Abandon();
     } else {
+      uint64_t finish_start_micros = env->NowMicros();
       s = builder->Finish();
+      uint64_t finish_micros = env->NowMicros() - finish_start_micros;
+      ROCKS_LOG_INFO(ioptions.info_log,
+          "[%s] [JOB %d] flush table #%" PRIu64
+          " : %" PRIu64 " bytes finish time : %" PRIu64 " us",
+          column_family_name.c_str(), job_id, meta->fd.GetNumber(),
+          builder->FileSize(), finish_micros);
     }
 
     if (s.ok() && !empty) {
@@ -199,7 +214,14 @@ Status BuildTable(
     // Finish and check for file errors
     if (s.ok() && !empty) {
       StopWatch sw(env, ioptions.statistics, TABLE_SYNC_MICROS);
+      uint64_t sync_start_micros = env->NowMicros();
       s = file_writer->Sync(ioptions.use_fsync);
+      uint64_t sync_micros = env->NowMicros() - sync_start_micros;
+      ROCKS_LOG_INFO(ioptions.info_log,
+          "[%s] [JOB %d] flush table #%" PRIu64
+          " : %" PRIu64 " bytes sync time : %" PRIu64 " us",
+          column_family_name.c_str(), job_id, meta->fd.GetNumber(),
+          meta->fd.GetFileSize(), sync_micros);
     }
     if (s.ok() && !empty) {
       s = file_writer->Close();
@@ -375,6 +397,7 @@ Status BuildTables(
                       snapshots.empty() ? 0 : snapshots.back(),
                       snapshot_checker);
 
+    uint64_t merge_start_micros = env->NowMicros();
     // JH: choose builder to add by corresponding keys
     size_t child_idx = 0; // -1 if parent, child_idx if child
     CompactionIterator c_iter(
@@ -421,6 +444,12 @@ Status BuildTables(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
     }
+    uint64_t merge_micros = env->NowMicros() - merge_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] [Child %ld] flush merge time : %" PRIu64 " us",
+        column_family_name.c_str(), job_id,
+        children_nodes.size(),
+        merge_micros);
 
     // TODO(Junhan): Consider adding rangedel tombstone when split-then-flush
     auto range_del_it = range_del_agg->NewIterator();
@@ -434,6 +463,7 @@ Status BuildTables(
     }
 
     // Finish and check for builder(JH: including children builders) errors
+    uint64_t finish_start_micros = env->NowMicros();
     tp = builder->GetTableProperties();
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
     ROCKS_LOG_INFO(ioptions.info_log, "[%s] FlushJob: parent's num_entries : %ld",
@@ -481,8 +511,15 @@ Status BuildTables(
       }
       delete children_builders[i];
     }
+    uint64_t finish_micros = env->NowMicros() - finish_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] [Child %ld] flush finish time : %" PRIu64 " us",
+        column_family_name.c_str(), job_id,
+        children_nodes.size(),
+        finish_micros);
 
     // Finish and check for file errors
+    uint64_t sync_start_micros = env->NowMicros();
     if (s.ok() && !empty) {
       StopWatch sw(env, ioptions.statistics, TABLE_SYNC_MICROS);
       s = file_writer->Sync(ioptions.use_fsync);
@@ -500,6 +537,12 @@ Status BuildTables(
         s = children_file_writers[i]->Close();
       }  
     }
+    uint64_t sync_micros = env->NowMicros() - sync_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] [Child %ld] flush sync time : %" PRIu64 " us",
+        column_family_name.c_str(), job_id,
+        children_nodes.size(),
+        sync_micros);
 
     if (s.ok() && !empty) {
       // Verify that the table is usable
