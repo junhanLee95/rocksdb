@@ -1578,6 +1578,11 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
     }
     s = WaitForFlushMemTables(cfds, flush_memtable_ids,
                               (flush_reason == FlushReason::kErrorRecovery));
+    InstrumentedMutexLock lock_guard(&mutex_);
+    for (auto* tmp_cfd : cfds) {
+      // tmp_cfd->UnrefAndTryDelete(); 
+      tmp_cfd->Unref(); 
+    }
   }
   TEST_SYNC_POINT("FlushMemTableFinished");
   return s;
