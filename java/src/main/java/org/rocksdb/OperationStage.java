@@ -21,6 +21,14 @@ public enum OperationStage {
   STAGE_MEMTABLE_ROLLBACK((byte)0x9),
   STAGE_MEMTABLE_INSTALL_FLUSH_RESULTS((byte)0xA);
 
+  /*
+   *  Made by Kyoungho Koo
+   *  for multi-threaded split-then-flush
+   */
+  STAGE_FLUSH_PREPARE((byte)0xB);
+  STAGE_FLUSH_PROCESS_KV((byte)0xC);
+  
+
   private final byte value;
 
   OperationStage(final byte value) {
