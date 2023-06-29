@@ -1982,7 +1982,7 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
       fta->thread_pri_ = Env::Priority::LOW;
       env_->Schedule(&DBImpl::BGWorkFlush, fta, Env::Priority::LOW, this,
                      &DBImpl::UnscheduleFlushCallback);
-      unscheduled_flushes_;
+      --unscheduled_flushes_;
     }
   }
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -2084,9 +2084,18 @@ ColumnFamilyData* DBImpl::PopFirstFromCompactionQueue() {
 DBImpl::FlushRequest DBImpl::PopFirstFromFlushQueue() {
   assert(!flush_queue_.empty());
   FlushRequest flush_req = flush_queue_.front();
-  assert(unscheduled_flushes_ >= static_cast<int>(flush_req.size()));
-  unscheduled_flushes_ -= static_cast<int>(flush_req.size());
   flush_queue_.pop_front();
+  if (!immutable_db_options_.atomic_flush) {
+    assert(flush_req.size() == 1);
+  }
+  for (const auto& elem : flush_req) {
+    if (!immutable_db_options_.atomic_flush) {
+      ColumnFamilyData* cfd = elem.first;
+      assert(cfd);
+      assert(cfd->queued_for_flush());
+      cfd->set_queued_for_flush(false); 
+    }
+  }
   // TODO: need to unset flush reason?
   return flush_req;
 }
@@ -2180,7 +2189,7 @@ void DBImpl::SchedulePendingFlush(const FlushRequest& flush_req,
       cfd->Ref();
       cfd->set_queued_for_flush(true);
       cfd->SetFlushReason(flush_reason);
-      ++unscheduled_flushes_ 
+      ++unscheduled_flushes_;
       flush_queue_.push_back(flush_req);
     } 
   } else {
