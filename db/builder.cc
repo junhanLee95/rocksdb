@@ -446,7 +446,7 @@ Status BuildTables(
     }
     uint64_t merge_micros = env->NowMicros() - merge_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] [Child %ld] flush merge time : %" PRIu64 " us",
+        "[%s] [JOB %d] [Child %ld] flush_merge_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
         children_nodes.size(),
         merge_micros);
@@ -513,7 +513,7 @@ Status BuildTables(
     }
     uint64_t finish_micros = env->NowMicros() - finish_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] [Child %ld] flush finish time : %" PRIu64 " us",
+        "[%s] [JOB %d] [Child %ld] flush_finish_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
         children_nodes.size(),
         finish_micros);
@@ -539,7 +539,7 @@ Status BuildTables(
     }
     uint64_t sync_micros = env->NowMicros() - sync_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] [Child %ld] flush sync time : %" PRIu64 " us",
+        "[%s] [JOB %d] [Child %ld] flush_sync_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
         children_nodes.size(),
         sync_micros);

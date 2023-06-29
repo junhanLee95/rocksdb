@@ -1816,8 +1816,12 @@ class Stats {
 					}
 
 					if (FLAGS_compaction_queue_stat) {
-						uint64_t num_running_flushes, num_scheduled_flushes, num_unscheduled_flushes;
-						uint64_t num_running_compactions, num_scheduled_compactions, num_unscheduled_compactions;
+						uint64_t num_running_flushes = 0;
+            uint64_t num_scheduled_flushes = 0;
+            uint64_t num_unscheduled_flushes = 0;
+						uint64_t num_running_compactions = 0;
+            uint64_t num_scheduled_compactions = 0;
+            uint64_t num_unscheduled_compactions = 0;
 						
 						db->GetIntProperty("rocksdb.num-scheduled-flushes", &num_scheduled_flushes);
 						db->GetIntProperty("rocksdb.num-unscheduled-flushes", &num_unscheduled_flushes);
