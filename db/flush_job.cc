@@ -320,27 +320,46 @@ void FlushJob::Prepare() {
   flush_->sub_flush_states.emplace_back(nullptr, nullptr, meta_, 0);
   int num_boundaries = children_nodes_.size();
 
+
+  std::vector<Slice> starts;
+  std::vector<Slice> ends;
+
   for (int child_idx = 0; child_idx < num_boundaries; child_idx++) {
 	FileMetaData sub_meta;
 	sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
-	std::string start_key = get_lmost_key(children_nodes_[child_idx]);
-	std::string end_key = get_rmost_key(children_nodes_[child_idx]);
+	//std::string start_key = get_lmost_key(children_nodes_[child_idx]);
+	//std::string end_key = get_rmost_key(children_nodes_[child_idx]);
+	starts.push_back(get_lmost_key(children_nodes_[child_idx]));
+	ends.push_back(get_rmost_key(children_nodes_[child_idx]));
 
 
-
-    Slice* start = new Slice(start_key);	
-    std::cout << "FlushJob::Prepare() get_lmost_key " << start_key << std::endl;	
+    /*Slice* start = new Slice(start_key);	
+    std::cout << "FlushJob::Prepare() get_lmost_key " << start->ToString() << std::endl;	
     Slice* end = new Slice(end_key);
-    std::cout << "FlushJob::Prepare() get_rmost_key " << end_key << std::endl;	
+    std::cout << "FlushJob::Prepare() get_rmost_key " << end->ToString() << std::endl;	*/
 	//VersionEdit* edit = new VersionEdit();
     //std::cout << "FlushJob::Prepare() make child " << child_idx + 1<<std::endl;
-    flush_->sub_flush_states.emplace_back(start, end, sub_meta, child_idx+1);
+    flush_->sub_flush_states.emplace_back(&starts[child_idx], &ends[child_idx], sub_meta, child_idx+1);
+
+
+	for (int i = 1; i < child_idx+2; i++) {
+	  SubflushState* sub_flush = &flush_->sub_flush_states[i];
+
+	  std::cout << "FlushJob::Prepare() check0 " << starts[i-1].ToString() << std::endl;
+	  std::cout << "FlushJob::Prepare() check0 " << ends[i-1].ToString() << std::endl;
+
+
+	  std::cout << "FlushJob::Prepare() check1 sub_flush_start " << i << " " << sub_flush->start->ToString() << " "<<sub_flush->sub_flush_id <<std::endl;
+	  std::cout << "FlushJob::Prepare() check1 sub_flush_end " << i << " "<< sub_flush->end->ToString() <<std::endl;
+	  //std::cout << "FlushJob::Prepare() check child " << flush_->sub_flush_states[i].sub_flush_id <<std::endl;
+	 }
   }
 
+  
   for (int i = 1; i < (int)flush_->sub_flush_states.size(); i++) {
 	SubflushState* sub_flush = &flush_->sub_flush_states[i];
-    std::cout << "FlushJob::Prepare() check sub_flush_start " << i << " " << sub_flush->start->ToString() <<std::endl;
-    std::cout << "FlushJob::Prepare() check sub_flush_end " << i << " "<< sub_flush->end->ToString() <<std::endl;
+    std::cout << "FlushJob::Prepare() check2 sub_flush_start " << i << " " << sub_flush->start->ToString() << " " << sub_flush->sub_flush_id <<std::endl;
+    std::cout << "FlushJob::Prepare() check2 sub_flush_end " << i << " "<< sub_flush->end->ToString() <<std::endl;
     //std::cout << "FlushJob::Prepare() check child " << flush_->sub_flush_states[i].sub_flush_id <<std::endl;
   }
 
