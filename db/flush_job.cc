@@ -93,22 +93,23 @@ struct FlushJob::SubflushState {
   // The boundaries of the key-range this flush is interested in. No two
   // subflushs may have overlapping key-ranges.
   // 'start' is inclusive, 'end' is exclusive, and nullptr means unbounded
-  Slice *start, *end;
+  std::string start;
+  std::string end;
 
   // The return status of this subflush
   Status status;
 
   FileMetaData sub_meta;
-  VersionEdit sub_edit;
+  VersionEdit* sub_edit;
   TableProperties sub_table_properties;
 
   int sub_flush_id;
 
 
-  SubflushState(Slice* _start, Slice* _end, FileMetaData _sub_meta, int _sub_flush_id)
+  SubflushState(std::string _start, std::string _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id)
       : start(_start),
         end(_end),
-		sub_meta(_sub_meta) { 
+		sub_meta(_sub_meta), sub_edit(_sub_edit) { 
 		sub_flush_id = _sub_flush_id;
 	}
 
@@ -309,6 +310,9 @@ void FlushJob::Prepare() {
   edit_->SetLogNumber(mems_.back()->GetNextLogNumber());
   edit_->SetColumnFamily(cfd_->GetID());
 
+  int num_boundaries = children_nodes_.size();
+  // JH: resize subflush key boundary vectors
+  flush_->sub_flush_states.reserve(num_boundaries+1);
 
   // path 0 for level 0 file.
   meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
@@ -317,49 +321,21 @@ void FlushJob::Prepare() {
   // path 0 for level 0 file of children nodes
   ROCKS_LOG_BUFFER(log_buffer_, "Prepare children_metas_ for split-then-flush and its capacity is %d",
                      children_metas_.capacity());
-  flush_->sub_flush_states.emplace_back(nullptr, nullptr, meta_, 0);
-  int num_boundaries = children_nodes_.size();
-
-
-  std::vector<Slice> starts;
-  std::vector<Slice> ends;
+  flush_->sub_flush_states.emplace_back("","", meta_, nullptr, 0);
 
   for (int child_idx = 0; child_idx < num_boundaries; child_idx++) {
-	FileMetaData sub_meta;
-	sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
-	//std::string start_key = get_lmost_key(children_nodes_[child_idx]);
-	//std::string end_key = get_rmost_key(children_nodes_[child_idx]);
-	starts.push_back(get_lmost_key(children_nodes_[child_idx]));
-	ends.push_back(get_rmost_key(children_nodes_[child_idx]));
-
-
-    /*Slice* start = new Slice(start_key);	
-    std::cout << "FlushJob::Prepare() get_lmost_key " << start->ToString() << std::endl;	
-    Slice* end = new Slice(end_key);
-    std::cout << "FlushJob::Prepare() get_rmost_key " << end->ToString() << std::endl;	*/
-	//VersionEdit* edit = new VersionEdit();
-    //std::cout << "FlushJob::Prepare() make child " << child_idx + 1<<std::endl;
-    flush_->sub_flush_states.emplace_back(&starts[child_idx], &ends[child_idx], sub_meta, child_idx+1);
-
-
-	for (int i = 1; i < child_idx+2; i++) {
-	  SubflushState* sub_flush = &flush_->sub_flush_states[i];
-
-	  std::cout << "FlushJob::Prepare() check0 " << starts[i-1].ToString() << std::endl;
-	  std::cout << "FlushJob::Prepare() check0 " << ends[i-1].ToString() << std::endl;
-
-
-	  std::cout << "FlushJob::Prepare() check1 sub_flush_start " << i << " " << sub_flush->start->ToString() << " "<<sub_flush->sub_flush_id <<std::endl;
-	  std::cout << "FlushJob::Prepare() check1 sub_flush_end " << i << " "<< sub_flush->end->ToString() <<std::endl;
-	  //std::cout << "FlushJob::Prepare() check child " << flush_->sub_flush_states[i].sub_flush_id <<std::endl;
-	 }
+    FileMetaData sub_meta;
+    sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
+    std::string start_key = get_lmost_key(children_nodes_[child_idx]);
+    std::string end_key = get_rmost_key(children_nodes_[child_idx]);
+    flush_->sub_flush_states.emplace_back(start_key, end_key, sub_meta,
+                                          nullptr, child_idx+1);
   }
-
-  
+   
   for (int i = 1; i < (int)flush_->sub_flush_states.size(); i++) {
 	SubflushState* sub_flush = &flush_->sub_flush_states[i];
-    std::cout << "FlushJob::Prepare() check2 sub_flush_start " << i << " " << sub_flush->start->ToString() << " " << sub_flush->sub_flush_id <<std::endl;
-    std::cout << "FlushJob::Prepare() check2 sub_flush_end " << i << " "<< sub_flush->end->ToString() <<std::endl;
+    std::cout << "FlushJob::Prepare() check2 sub_flush_start " << i << " " << sub_flush->start << " " << sub_flush->sub_flush_id <<std::endl;
+    std::cout << "FlushJob::Prepare() check2 sub_flush_end " << i << " "<< sub_flush->end <<std::endl;
     //std::cout << "FlushJob::Prepare() check child " << flush_->sub_flush_states[i].sub_flush_id <<std::endl;
   }
 
@@ -525,7 +501,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
           tmp_file_meta.emplace_back(&sub_flush->sub_meta);
 	      std::cout << "FlushJob::Run() loop 5" << std::endl;
           autovector<VersionEdit*> edits;
-          edit_list[edit_idx].emplace_back(&sub_flush->sub_edit);
+          edit_list[edit_idx].emplace_back(sub_flush->sub_edit);
           edit_lists.emplace_back(edit_list[edit_idx]);
 	      std::cout << "FlushJob::Run() sub table_properties" << std::endl;
           edit_idx ++;
@@ -1071,7 +1047,7 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 			  mutable_cf_options_.paranoid_file_checks, sub_cfd->internal_stats(),
 			  TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
 			  Env::IO_HIGH, &sub_flush->sub_table_properties, 0 , current_time, oldest_key_time, write_hint,
-			  *(sub_flush->start), *(sub_flush->end), sub_flush->sub_flush_id);
+			  sub_flush->start, sub_flush->end, sub_flush->sub_flush_id);
     //std::cout << "FlushJob::ProcessKeyValueFlush() " << sub_flush->sub_flush_id  << " <-BuildsubTable()"<< std::endl;
     std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildsubTable()"<< std::endl;
   }
@@ -1087,7 +1063,7 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 
   // Note that if file_size is zero, the file has been deleted and
   // should not be added to the manifest.
-  VersionEdit* edit = sub_flush->sub_flush_id ? &sub_flush->sub_edit: edit_;
+  VersionEdit* edit = sub_flush->sub_flush_id ? sub_flush->sub_edit: edit_;
   FileMetaData* meta = sub_flush->sub_flush_id ? &sub_flush->sub_meta: &meta_;
 
   if (status.ok() && meta->fd.GetFileSize() > 0) {

@@ -635,7 +635,7 @@ Status BuildsubTable(
     TableFileCreationReason reason, EventLogger* event_logger, int job_id,
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
-    Env::WriteLifeTimeHint write_hint, Slice& sub_flush_start, Slice& sub_flush_end, int sub_flush_id) {
+    Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, int sub_flush_id) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -722,9 +722,9 @@ Status BuildsubTable(
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
 
-      Slice user_key = c_iter.user_key();
+      std::string user_key = c_iter.user_key().ToString();
       std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  
-		  << " sub_flush_start " << sub_flush_start.ToString() << " key " << user_key.ToString() << std::endl;
+		  << " sub_flush_start " << sub_flush_start << " key " << user_key << std::endl;
 	  if (user_key.compare(sub_flush_start) < 0) {
 		  continue;
 	  }

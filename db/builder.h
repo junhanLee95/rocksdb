@@ -130,5 +130,5 @@ Status BuildsubTable(
     TableFileCreationReason reason, EventLogger* event_logger, int job_id,
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
-    Env::WriteLifeTimeHint write_hint, Slice& sub_flush_start, Slice& sub_flush_end, int sub_flush_id);
+    Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, int sub_flush_id);
 }  // namespace rocksdb
