@@ -98,6 +98,11 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
                             table_properties.num_entries)
               << "num_data_blocks" << table_properties.num_data_blocks
               << "num_entries" << table_properties.num_entries
+              /* JH: for debugging */
+              << "data_block_creation" << table_properties.data_block_time
+              << "filter_block_creation" << table_properties.filter_block_time
+              << "index_block_creation" << table_properties.index_block_time
+              /* JH: for debugging */
               << "filter_policy_name" << table_properties.filter_policy_name;
 
 			// prefix key properties
