@@ -212,6 +212,7 @@ struct TableProperties {
   uint64_t data_block_time = 0;
   uint64_t filter_block_time = 0;
   uint64_t index_block_time = 0;
+  uint64_t data_block_m_time = 0; // data block creation within merge process
 
   // Name of the column family with which this SST file is associated.
   // If column family is unknown, `column_family_name` will be an empty string.

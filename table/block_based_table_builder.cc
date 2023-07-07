@@ -505,7 +505,10 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     auto should_flush = r->flush_block_policy->Update(key, value);
     if (should_flush) {
       assert(!r->data_block.empty());
+      uint64_t data_block_m_start_micros = r->ioptions.env->NowMicros();
       Flush();
+      uint64_t data_block_m_finish_micros = r->ioptions.env->NowMicros();
+      r->props.data_block_m_time += (data_block_m_finish_micros - data_block_m_start_micros);
 
       if (r->state == Rep::State::kBuffered &&
           r->data_begin_offset > r->target_file_size) {
