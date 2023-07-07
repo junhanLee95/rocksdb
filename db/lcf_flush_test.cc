@@ -242,7 +242,7 @@ TEST_F(LCFFlushTest, Prepare) {
   options.create_if_missing = true;
   options.max_background_jobs =32;
   options.max_write_buffer_number =2;
-  options.allow_column_family_split = true;
+  options.allow_column_family_split = false;
   //options.allow_column_family_split = true;
   options.atomic_flush = false;
 
@@ -251,11 +251,13 @@ TEST_F(LCFFlushTest, Prepare) {
   ASSERT_OK(DB::Open(options, db_name, &db));
 
   ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  /*
   ColumnFamilyData* cfd =
       static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+	  */
 
   // Prepare Memtable
-  for(int i = 1000; i< 8000; i++) {
+  for(int i = 1000; i< 7000; i++) {
     std::string key = "user" + std::to_string(i); 
     std::string value = "abcdef" + std::to_string(i) + "ghijk";
     db->Put(WriteOptions(), cfh, key, value);
@@ -264,11 +266,12 @@ TEST_F(LCFFlushTest, Prepare) {
   // Next, we construct two-level partition tree.
   
   double total_split_time = 0.0;
-  for (size_t i = 0 ; i < 8; i++) {
+  /*
+  for (size_t i = 0 ; i < 3; i++) {
     std::vector<SplitFileInfo> infos;
     FileMetaData* f1 = new FileMetaData;
-    std::string s1 = "user" + std::to_string((i+1) * 1000);
-    std::string l1 = "user" + std::to_string((i+2) * 1000);
+    std::string s1 = "user" + std::to_string((2*i+1) * 1000);
+    std::string l1 = "user" + std::to_string((2*i+3) * 1000);
     f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
     f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
     infos.push_back(SplitFileInfo(f1, cfd));
@@ -282,6 +285,8 @@ TEST_F(LCFFlushTest, Prepare) {
     delete f1;
   }
  
+  */
+
   // Flush Memtable
   std::cout << "Time for Split() = " << total_split_time << "[us]" << std::endl;
   auto f0 = std::chrono::steady_clock::now();

@@ -329,9 +329,8 @@ void FlushJob::Prepare() {
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     std::string start_key = get_lmost_key(children_nodes_[child_idx]);
     std::string end_key = get_rmost_key(children_nodes_[child_idx]);
-
     flush_->sub_flush_states.emplace_back(start_key, end_key, sub_meta,
-                                          new VersionEdit(), child_idx+1);
+                                          nullptr, child_idx+1);
   }
    
   /*
@@ -395,21 +394,19 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   Status status;
   if (db_options_.allow_column_family_split) {
 	std::cout << "FlushJob::Run() Multi-threaded Split-then-flush" << std::endl;
-    //const size_t num_threads = flush_->sub_flush_states.size();
-    const size_t num_threads = 4;
+    const size_t num_threads = flush_->sub_flush_states.size();
     assert(num_threads > 0);
     // Launch a thread for each of subcompactions 1...num_threads-1
     std::vector<port::Thread> thread_pool;
     thread_pool.reserve(num_threads - 1);
-    //for (size_t i = 1; i < flush_->sub_flush_states.size(); i++) {
-    for (size_t i = 1; i < num_threads; i++) {
+    for (size_t i = 1; i < flush_->sub_flush_states.size(); i++) {
       thread_pool.emplace_back(&FlushJob::ProcessKeyValueFlush, this,
                         &flush_->sub_flush_states[i]);
     }
 
     // Always schedule the first subflush (whether or not there are also
     // others) in the current thread to be efficient with resources
-    //ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
+    ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
 
 
     for (auto& thread : thread_pool) {
@@ -1019,7 +1016,6 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
     //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id 
 //		<< " iter valid " << iter.get()->Valid()<< std::endl;
 
-	/*
     status = BuildTable(
 			  dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
 			  env_options_, cfd_->table_cache(), iter.get(),
@@ -1033,14 +1029,13 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 			  TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
 			  Env::IO_HIGH, &table_properties_, 0 , current_time, oldest_key_time, write_hint);
     std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildTable()"<< std::endl;
-	*/
   } else {
-    ColumnFamilyData* sub_cfd =  children_nodes_[sub_flush->sub_flush_id - 1]->cfd_;
+    ColumnFamilyData* sub_cfd =  children_nodes_[sub_flush->sub_flush_id]->cfd_;
     ScopedArenaIterator sub_iter(
           NewMergingIterator(&sub_cfd->internal_comparator(), &memtables[0],
                              static_cast<int>(memtables.size()), &arena));
 
-    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildsubTable() " << sub_flush->sub_flush_id<< std::endl;
+    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildsubTable()"<< std::endl;
     //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id 
 //		<< " sub_iter valid " << sub_iter.get()->Valid()<< std::endl;
 	status = BuildsubTable(
@@ -1055,13 +1050,12 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 			  mutable_cf_options_.paranoid_file_checks, sub_cfd->internal_stats(),
 			  TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
 			  Env::IO_HIGH, &sub_flush->sub_table_properties, 0 , current_time, oldest_key_time, write_hint,
-			  sub_flush->start, sub_flush->end, sub_flush->sub_flush_id);
+			  sub_flush->start, sub_flush->end, sub_flush->sub_flush_id, db_mutex_);
     //std::cout << "FlushJob::ProcessKeyValueFlush() " << sub_flush->sub_flush_id  << " <-BuildsubTable()"<< std::endl;
 	
-    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildsubTable() "<< sub_flush->sub_flush_id << std::endl;
+    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildsubTable()"<< std::endl;
   }
   LogFlush(db_options_.info_log);
-    std::cout << "FlushJob::ProcessKeyValueFlush() <- LogFlush()"<< std::endl;
   //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id << std::endl;
 
   if (status.ok() && output_file_directory_ != nullptr && sync_output_directory_) {
@@ -1075,10 +1069,7 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   // should not be added to the manifest.
   VersionEdit* edit = sub_flush->sub_flush_id ? sub_flush->sub_edit: edit_;
   FileMetaData* meta = sub_flush->sub_flush_id ? &sub_flush->sub_meta: &meta_;
-  std::cout << "FlushJob::ProcessKeyValueFlush() <- Fsync() " << sub_flush->sub_flush_id << std::endl;
 
-
-  assert(edit);
   if (status.ok() && meta->fd.GetFileSize() > 0) {
 
     // if we have more than 1 background thread, then we cannot
@@ -1086,12 +1077,10 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
     // threads could be concurrently producing compacted files for
     // that key range.
     // Add file to L0
-    std::cout << "FlushJob::ProcessKeyValueFlush() -> AddFile()"<< std::endl;
 	edit->AddFile(0 , meta->fd.GetNumber(), meta->fd.GetPathId(),
 				   meta->fd.GetFileSize(), meta->smallest, meta->largest,
 				   meta->fd.smallest_seqno, meta->fd.largest_seqno,
 				   meta->marked_for_compaction);
-    std::cout << "FlushJob::ProcessKeyValueFlush() <- AddFile()"<< std::endl;
   }
 
   sub_flush->status = status;

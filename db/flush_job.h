@@ -157,6 +157,8 @@ class FlushJob {
   std::vector<FileMetaData> children_metas_; // file metadata of L0 for children nodes
                                              // Note that the size of children_metas_ is equal
                                              // to the size of children_nodes_
+
+  //mutable InstrumentedMutex sub_mutex_;
   autovector<MemTable*> mems_;
   VersionEdit* edit_;
   std::vector<VersionEdit> children_edits_; // version edit of L0 for children nodes

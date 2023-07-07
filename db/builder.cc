@@ -635,7 +635,8 @@ Status BuildsubTable(
     TableFileCreationReason reason, EventLogger* event_logger, int job_id,
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
-    Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, int sub_flush_id) {
+    Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, 
+	int sub_flush_id) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -645,12 +646,16 @@ Status BuildsubTable(
   meta->fd.file_size = 0;
   iter->SeekToFirst();
 
+
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
       new CompactionRangeDelAggregator(&internal_comparator, snapshots));
+
+
 
   for (auto& range_del_iter : range_del_iters) {
     range_del_agg->AddTombstones(std::move(range_del_iter));
   }
+
 
   std::string fname = TableFileName(ioptions.cf_paths, meta->fd.GetNumber(),
                                     meta->fd.GetPathId());
@@ -716,21 +721,28 @@ Status BuildsubTable(
  	 * : for multi-threaded split-then-flush
 	 */
     c_iter.SeekToFirst();
-    std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 1"<< std::endl;
 
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
 
       std::string user_key = c_iter.user_key().ToString();
-      std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  
-		  << " sub_flush_start " << sub_flush_start << " key " << user_key << std::endl;
+
+	  if (user_key.empty()) {
+        std::cout << "user_key is empty() "<< std::endl;
+	  }
+
+
 	  if (user_key.compare(sub_flush_start) < 0) {
-		  continue;
+	    continue;
 	  }
 
 	  if (user_key.compare(sub_flush_end) > 0) {
-		  break;
+        std::cout << "BuildsubTable() job_id " << job_id << " sub_flush_id " << sub_flush_id  
+		  << " sub_flush_start " << sub_flush_start  << " sub_flush_end " << sub_flush_end 
+		  << " user_key " << user_key  << " " << user_key.compare(sub_flush_start) 
+		   << " " << user_key.compare(sub_flush_end) << std::endl;
+	    break;
 	  }
 
       builder->Add(key, value);
@@ -743,7 +755,6 @@ Status BuildsubTable(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
     }
-    std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 3"<< std::endl;
 
     auto range_del_it = range_del_agg->NewIterator();
     for (range_del_it->SeekToFirst(); range_del_it->Valid();
@@ -756,6 +767,7 @@ Status BuildsubTable(
     }
 
     std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 4"<< std::endl;
+
     // Finish and check for builder errors
     tp = builder->GetTableProperties();
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
@@ -772,6 +784,7 @@ Status BuildsubTable(
           column_family_name.c_str(), job_id, meta->fd.GetNumber(),
           builder->FileSize(), finish_micros);
     }
+
     std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 5"<< std::endl;
 
     if (s.ok() && !empty) {
@@ -785,7 +798,7 @@ Status BuildsubTable(
       }
     }
     delete builder;
-    std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 6"<< std::endl;
+    std::cout << "BuildsubTable() job_id " << job_id << " sub_flush_id " << sub_flush_id  << " line 6"<< std::endl;
 
     // Finish and check for file errors
     if (s.ok() && !empty) {
@@ -796,7 +809,7 @@ Status BuildsubTable(
       s = file_writer->Close();
     }
 
-    std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 7"<< std::endl;
+    std::cout << "BuildsubTable() job_id " << job_id << " sub_flush_id " << sub_flush_id  << " line 7"<< std::endl;
 
     if (s.ok() && !empty) {
       // Verify that the table is usable
