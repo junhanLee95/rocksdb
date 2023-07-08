@@ -36,8 +36,9 @@ class PartitionTreeNode {
 
   std::vector<PartitionTreeNode *> Traversal();
   void TraversalImpl(std::vector<PartitionTreeNode*> *nodes);
-  std::vector<std::pair<int,int>> Traversal(bool hot);
-  void TraversalImpl(std::vector<std::pair<int,int>> *jobs,bool hot);
+  void Traversal(std::pair<std::string,std::string> range,std::vector<std::string> keys, std::pair<std::vector<int>,std::pair<std::string,std::string>> *jobs);
+  void TraversalImpl(std::pair<std::vector<int>,std::pair<std::string,std::string>> *jobs, std::pair<std::string,std::string> range, std::vector<std::string> keys);
+  std::pair<std::string,std::string> overlap(std::pair<std::string,std::string> range);
 
 };
 

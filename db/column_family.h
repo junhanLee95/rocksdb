@@ -296,7 +296,10 @@ class ColumnFamilyData {
 
   void Increase_Num_Query(bool is_range);
   bool IsHot();
-  void SetHot();
+  void SetHot(bool hot);
+
+  bool IsMade();
+  void SetMade(bool made);
 
   // for partition tree node
   void SetPartitionTreeNode(PartitionTreeNode* node);
@@ -448,12 +451,14 @@ class ColumnFamilyData {
   std::string largest_user_key_;  // active if split is enabled
   PartitionTreeNode* partition_tree_node_;  // active if split is enabled
 
-  std::queue<std::string> recent_query_;    // active if split is enabled
-  int now_num_range_;		 // active if split is enabled
+  std::atomic<int> num_query_;			 // active if split is enabled
+  std::atomic<int> now_num_range_;		 // active if split is enabled
   //int num_query_;		 // active if split is enabled
-  int sliding_window_size_;  // active if split is enabled
+  int sliding_window_size_;  // active if split is enabled, default is 20
+  int recent_query_[500]={0};    // active if split is enabled
   double hot_threshold_;	 // active if split is enabled
   bool is_hot_;		         // active if split is enabled
+  bool is_made_=false;		         // active if split is enabled
 
   Version* dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;         // == dummy_versions->prev_

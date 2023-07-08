@@ -64,6 +64,12 @@ void PartitionTreeNode::Print(
                  "%-6s LCF[%d] %s => [%s, %s]\n", 
                  TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 
                  cfd_->GetSmallestKey().c_str(), cfd_->GetLargestKey().c_str());
+
+/*  ROCKS_LOG_INFO(cfd_->ioptions()->info_log,
+                 "%-6s LCF[%d] %s => [%d]\n", 
+                 TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 
+                 cfd_->IsMade());*/
+
   /*
   fprintf(stdout, "%-6s LCF[%d] %s => [%s, %s]\n", 
     TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 
@@ -93,50 +99,192 @@ void PartitionTreeNode::TraversalImpl(
 
 }
 
-std::vector<std::pair<int,int>> PartitionTreeNode::Traversal(bool hot) {
-	std::vector<std::pair<int,int>> jobs;
-	this->TraversalImpl(&jobs,hot);
-	return jobs;
+void PartitionTreeNode::Traversal(std::pair<std::string,std::string> range, std::vector<std::string> keys, std::pair<std::vector<int>,std::pair<std::string,std::string>> *jobs) {
+	//std::pair<std::vector<int>,std::pair<std::string,std::string>> jobs;
+	this->TraversalImpl(jobs,range,keys);
+	//return jobs;
 }
 void PartitionTreeNode::TraversalImpl(
-		std::vector<std::pair<int,int>> *jobs, bool hot) {
-  //When hot is true, make hot one's descendants hot and record job which move data from descendant to hot one. job format : (descendant's cf id, hot one's cf id).
-  if(hot){
-    if(cfd_->IsHot() && cfd_->GetID() !=0){
-      std::vector<PartitionTreeNode *> node = Traversal();
-      for (auto cnodes: node){
-		/*
-		if(cnodes->cfd_->GetID() == cfd_->GetID())
-		  continue;*/
-        cnodes->cfd_->SetHot();
-	    jobs->push_back(std::make_pair(cnodes->cfd_->GetID(),cfd_->GetID()));
-	  }
-	  return;
-    }
-    for (auto cnodes: lower_level_nodes_)
-      cnodes->TraversalImpl(jobs,hot);
-  }
-  //When hot is false, combine siblings which are hot and have continuous key range. job format : (sibling1's cf id, sibling2's cf id).
-  else{
-	std::vector<PartitionTreeNode*>::iterator iter=lower_level_nodes_.begin();
-	std::advance(iter,1);
-	for (auto bnodes : lower_level_nodes_){
-	  PartitionTreeNode* cnodes=*iter;
-	  //fprintf(stdout,"ID is %d\n",bnodes->cfd_->GetID());
-	  if(iter++==lower_level_nodes_.end())
-		  break;
-	  /*
-	  fprintf(stdout,"ID is %d\n",bnodes->cfd_->GetID());
-	  fprintf(stdout,"ID is %d\n",cnodes->cfd_->GetID());
-	  fprintf(stdout,"Diff is %d\n",get_rmost_key(bnodes).compare(get_lmost_key(cnodes)));*/
-	  if(cnodes->cfd_->IsHot() && bnodes->cfd_->IsHot() && get_rmost_key(bnodes).compare(get_lmost_key(cnodes)) == -1)
-	    jobs->push_back(std::make_pair(cnodes->cfd_->GetID(),bnodes->cfd_->GetID()));
-	}
+		std::pair<std::vector<int>,std::pair<std::string,std::string>> *jobs, std::pair<std::string,std::string> range, std::vector<std::string> keys) {
+  //check overlap and store id and overlapped key range
+  if(cfd_->IsHot()){
+	//std::cout << range.first << " " << range.second << std::endl;
+
+	bool empty=true;
+
+	std::vector<std::pair<std::string,std::string>> overlap_range;
+
+	//ID_list is consist of base_cfd,(delete cfd ....)
+    std::vector<int> ID_list;
+	ID_list.push_back(cfd_->GetID()); // base_cfd
+    
+	std::vector<int> overlap_status;
+	// 0 : non overlap
+	// 1 : part overlap
+	// 2 : whole overlap
+	// 3 : range is in node
+
+	std::string first;
+	std::string second;
+
     for (auto cnodes: lower_level_nodes_){
-	  if(!cnodes->cfd_->IsHot())
-        cnodes->TraversalImpl(jobs,hot);
+      if( range.first.compare(get_lmost_key(cnodes)) >= 0 && range.second.compare(get_rmost_key(cnodes)) <= 0 ) {// range is in node
+	    //std::cout << "range is in node" << std::endl;
+	    //std::cout << range.first << "," << range.second << std::endl;
+	    //*jobs= std::make_pair(ID_list,std::make_pair(first,second));
+
+		return;
+	  }
+      auto ranges = cnodes->overlap(range);
+	  //std::cout << "range is not in node" << std::endl;
+	  //std::cout << range.first << "," << range.second << std::endl;
+	  //std::cout << ranges.first << "," << ranges.second << std::endl;
+	  //std::cout << get_lmost_key(cnodes) << "," << get_rmost_key(cnodes) << std::endl;
+	  if(!ranges.first.empty()){
+		empty=false;
+		if( ranges.first.compare(get_lmost_key(cnodes)) == 0 && ranges.second.compare(get_rmost_key(cnodes)) == 0 ) // whole
+	      overlap_status.push_back(2);
+		else
+		  overlap_status.push_back(1);
+	  }
+	  else
+		overlap_status.push_back(0);
+      overlap_range.push_back(ranges);
+	}
+
+	//r -run -db lcfdb -P workloads/workloade -P lcfdb/lcfdb.properties -p threadcount=1 -p recordcount=1000 -p operationcount=1000
+
+
+
+	if(empty){//there is any overlap with childs.
+		/*
+	  for(auto i: overlap_status)
+	    std::cout << i << " " ;
+	  std::cout << std::endl;*/
+      *jobs=std::make_pair(ID_list,range);
+
+	  //std::cout << range.first << "," << range.second << " >> " << range.first << "," << range.second << std::endl;
+	  return;
+	}
+
+	//for(auto i : overlap_range)
+	  //fprintf(stdout,"%s %s\n", i.first.c_str(),i.second.c_str());
+
+	//get whole overlapped range.
+    if(overlap_status.front()==2)
+	  first=range.first;
+
+    if(overlap_status.back()==2)
+	  second=range.second;
+
+    if(overlap_status.front()==1){
+      if(range.first.compare(get_lmost_key(lower_level_nodes_.front())) < 0 ){
+	    first=range.first;
+      }
+	}
+
+    if(overlap_status.back()==1){
+      if(range.first.compare(get_lmost_key(lower_level_nodes_.back())) > 0 ){
+	    second=range.second;
+	  }
+	}
+/*
+	for(auto i : overlap_status)
+	  fprintf(stdout,"%d ", i);
+	fprintf(stdout,"\n");
+*/
+	// think more case
+    for (int i=0;i<int(lower_level_nodes_.size())-1; i++){
+
+	  // 0 .... 0 2
+	  if(overlap_status[i] == 0 && overlap_status[i+1] == 2)
+		first=range.first;
+	  // 2 0 ...... 0
+	  if(overlap_status[i] == 2 && overlap_status[i+1] == 0)
+		second=range.second;
+
+	  /*
+	  if(overlap_status[i] == 1 && overlap_status[i+1] == 2){
+		int index = find(keys.begin(), keys.end(), overlap_range[i].second)-keys.begin()+1;
+		first=keys[index];
+	  }
+
+	  if(overlap_status[i] == 2 && overlap_status[i+1] == 1){
+		int index = find(keys.begin(), keys.end(), overlap_range[i+1].first)-keys.begin()-1;
+		second=keys[index];
+	  }*/
+
+	  if(overlap_status[i] == 1 && overlap_status[i+1] == 0){
+		if(range.first.compare(overlap_range[i].first) < 0 ){
+		  int index = find(keys.begin(), keys.end(), overlap_range[i].first)-keys.begin()-1;
+		  second=keys[index];
+		}
+		else{
+		  int index = find(keys.begin(), keys.end(), overlap_range[i].second)-keys.begin()+1;
+		  first=keys[index];
+		  second = range.second;
+	    }
+	  }
+
+	  if(overlap_status[i] == 0 && overlap_status[i+1] == 1){
+		if(range.first.compare(overlap_range[i+1].first) < 0 ){
+	      first = range.first;
+		  int index = find(keys.begin(), keys.end(), overlap_range[i+1].first)-keys.begin()-1;
+		  second=keys[index];
+		}
+		else{
+		  int index = find(keys.begin(), keys.end(), overlap_range[i+1].second)-keys.begin()+1;
+		  first=keys[index];
+	    }
+	  }
+    }
+
+	//get ids for whole overlapped nodes.
+    for (int i=0;i<int(lower_level_nodes_.size()); i++){
+	  if(overlap_status[i]==2){
+		auto nodes = lower_level_nodes_[i]->Traversal();
+		for(auto node : nodes)
+		  ID_list.push_back(node->cfd_->GetID()); 
+	  }
+	}
+/*
+	for(auto i: overlap_status)
+	  std::cout << i << " " ;
+	std::cout << std::endl;
+	std::cout << range.first << "," << range.second << " >> " << first << "," << second << std::endl;*/
+	*jobs=std::make_pair(ID_list,std::make_pair(first,second));
+
+	//repeat for the part overlap nodes.
+	/*
+    for (int i=0;i<int(lower_level_nodes_.size()); i++){
+      if(overlap_status[i] == 1) 
+        cnodes->TraversalImpl(jobs,overlap_range[i],kvpair);
+    }*/
+  }
+  else{
+    for (auto cnodes: lower_level_nodes_){
+      cnodes->TraversalImpl(jobs,range,keys);
 	}
   }
+}
+
+std::pair<std::string,std::string> PartitionTreeNode::overlap(std::pair<std::string,std::string> range){
+  if(get_lmost_key(this).empty() || get_rmost_key(this).empty()) //root
+	return range;
+
+  std::string first;
+  std::string second;
+  if (range.second.compare(get_lmost_key(this)) < 0 || range.first.compare(get_rmost_key(this)) > 0) //non-overlap
+    return make_pair(first,second);
+
+  if (range.second.compare(get_rmost_key(this)) <= 0 && range.first.compare(get_lmost_key(this)) >= 0) //range is in node
+    return make_pair(first,second);
+  
+  first = (range.first.compare(get_lmost_key(this)) >= 0) ? range.first : get_lmost_key(this);
+  second = (range.second.compare(get_rmost_key(this)) <= 0) ? range.second : get_rmost_key(this);
+
+  std::pair<std::string,std::string> overlap_range = std::make_pair(first,second);
+  return overlap_range;
 }
 // PartitionTree function.
 
@@ -146,7 +294,7 @@ PartitionTree::PartitionTree(
   if (column_family_data != nullptr) {
       column_family_data->SetPartitionTreeNode(root_);  
   }
-  fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
+  //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
   partition_nodes_.insert({column_family_data->GetID(), root_}); 
 }
@@ -155,7 +303,7 @@ void PartitionTree::SetRootColumnFamily (
     ColumnFamilyData* column_family_data) {
   root_->SetColumnFamily(column_family_data);
 
-  fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
+  //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
   partition_nodes_.insert({column_family_data->GetID(), root_});
 }
@@ -169,9 +317,19 @@ Status PartitionTree::InsertMergedColumnFamily (
     return Status::OK(); 
   }
 
-
+ 
 //Find method to get exact base_cfd.
+  if(base_cfd == nullptr){
+	std::cout << "root\n" << std::endl;
+    auto node = new PartitionTreeNode(new_cfd);
+    assert (new_cfd != nullptr);
+    new_cfd->SetPartitionTreeNode(node);  
 
+    std::string n_smallest = new_cfd->GetSmallestKey();
+    std::string n_largest = new_cfd->GetLargestKey();
+    this->SetRootColumnFamily(new_cfd);
+	return Status::OK();
+  }
   auto base_node_iter = partition_nodes_.find(base_cfd->GetID());
   auto base_node = base_node_iter->second;
 
@@ -182,7 +340,7 @@ Status PartitionTree::InsertMergedColumnFamily (
   // Note: We assume that the vector new_cfds already sorted 
   // with respect to its key range. 
 
-  
+/* 
   for (auto lnode: base_node->lower_level_nodes_) {
     ColumnFamilyData* l_cfd = lnode->cfd_;
     fprintf(stdout, "[InsertMergedColumnFamily] before: child CFD[%d] %s - [%s, %s]\n",  
@@ -191,7 +349,7 @@ Status PartitionTree::InsertMergedColumnFamily (
             l_cfd->GetSmallestKey().c_str(),
             l_cfd->GetLargestKey().c_str());
   }
-
+*/
   auto node = new PartitionTreeNode(new_cfd);
   assert (new_cfd != nullptr);
   new_cfd->SetPartitionTreeNode(node);  
@@ -200,13 +358,13 @@ Status PartitionTree::InsertMergedColumnFamily (
   std::string n_largest = new_cfd->GetLargestKey();
   assert(!n_smallest.empty());
   assert(!n_largest.empty());
-
+/*
   fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s - [%s, %s]\n", 
           new_cfd->GetID(), 
           new_cfd->GetName().c_str(), 
           n_smallest.c_str(), 
           n_largest.c_str()
-          );
+          );*/
   int l, r, m;
   l = 0;
   r = base_node->lower_level_nodes_.size() - 1;
@@ -237,12 +395,33 @@ Status PartitionTree::InsertMergedColumnFamily (
       return Status::Corruption();
     }
   }
+
+  if(int(base_node->lower_level_nodes_.size()) > 0 ){
+    auto x_small = base_node->lower_level_nodes_[0]->cfd_->GetSmallestKey();
+    auto x_large = base_node->lower_level_nodes_[0]->cfd_->GetLargestKey();
+
+    ROCKS_LOG_INFO(base_node->cfd_->ioptions()->info_log,
+				  "Right? : %d %d\n", 
+                   x_small.compare(n_smallest) > 0,
+                   x_large.compare(n_largest) > 0);
+    ROCKS_LOG_INFO(base_node->cfd_->ioptions()->info_log,
+				  "Size : %ld %ld\n", 
+                   x_small.size(),
+                   x_large.size());
+    ROCKS_LOG_INFO(base_node->cfd_->ioptions()->info_log,
+				  "Size : %ld %ld\n", 
+                   n_smallest.size(),
+                   n_largest.size());
+    ROCKS_LOG_INFO(base_node->cfd_->ioptions()->info_log,
+				  "nodes : %d\n", 
+                   l);
+  }
   // now l is the target to insert to
-  fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s to : %d\n", 
+  /*fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s to : %d\n", 
           new_cfd->GetID(), 
           new_cfd->GetName().c_str(), 
           l
-          );
+          );*/
   base_node->lower_level_nodes_.insert(base_node->lower_level_nodes_.begin() + l,
                                        node);
   //JH: Set parent node
@@ -256,11 +435,12 @@ Status PartitionTree::InsertMergedColumnFamily (
   for (size_t i = 0; i < base_node->lower_level_nodes_.size(); i++) {
     PartitionTreeNode* lnode = base_node->lower_level_nodes_[i];
     ColumnFamilyData* l_cfd = lnode->cfd_;
+	/*
     fprintf(stdout, "[InsertMergedColumnFamily] after: child CFD[%d] %s - [%s, %s]\n",  
             l_cfd->GetID(),
             l_cfd->GetName().c_str(),
             l_cfd->GetSmallestKey().c_str(),
-            l_cfd->GetLargestKey().c_str());
+            l_cfd->GetLargestKey().c_str());*/
 
     if (i != 0) { // boundary overlap check
       PartitionTreeNode* pnode = base_node->lower_level_nodes_[i-1];
@@ -277,13 +457,13 @@ Status PartitionTree::InsertMergedColumnFamily (
 Status PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
-
+/*
   fprintf(stdout, "[InsertSplittedColumnFamily] base CFD[%d] %s - [%s, %s]\n",  
             base_cfd->GetID(),
             base_cfd->GetName().c_str(),
             base_cfd->GetSmallestKey().c_str(),
             base_cfd->GetLargestKey().c_str());
-  
+  */
   if (new_cfds.empty()) {
     fprintf(stdout, "[InsertSplittedColumnFamily] new_cfds are empty\n");
     return Status::OK(); 
@@ -298,16 +478,16 @@ Status PartitionTree::InsertSplittedColumnFamily (
 
   // Note: We assume that the vector new_cfds already sorted 
   // with respect to its key range. 
-
+/*
   for (auto lnode: base_node->lower_level_nodes_) {
     ColumnFamilyData* l_cfd = lnode->cfd_;
-    fprintf(stdout, "[InsertSplittedColumnFamily] before: child CFD[%d] %s - [%s, %s]\n",  
+	fprintf(stdout, "[InsertSplittedColumnFamily] before: child CFD[%d] %s - [%s, %s]\n",  
             l_cfd->GetID(),
             l_cfd->GetName().c_str(),
             l_cfd->GetSmallestKey().c_str(),
             l_cfd->GetLargestKey().c_str());
   }
-
+*/
   for (auto new_cfd: new_cfds) {
     auto node = new PartitionTreeNode(new_cfd);
     assert (new_cfd != nullptr);
@@ -317,13 +497,14 @@ Status PartitionTree::InsertSplittedColumnFamily (
     std::string n_largest = new_cfd->GetLargestKey();
     assert(!n_smallest.empty());
     assert(!n_largest.empty());
-
+/*
     fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s - [%s, %s]\n", 
             new_cfd->GetID(), 
             new_cfd->GetName().c_str(), 
             n_smallest.c_str(), 
             n_largest.c_str()
             );
+			*/
     int l, r, m;
     l = 0;
     r = base_node->lower_level_nodes_.size() - 1;
@@ -341,7 +522,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
         l = m + 1;
       } else {
         // n and m overlaps! assert error
-        fprintf(stdout, "[PartitionTree] CFD[%d] %s [%s, %s] and CFD[%d] %s [%s, %s] overlaps!\n",
+        /*fprintf(stdout, "[PartitionTree] CFD[%d] %s [%s, %s] and CFD[%d] %s [%s, %s] overlaps!\n",
             new_cfd->GetID(),
             new_cfd->GetName().c_str(),
             n_smallest.c_str(),
@@ -350,16 +531,16 @@ Status PartitionTree::InsertSplittedColumnFamily (
             base_node->lower_level_nodes_[m]->cfd_->GetName().c_str(),
             m_smallest.c_str(),
             m_largest.c_str()
-        );
+        );*/
         return Status::Corruption();
       }
     }
     // now l is the target to insert to
-    fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s to : %d\n", 
+    /*fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s to : %d\n", 
             new_cfd->GetID(), 
             new_cfd->GetName().c_str(), 
             l
-            );
+            );*/
     base_node->lower_level_nodes_.insert(base_node->lower_level_nodes_.begin() + l,
                                          node);
     //JH: Set parent node
@@ -371,12 +552,13 @@ Status PartitionTree::InsertSplittedColumnFamily (
   for (size_t i = 0; i < base_node->lower_level_nodes_.size(); i++) {
     PartitionTreeNode* lnode = base_node->lower_level_nodes_[i];
     ColumnFamilyData* l_cfd = lnode->cfd_;
+	/*
     fprintf(stdout, "[InsertSplittedColumnFamily] after: child CFD[%d] %s - [%s, %s]\n",  
             l_cfd->GetID(),
             l_cfd->GetName().c_str(),
             l_cfd->GetSmallestKey().c_str(),
             l_cfd->GetLargestKey().c_str());
-
+*/
     if (i != 0) { // boundary overlap check
       PartitionTreeNode* pnode = base_node->lower_level_nodes_[i-1];
       ColumnFamilyData* p_cfd = pnode->cfd_;

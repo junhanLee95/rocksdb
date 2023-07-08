@@ -2871,8 +2871,8 @@ Status VersionSet::ProcessManifestWrites(
   ManifestWriter& first_writer = writers.front();
   ManifestWriter* last_writer = &first_writer;
   ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites");
-  std::cout << "ProcessManifestWrites - writers cnt : " << writers.size() << std::endl;
-  std::cout << "ProcessManifestWrites - manifest_writers cnt : " << manifest_writers_.size() << std::endl;
+  //std::cout << "ProcessManifestWrites - writers cnt : " << writers.size() << std::endl;
+  //std::cout << "ProcessManifestWrites - manifest_writers cnt : " << manifest_writers_.size() << std::endl;
   assert(!manifest_writers_.empty());
   assert(manifest_writers_.front() == &first_writer);
 
@@ -2977,7 +2977,6 @@ Status VersionSet::ProcessManifestWrites(
         } else if (group_start != std::numeric_limits<size_t>::max()) {
           group_start = std::numeric_limits<size_t>::max();
         }
-        std::cout << "help\n";
         LogAndApplyHelper(last_writer->cfd, builder, e, mu);
         batch_edits.push_back(e);
       }
@@ -3194,9 +3193,9 @@ Status VersionSet::ProcessManifestWrites(
       }
     } else if (first_writer.edit_list.front()->is_column_family_split_) {
 
-      for (auto& e : batch_edits) {
+     /* for (auto& e : batch_edits) {
         fprintf(stderr, "[JH] %s\n", e->DebugString(false).c_str());
-      }
+      }*/
       assert(new_cf_options != nullptr);
       ColumnFamilyData* cfd = first_writer.cfd;
       bool create_cf = false; // fisrt writer does not create column family
@@ -3218,23 +3217,26 @@ Status VersionSet::ProcessManifestWrites(
     } else if (first_writer.edit_list.front()->is_column_family_merge_) {
       assert(new_cf_options != nullptr);
 
-	  auto cfds = writers[0].cfd;
+	  auto cfds = first_writer.cfd;
 	  
 	  int i;
+	  /*
 	  std::vector<ColumnFamilyData *>cfd_ins;
-	  for(i = 0 ; i < int(writers.size())-1 ;i++)
+	  for(i = 1 ; i < int(writers.size())-1 ;i++)
 		cfd_ins.push_back(writers[i].cfd);
 
 	  while(cfds!=nullptr){
-	    if(column_family_set_->GetParentColumnFamily(cfds)==nullptr)
+	    if(column_family_set_->GetParentColumnFamily(cfds)==nullptr){ // root need to be delete
+		  cfds = nullptr;
 		  break; //not be reached
+		}
 		if( find(cfd_ins.begin(), cfd_ins.end(), cfds) != cfd_ins.end() )
 	      cfds = column_family_set_->GetParentColumnFamily(cfds);
 		else
 	      break;
-	  }
+	  }*/
 
-	  for(i = 0 ; i < int(writers.size())-1 ;i++){
+	  for(i = 1 ; i < int(writers.size())-1 ;i++){
         writers[i].cfd->SetDropped();
         if (writers[i].cfd->Unref()) {
 		  column_family_set_->DeleteFromTree(writers[i].cfd->GetID()); 
@@ -3380,12 +3382,12 @@ Status VersionSet::LogAndApply(
     }
 #endif /* ! NDEBUG */
   }
-  
+ /* 
   for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
       fprintf(stdout, "%s\n", edit->DebugString().c_str());
     }
-  }
+  }*/
 
   int num_cfds = static_cast<int>(column_family_datas.size());
   if (num_cfds == 1 && column_family_datas[0] == nullptr) {
@@ -3395,7 +3397,7 @@ Status VersionSet::LogAndApply(
   }
   if (num_cfds == 1 && column_family_datas[0] != nullptr && is_split_column_family) {
     // SplitColumnFamily
-    fprintf(stdout,"split column family\n");
+    //fprintf(stdout,"split column family\n");
     bool first_edit = true;
     for (const auto& edit_list : edit_lists) {
       assert(edit_list.size()==1);
@@ -3533,7 +3535,7 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   // last_allocated_sequence_ as the last sequence.
   edit->SetLastSequence(db_options_->two_write_queues ? last_allocated_sequence_
                                                       : last_sequence_);
-  std::cout << edit->DebugString() << std::endl;
+  //std::cout << edit->DebugString() << std::endl;
   builder->Apply(edit);
 }
 

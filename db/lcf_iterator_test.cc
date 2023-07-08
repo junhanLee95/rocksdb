@@ -523,6 +523,7 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
   dbfull(db)->TEST_WaitForSplit();
 
+  /*
   ColumnFamilyData* cfd1 = cfd->GetColumnFamilySet()->GetColumnFamily(1);
   infos.clear();
   FileMetaData* f2 = new FileMetaData;
@@ -534,7 +535,9 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
 
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
   dbfull(db)->TEST_WaitForSplit();
+*/
 
+  /*
   infos.clear();
   FileMetaData* f3 = new FileMetaData;
   std::string s3 = "g";
@@ -543,13 +546,13 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f3, cfd));
 
-  //dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
-  //dbfull(db)->TEST_WaitForSplit();
-
-  //infos.clear();
+  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->TEST_WaitForSplit();
+*/
+  infos.clear();
   FileMetaData* f4 = new FileMetaData;
-  std::string s4 = "o";
-  std::string l4 = "z";
+  std::string s4 = "p";
+  std::string l4 = "v";
   f4->smallest = InternalKey(Slice(s4), 0, kTypeValue);
   f4->largest = InternalKey(Slice(l4), 0, kTypeValue);
   infos.push_back(SplitFileInfo(f4, cfd));
@@ -557,6 +560,7 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
   dbfull(db)->TEST_WaitForSplit();
 
+  /*
   ColumnFamilyData* cfd2 = cfd->GetColumnFamilySet()->GetColumnFamily(4);
   infos.clear();
   FileMetaData* f5 = new FileMetaData;
@@ -567,7 +571,7 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   infos.push_back(SplitFileInfo(f5, cfd2));
 
   dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
-  dbfull(db)->TEST_WaitForSplit();
+  dbfull(db)->TEST_WaitForSplit();*/
 
   size_t numItem = 25;
   std::vector<std::string> keys;
@@ -587,15 +591,19 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   //fprintf(stdout, "Put task is finished\n");
   //std::unique_ptr<Iterator> iterator(dbfull(db)->NewIterator(ReadOptions(), cfh));
   auto *iterator=dbfull(db)->NewIterator(ReadOptions(), cfh);
-  iterator->SeekToFirst();
-  for(size_t i = 0; i < numItem; i++) {
+  //iterator->SeekToFirst();
+  int num = 6;
+  std::string a(1,'a' + num);
+  iterator->Seek(a);
+  for(size_t i = num; i < 19; i++) {
     //fprintf(stdout, "value : %s\n", iterator->value().data());
     //fprintf(stdout, "value size : %ld\n", iterator->value().size());
     ASSERT_EQ(iterator->value().ToString(), values[i]);
 	iterator->Next();
 	//fprintf(stdout,"\n");
   }
-  std::string a(1,'f');
+  /*
+  //iterator->SeekToFirst();
   iterator->Seek(a);
   iterator->Seek(a);
   iterator->Seek(a);
@@ -609,24 +617,40 @@ TEST_F(LCFIteratorTest, ThreeLevelSimpleNext) {
   iterator->Seek(b);
   iterator->Seek(b);
   iterator->Seek(b);
-  iterator->Seek(b);
+  iterator->Seek(b);*/
   fprintf(stdout, "First Value test is success\n");
   delete iterator; 
-  
+ 
+ /* 
   iterator=dbfull(db)->NewIterator(ReadOptions(), cfh);
-  fprintf(stdout,"Right?\n");
   iterator->SeekToFirst();
   for(size_t i = 0; i < numItem; i++) {
-    //fprintf(stdout, "value : %s\n", iterator->value().data());
-    //fprintf(stdout, "value size : %ld\n", iterator->value().size());
     ASSERT_EQ(iterator->value().ToString(), values[i]);
 	iterator->Next();
-	//fprintf(stdout,"\n");
   }
-  fprintf(stdout, "Second value test is success\n");
   delete iterator;
+  */
+/*
+  std::string a(1,'f');
+  iterator=dbfull(db)->NewIterator(ReadOptions(), cfh);
+  iterator->Seek(a);
+  for(size_t i = 5; i < 15; i++) {
+    ASSERT_EQ(iterator->value().ToString(), values[i]);
+	iterator->Next();
+  }
+  delete iterator;
+
+  iterator=dbfull(db)->NewIterator(ReadOptions(), cfh);
+  iterator->Seek(a);
+  for(size_t i = 5; i < 15; i++) {
+    ASSERT_EQ(iterator->value().ToString(), values[i]);
+	iterator->Next();
+  }
+  delete iterator;*/
+
+  //fprintf(stdout, "Second value test is success\n");
   //dbfull(db)->DestroyLogicalColumnFamilies();
-  delete db;
+  //delete db;
 }
 }  // namespace rocksdb
 

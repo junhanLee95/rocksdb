@@ -412,9 +412,10 @@ ColumnFamilyData::ColumnFamilyData(
       name_(name),
       smallest_user_key_(smallest_user_key),
       largest_user_key_(largest_user_key),
+	  num_query_(0),
 	  now_num_range_(0),
-	  sliding_window_size_(20),
-	  hot_threshold_(0.3),
+	  sliding_window_size_(500),
+	  hot_threshold_(1),
 	  is_hot_(false),
       dummy_versions_(_dummy_versions),
       current_(nullptr),
@@ -508,9 +509,10 @@ ColumnFamilyData::ColumnFamilyData(
     const EnvOptions& env_options, ColumnFamilySet* column_family_set)
     : id_(id),
       name_(name),
+	  num_query_(0),
 	  now_num_range_(0),
-	  sliding_window_size_(20),
-	  hot_threshold_(0.2),
+	  sliding_window_size_(500),
+	  hot_threshold_(1),
 	  is_hot_(false),
       dummy_versions_(_dummy_versions),
       current_(nullptr),
@@ -592,7 +594,7 @@ ColumnFamilyData::ColumnFamilyData(
       ROCKS_LOG_INFO(ioptions_.info_log, "\t(skipping printing options)\n");
     }
   }
-
+   
   RecalculateWriteStallConditions(mutable_cf_options_);
 }
 
@@ -1055,21 +1057,18 @@ std::string ColumnFamilyData::GetLargestKey() {
 
 void ColumnFamilyData::Increase_Num_Query(bool is_range){
   //think about recent query
-  if(!recent_query_.empty()){
-    if (int(recent_query_.size())==sliding_window_size_){
-	  if(recent_query_.front().compare("R")==0){
-  	    now_num_range_ -= 1;
-	  }
-	  recent_query_.pop();
-	}
+  num_query_.fetch_add(1, std::memory_order_relaxed);
+  int index = num_query_.load(std::memory_order_relaxed)%sliding_window_size_;
+  if(recent_query_[index]==1){
+    now_num_range_.fetch_sub(1, std::memory_order_relaxed);
   }
 
   if(is_range){
-	recent_query_.push("R");
-    now_num_range_ += 1;
+	recent_query_[index]=1;
+    now_num_range_.fetch_add(1, std::memory_order_relaxed);
   }
   else
-    recent_query_.push("N");
+    recent_query_[index]=0;
 
   //if(int(recent_query_.size())==sliding_window_size_)
   //fprintf(stdout,"CFID is %d, now query is %d, range query is %d\n",id_,int(recent_query_.size()),now_num_range_);
@@ -1079,13 +1078,25 @@ bool ColumnFamilyData::IsHot(){
   return is_hot_;
 }
 
-void ColumnFamilyData::SetHot(){
-  if(int(recent_query_.size())==0)
-    return;
-  float ratio = now_num_range_ / float(std::min(int(recent_query_.size()),sliding_window_size_));
+bool ColumnFamilyData::IsMade(){
+  return is_made_;
+}
+
+void ColumnFamilyData::SetHot(bool hot){
+
+  if(hot){
+    is_hot_=true;
+	return;
+  }
+
+  float ratio = now_num_range_.load(std::memory_order_relaxed) / sliding_window_size_;
   //fprintf(stdout,"Range is %d, Ratio is %f\n",now_num_range_,ratio);
   if(ratio >= hot_threshold_)
     is_hot_=true;
+}
+
+void ColumnFamilyData::SetMade(bool made){
+  is_made_=made;
 }
 
 void ColumnFamilyData::SetPartitionTreeNode(PartitionTreeNode* node) {
@@ -1198,7 +1209,7 @@ SuperVersion* ColumnFamilyData::GetReferencedSuperVersion(
     // when the thread-local pointer was populated. So, the Ref() earlier in
     // this function still prevents the returned SuperVersion* from being
     // deleted out from under the caller.
-	fprintf(stdout,"Is real?\n");
+	//fprintf(stdout,"Is real?\n");
     sv->Unref();
   }
   return sv;
@@ -1772,9 +1783,9 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
                    "PrepareVersionEditsToSplit: create new child [%s, %s]", 
                    smallests[i].c_str(),
                    largests[i].c_str());
-    fprintf(stdout, "PrepareVersionEditsToSplit: create new child [%s, %s]", 
+    /*fprintf(stdout, "PrepareVersionEditsToSplit: create new child [%s, %s]", 
                    smallests[i].c_str(),
-                   largests[i].c_str());
+                   largests[i].c_str());*/
     uint32_t next_cf_id = GetNextColumnFamilyID();
     edit_out[i].SetColumnFamily(next_cf_id /* cf id */);
     std::string cf_name = "default" + std::to_string(next_cf_id);
@@ -1827,8 +1838,8 @@ ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
   ColumnFamilyData* new_cfd = new ColumnFamilyData(
       id, name, smallest, largest, dummy_versions, table_cache_, write_buffer_manager_, options,
       *db_options_, env_options_, this);
-  fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: smallest : %s\n", smallest.c_str());
-  fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: largest : %s\n", largest.c_str());
+  //fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: smallest : %s\n", smallest.c_str());
+  //fprintf(stderr, "ColumnFamilySet::CreateColumnFamily: largest : %s\n", largest.c_str());
   ROCKS_LOG_INFO(db_options_->info_log,
                 "ColumnFamilySet::CreateColumnFamily (%d)%s - [%s,%s]\n",
                 id, name.c_str(),

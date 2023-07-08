@@ -79,6 +79,7 @@ class LCFIterator : public InternalIterator {
   bool TEST_CheckDeletedIters(int* deleted_iters, int* num_iters);
 
  private:
+  void Addkey();
   void Cleanup(bool release_sv);
   // Unreference and, if needed, clean up the current SuperVersion. This is
   // either done immediately or deferred until this iterator is unpinned by
@@ -127,6 +128,8 @@ class LCFIterator : public InternalIterator {
   MergeIteratorBuilder merge_iter_builder_;
   std::string max_key_="";
   std::vector<PartitionTreeNode*> tree_nodes_;
+  std::vector<std::pair<std::string,std::string>> kvpair_;
+  std::vector<ValueType> type_;
 
   SuperVersion* sv_ = nullptr;
   /*InternalIterator* mutable_iter_;

@@ -528,7 +528,7 @@ class DBImpl : public DB {
   void FindSplitFiles(JobContext* job_context, bool valid);
 
   // MergeColumnFamily when delete LCFIterator.
-  ColumnFamilyData* MergeColumnFamily(std::vector<int> source_cfds,int target_cfd, ColumnFamilyData* cfd);
+  ColumnFamilyData* MergeColumnFamily(int source_cfd,std::vector<int> del_cfd, ColumnFamilyData* cfd, std::string smallest, std::string largest);
 
   // Split Column Family From sst split files
   // This is called from BackgroundCallCompaction()
@@ -776,6 +776,9 @@ class DBImpl : public DB {
   const ImmutableDBOptions immutable_db_options_;
   MutableDBOptions mutable_db_options_;
   Statistics* stats_;
+  std::vector<uint64_t> range_time_;
+  std::vector<uint64_t> cf_time_;
+  std::vector<uint64_t> mem_time_;
   std::unordered_map<std::string, RecoveredTransaction*>
       recovered_transactions_;
   std::unique_ptr<Tracer> tracer_;

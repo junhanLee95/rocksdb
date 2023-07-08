@@ -1352,6 +1352,8 @@ Status CompactionJob::FinishCompactionOutputFile(
 
     // JH: If db allows column family split,
     // Generate split request if necessary
+
+	
     if ( db_options_.allow_column_family_split &&
          efficiency < 0.6 && compact_->compaction->output_level() == 1) {
       ROCKS_LOG_INFO(db_options_.info_log,

@@ -1392,7 +1392,6 @@ Status DBImpl::IterToMemImpl(std::vector<std::pair<std::string,std::string>> kvp
                                      kMaxSequenceNumber, cfd->GetID());
   cfd->SetImmMemtable(mem);
 
-  fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
   int seq=1;
   mem->Ref();
 
@@ -1439,7 +1438,7 @@ Status DBImpl::IterToMemImpl(std::vector<std::pair<std::string,std::string>> kvp
     mem->SetNextLogNumber(logfile_number_);
     cfd->imm()->Add(mem, &contexts->memtables_to_free_);
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
-             "[%s] SplitMemtables: New memtable created with log file: #%" PRIu64
+             "[%s] IterTOMem: New memtable created with log file: #%" PRIu64
              ". Immutable memtables: %d.\n",
              cfd->GetName().c_str(), logfile_number_, cfd->imm()->NumNotFlushed());
     InstallSuperVersionAndScheduleWork(cfd, &contexts->superversion_context,
@@ -1618,20 +1617,20 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
       // memtables
       WriteBufferManager* wb = new WriteBufferManager(immutable_db_options_.db_write_buffer_size);
       if (to != to_size) { // imm for children nodes
-        fprintf(stdout, "to : %ld, cf id : %u\n", to, children_nodes[to]->cfd_->GetID());
+        //fprintf(stdout, "to : %ld, cf id : %u\n", to, children_nodes[to]->cfd_->GetID());
         MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
                                      kMaxSequenceNumber, children_nodes[to]->cfd_->GetID());
         children_nodes[to]->cfd_->SetImmMemtable(mem);
-        fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
+        //fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
         new_mems.push_back(mem);
         seqs.push_back(1);
         mem->Ref();  
       } else { // imm for from_cfd
-        fprintf(stdout, "to : %ld, cf id : %u\n", to, from_cfd->GetID());
+        //fprintf(stdout, "to : %ld, cf id : %u\n", to, from_cfd->GetID());
         MemTable* mem = new MemTable(cmp, ioptions, MutableCFOptions(options), wb,
                                      kMaxSequenceNumber, from_cfd->GetID());
         from_cfd->SetImmMemtable(mem);
-        fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
+        //fprintf(stdout, "create new mem id : %ld\n", mem->GetID());
         new_mems.push_back(mem);
         seqs.push_back(1);
         mem->Ref();         
@@ -1976,7 +1975,10 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   DBImpl* db_impl = reinterpret_cast<DBImpl*>(this);
   if (db_impl->immutable_db_options_.allow_column_family_split) {
     cfd = cfs->GetLogicalColumnFamily(key);
+	//db_impl->mutex_.Lock();
     cfd->Increase_Num_Query(false);
+	//db_impl->mutex_.Unlock();
+	cfd->SetMade(false);
     /*ROCKS_LOG_INFO(db_impl->immutable_db_options_.info_log,
                    "Put key : %s (ID %d)",
                    key.ToString().c_str(),

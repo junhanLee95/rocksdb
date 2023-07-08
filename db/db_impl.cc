@@ -660,6 +660,39 @@ DBImpl::~DBImpl() {
     if (!s.ok()) {
       fprintf(stderr, "[DEBUG] Encountered an error ending a trace, %s\n",s.ToString().c_str());
     } */
+	std::ofstream file1("range_time.txt");
+	int num=1;
+	if(file1.is_open()) {
+		for(auto i : range_time_)
+	 		file1 << num++ << " " << i << "\n";
+		file1.close();
+	}
+	std::ofstream file2("cf_time.txt");
+	num=1;
+	if(file2.is_open()) {
+		for(auto i : cf_time_)
+	 		file2 << num++ << " " << i << "\n";
+		file2.close();
+	}
+	std::ofstream file3("mem_time.txt");
+	num=1;
+	if(file3.is_open()) {
+		for(auto i : mem_time_)
+	 		file3 << num++ << " " << i << "\n";
+		file3.close();
+	}
+/*
+	std::cout << "[START] Time statics" << std::endl;
+	std::cout << "[Range_time]" << std::endl;
+	for(auto i : range_time_)
+	 	std::cout << i << std::endl;
+	std::cout << "[CF_time]" << std::endl;
+	for(auto i : cf_time_)
+	 	std::cout << i << std::endl;
+	std::cout << "[MeM_time]" << std::endl;
+	for(auto i : mem_time_)
+	 	std::cout << i << std::endl;
+	std::cout << "[END] Time statics" << std::endl;*/
     closed_ = true;
     CloseHelper();
   }
@@ -1444,7 +1477,9 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   // to implement inter-cfd point lookup
   if (immutable_db_options_.allow_column_family_split) {
     cfd = cfs->GetLogicalColumnFamily(key);
+	this->mutex_.Lock();
     cfd->Increase_Num_Query(false);
+	this->mutex_.Unlock();
 
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl key : %s (ID %d)",
@@ -1573,7 +1608,11 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
       // JH: if not found, we look up its parent column family
       cfd = cfs->GetParentColumnFamily(cfd);
       while(cfd != nullptr) {
+
+        this->mutex_.Lock();
         cfd->Increase_Num_Query(false);
+	    this->mutex_.Unlock();
+
         Status s_parent;
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "GetImpl: lookup parent node : %s (ID %d)"
@@ -2326,11 +2365,13 @@ void DBImpl::PrintLogicalColumnFamily(void) {
 void DBImpl::DestroyLogicalColumnFamilies(void) {
   for (auto cfd: *versions_->GetColumnFamilySet()) {
     uint32_t cfd_id = cfd->GetID();
-    std::string cfd_name = cfd->GetName();
-    std::cout << "Destroy cf[" << cfd_id << "] : " << cfd_name << std::endl;
-    ColumnFamilyHandle* cfh = GetColumnFamilyHandle(cfd_id);  
-    std::cout << "Destroy cfh : " << cfh->GetName() << std::endl;
-    DropColumnFamily(cfh);
+    if (cfd_id == 0)
+	  continue;
+	std::string cfd_name = cfd->GetName();
+	std::cout << "Destroy cf[" << cfd_id << "] : " << cfd_name << std::endl;
+	ColumnFamilyHandle* cfh = GetColumnFamilyHandle(cfd_id);  
+	std::cout << "Delete cf[" << cfd_id << "]\n" ;
+	DropColumnFamily(cfh);
   }
   /*auto column_family_set = versions_->GetColumnFamilySet();
   
@@ -2614,8 +2655,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
     // last_seq_same_as_publish_seq_==false since NewIterator is overridden in
     // WritePreparedTxnDB
 	if(immutable_db_options_.allow_column_family_split){
-		ROCKS_LOG_INFO(immutable_db_options_.info_log,"LCF mode is successful");
-		ROCKS_LOG_INFO(immutable_db_options_.info_log,"ID is %d",cfd->GetID());
+		//ROCKS_LOG_INFO(immutable_db_options_.info_log,"LCF Iter is created");
 
 		ColumnFamilyData* root=cfd;
 		std::vector<InternalIterator*> iterators;

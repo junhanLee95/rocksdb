@@ -10,6 +10,7 @@
 #include <string>
 #include <utility>
 #include <algorithm>
+#include <set>
 
 #include "db/column_family.h"
 #include "db/db_impl.h"
@@ -58,68 +59,126 @@ LCFIterator::LCFIterator(DBImpl* db, const ReadOptions& read_options,
 }
 
 LCFIterator::~LCFIterator() {
-  std::vector<std::pair<std::string,std::string>> kvpair;
-  std::vector<ValueType> type;
-  for(merge_iter_->SeekToFirst(); merge_iter_->Valid(); merge_iter_->Next()){
-	Slice key = merge_iter_->key();
-    Slice value = merge_iter_->value();
-	ParsedInternalKey ikey;
 
-    ParseInternalKey(key, &ikey);
-	kvpair.push_back(std::make_pair(ikey.user_key.ToString(),value.ToString()));
-	type.push_back(ikey.type);
-  }
-  this->Cleanup(true);
-  merge_iter_=nullptr;
+  //start to record time
+  uint64_t start_time = db_->env_->NowMicros();
+  //fprintf(stdout,"Now time is %ld",start_time);
   for(auto cnodes : tree_nodes_){
 	  //fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
-	  cnodes->cfd_->SetHot();
-	  fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
+	  cnodes->cfd_->SetHot(false);
+	  //fprintf(stdout,"CF %d is Hot? : %d\n",cnodes->cfd_->GetID(),cnodes->cfd_->IsHot());
+  }
+  if(kvpair_.size() <= 1){
+    merge_iter_ = merge_iter_builder_.Finish();
+    this->Cleanup(true);
+    merge_iter_=nullptr;
+	return;
+  }
+  //sort(kvpair_.begin(),kvpair_.end());
+  /*
+  if(kvpair_.front().first.compare(kvpair_.back().first)>0){
+	std::cout << "fail\n";
+	return;
+  }*/
+
+  //checkpoint1
+  //uint64_t time_1 = db_->env_->NowMicros();
+  std::pair<std::string,std::string> range = std::make_pair(kvpair_.front().first, kvpair_.back().first);
+  //fprintf(stdout,"(%s %s)\n", range.first.c_str(), range.second.c_str());
+  std::vector<std::string> keys;
+  //std::vector<std::string> test;
+  for(auto pair : kvpair_){
+    keys.push_back(pair.first);
+    //test.push_back(pair.first);
   }
 
-  std::vector<std::pair<int,int>> jobs = root_->GetPartitionTreeNode()->Traversal(true);
-  //for(auto pair : jobs)
-  //	  fprintf(stdout,"(%d -> %d)\n",pair.first,pair.second);
-  //std::vector<std::pair<int,int>> sibling_jobs = root_->GetPartitionTreeNode()->Traversal(false);
-  std::vector<int> target_cfd;
-  for(auto pair : jobs)
-    target_cfd.push_back(pair.second);
-  sort(target_cfd.begin(),target_cfd.end());
-  target_cfd.erase(unique(target_cfd.begin(),target_cfd.end()),target_cfd.end());
+//  test.erase(unique(test.begin(), test.end()),test.end());
+//  if(keys.size()!=test.size()){
+//	  std::cout << "failed\n";
+//	  return;
+//  }
 
-  std::vector<std::vector<int>> source_cfds;
-  int size=int(target_cfd.size());
-  for(int i=0;i<size;i++){
-	std::vector<int>imm;
-	for(auto pair : jobs){
-      if(pair.second==target_cfd[i])
-        imm.push_back(pair.first);
-	}
-    sort(imm.begin(),imm.end());
-    imm.erase(unique(imm.begin(),imm.end()),imm.end());
-	source_cfds.push_back(imm);
-  }
-  
-  int i=0;
-  for(auto vec : source_cfds){
-    for(auto a : vec){
-	  fprintf(stdout,"%d ",a);
-    }
+  std::pair<std::vector<int>,std::pair<std::string,std::string>> jobs;
+  root_->GetPartitionTreeNode()->Traversal(range,keys,&jobs);
+  //for(auto id:jobs.first)
+    //fprintf(stdout,"ID is %d\n",id);
 
-	fprintf(stdout,"-> ");
-	fprintf(stdout,"%d\n",target_cfd[i++]);
+  //std::cout << jobs.second.first << " " << jobs.second.second << std::endl;
+  /*
+  for(auto pair : jobs){
+    fprintf(stdout,"(%d -> %s,%s)\n",pair.first,pair.second.first.c_str(),pair.second.second.c_str());
+  }*/
+
+  //checkpoint2
+  uint64_t time_2 = db_->env_->NowMicros();
+
+  merge_iter_ = merge_iter_builder_.Finish();
+  this->Cleanup(true);
+  merge_iter_=nullptr;
+  std::vector<std::string>().swap(keys);
+/*
+  for(auto i : jobs.first)
+    std::cout << i << " ";
+  std::cout << std::endl;*/
+  if(jobs.second.first.empty() || jobs.second.second.empty()){
+    //std::cout << range.first << " " << range.second << std::endl;
+	//std::cout << "success" << std::endl;
+	return;
   }
+
+  if(int(jobs.first.size())==0){
+	return;
+  }
+  if(jobs.second.first.compare(jobs.second.second)==0)
+	return;
+
+  int source_cfd = jobs.first[0];
+  std::vector<int> del_cfd;
+  for(int i=1;i<int(jobs.first.size());i++)
+	del_cfd.push_back(jobs.first[i]);
+
   std::vector<ColumnFamilyData*> new_cfds; 
-  if(source_cfds.size()!=0){
-	for(i=0;i<int(source_cfds.size());i++)
-      new_cfds.push_back(db_->MergeColumnFamily(source_cfds[i],target_cfd[i],root_));
+  //if(source_cfds.size()!=0){
+
+	//for(i=0;i<int(source_cfds.size());i++){
+  //std::cout << source_cfd << std::endl;
+
+  auto cfd = db_->MergeColumnFamily(source_cfd,del_cfd,root_,jobs.second.first,jobs.second.second);
+  //checkpoint3
+  uint64_t time_3 = db_->env_->NowMicros();
+
+  if(cfd!=nullptr){
+    cfd->SetMade(true);
+    new_cfds.push_back(cfd);
   }
-  for(auto cf:new_cfds)
-    fprintf(stdout,"ID is %d\n",cf->GetID());
-  Status s = db_->IterToMem(kvpair, new_cfds,type);
-  assert(s.ok());
-  fprintf(stdout,"Success to delete LCFIterator\n");
-  merge_iter_builder_.Finish();
+
+	//}
+  //}
+
+
+  //for(auto cf:new_cfds)
+    //fprintf(stdout,"ID is %d\n",cf->GetID());
+
+  if(int(new_cfds.size()) > 0 ){
+    Status s = db_->IterToMem(kvpair_, new_cfds,type_);
+    assert(s.ok());
+  }
+
+  std::vector<std::pair<std::string,std::string>>().swap(kvpair_);
+  //checkpoint4
+  uint64_t time_4 = db_->env_->NowMicros();
+
+ // uint64_t hot_time = time_1-start_time;
+  uint64_t range_time = time_2-start_time;
+  uint64_t cf_time = time_3-time_2;
+  uint64_t mem_time = time_4-time_3;
+  db_->range_time_.push_back(range_time);
+  db_->cf_time_.push_back(cf_time);
+  db_->mem_time_.push_back(mem_time);
+  //fprintf(stdout,"Elapsed time is %ld, %ld, %ld, %ld\n",hot_time,range_time,cf_time,mem_time);
+
+
+  //fprintf(stdout,"Success to delete LCFIterator\n");
   /*
   for(auto pair : jobs)
 	  fprintf(stdout,"(%d -> %d)\n",pair.first,pair.second);
@@ -142,6 +201,17 @@ LCFIterator::~LCFIterator() {
   //  fprintf(stdout,"element is %d\n",a);
   
   //MakeNewPartition(jobs, sibiling_jobs);
+}
+
+void LCFIterator::Addkey(){
+  Slice key = merge_iter_->key();
+  Slice value = merge_iter_->value();
+  ParsedInternalKey ikey;
+
+  ParseInternalKey(key, &ikey);
+  kvpair_.push_back(std::make_pair(ikey.user_key.ToString(),value.ToString()));
+  type_.push_back(ikey.type);
+
 }
 
 void LCFIterator::SVCleanup(DBImpl* db, SuperVersion* sv,
@@ -203,14 +273,13 @@ void LCFIterator::SVCleanup() {
 }
 
 void LCFIterator::Cleanup(bool release_sv) {
-  //for(auto* m : iterators_)
-//	 DeleteIterator(m,true);
-  //iterators_.clear();
- 
   DeleteIterator(merge_iter_,true);
   if (release_sv) {
     SVCleanup();
   }
+  //for(auto* m : iterators_)
+//	 DeleteIterator(m,true);
+  //iterators_.clear();
 }
 
 bool LCFIterator::Valid() const {
@@ -311,11 +380,44 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
 	  } 
     }
 
+	//if seek target was root theres isn't any addnode. But add one node which have smallest key larger than internal_key.
+	if(addnode.size() == 0){
+	  
+      std::vector<std::string> small_keys;
+      for(auto cnodes: nodes_)
+	    small_keys.push_back(get_lmost_key(cnodes));
+      std::string smallest_key;
+      sort(small_keys.begin(), small_keys.end());
+ 
+	  for(int i =0; i< int(small_keys.size());i++){
+        if(small_keys[i].compare(ExtractUserKey(internal_key).ToString())>=0){
+          smallest_key=small_keys[i];
+		  break;
+	    }
+	  }
+      for(auto cnodes: nodes_){
+        if (get_rmost_key(cnodes).empty() || smallest_key.compare(get_rmost_key(cnodes)) <= 0) {
+          if (get_lmost_key(cnodes).empty() || smallest_key.compare(get_lmost_key(cnodes)) >= 0){
+            addnode.push_back(cnodes);
+            nodes_.erase(remove(nodes_.begin(), nodes_.end(), cnodes),nodes_.end());
+		    auto childnodes=cnodes->Traversal();
+		    for(auto dnodes: childnodes){
+			  if(find(addnode.begin(), addnode.end(), dnodes)==addnode.end()){
+                addnode.push_back(dnodes);
+                nodes_.erase(remove(nodes_.begin(), nodes_.end(), dnodes),nodes_.end());
+			  }
+		    }
+	      }
+	    }
+      }
+	}
+
     //If some nodes iterator need to be added, expand merge_iter_.
   
     if(addnode.size() >= 1){
 	  //fprintf(stdout,"%d iterators is need to be added!!!\n",int(addnode.size()));
       SuperVersion* sv=nullptr;
+
 
 	  // Use MergingIterator::AddIterator
       for(auto cnodes: addnode){
@@ -325,18 +427,25 @@ void LCFIterator::SeekInternal(const Slice& internal_key,
 		InternalIterator* node_iter = new ForwardIterator(db_,read_options_,node_cfd,sv);
 	    merge_iter_builder_.AddIterator(node_iter);
 	  }
+	  merge_iter_=merge_iter_builder_.GetMergeIter();
     }
-	merge_iter_=merge_iter_builder_.GetMergeIter();
   	merge_iter_->Seek(internal_key);
   }
-
+  /*
+  if(max_key_.empty()){
+	UpdateMaxKey(ExtractUserKey(merge_iter_->key()).ToString());
+  }*/
+  //max_key_=ExtractUserKey(merge_iter_->key()).ToString();
   //update query nums
   if(!merge_iter_->Valid())
 	  return;
   std::vector<ColumnFamilyData *> target_CF = CFIncludingKey(tree_nodes_,ExtractUserKey(merge_iter_->key()).ToString());
+  //db_->mutex_.Lock();
   for (auto cnodes : tree_nodes_){
     cnodes->cfd_->Increase_Num_Query(find(target_CF.begin(),target_CF.end(),cnodes->cfd_) != target_CF.end());
   }
+  //db_->mutex_.Unlock();
+  Addkey();
   TEST_SYNC_POINT_CALLBACK("LCFIterator::SeekInternal:Return", this);
 }
 
@@ -348,12 +457,20 @@ void LCFIterator::Next() {
   //add condition when nodes_ is empty
   //fprintf(stdout,"max key is %s\n",max_key_.c_str());
 
-  if(nodes_.size()>=1 && ExtractUserKey(merge_iter_->key()).ToString().compare(max_key_)==0){
+  if(nodes_.size()>=1 && (ExtractUserKey(merge_iter_->key()).ToString().compare(max_key_)==0 || max_key_.empty())){
     for(auto cnodes: nodes_)
 	  small_keys.push_back(get_lmost_key(cnodes));
 
+    std::string smallest_key;
     sort(small_keys.begin(), small_keys.end());
-    std::string smallest_key=small_keys.front();
+    //std::string smallest_key=small_keys.front();
+ 
+	for(int i =0; i< int(small_keys.size());i++){
+      if(small_keys[i].compare(max_key_)>=0){
+        smallest_key=small_keys[i];
+		break;
+	  }
+	}
 
     //Distinguish Time of adding Column Family
     //When CF is added( Constructor, SeekInternal(), Next() ), update some variable ( ex) current_max), then compare that variable and key.
@@ -403,9 +520,12 @@ void LCFIterator::Next() {
   if(!merge_iter_->Valid())
 	  return;
   std::vector<ColumnFamilyData *> target_CF = CFIncludingKey(tree_nodes_,ExtractUserKey(merge_iter_->key()).ToString());
+  //db_->mutex_.Lock();
   for (auto cnodes : tree_nodes_){
     cnodes->cfd_->Increase_Num_Query(find(target_CF.begin(),target_CF.end(),cnodes->cfd_) != target_CF.end());
+  //db_->mutex_.Unlock();
   }
+  Addkey();
 }
 
 Slice LCFIterator::key() const {

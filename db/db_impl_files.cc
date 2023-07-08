@@ -47,8 +47,9 @@ void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
   versions_->GetSplitFiles(&job_context->sst_split_files);
 }
 
-ColumnFamilyData* DBImpl::MergeColumnFamily(std::vector<int> source_cfds, 
-							int target_cfd, ColumnFamilyData* cfd) {
+ColumnFamilyData* DBImpl::MergeColumnFamily(int source_cfd, 
+							std::vector<int> del_cfd, ColumnFamilyData* cfd,
+							std::string smallest, std::string largest) {
   Status s;
 
   ColumnFamilySet *cfs =cfd->GetColumnFamilySet();
@@ -64,10 +65,23 @@ ColumnFamilyData* DBImpl::MergeColumnFamily(std::vector<int> source_cfds,
   autovector<VersionEdit*> edits_in;
   std::vector<VersionEdit> edit_in(1024);
   int i=0;
+  cfd = cfs->GetColumnFamily(source_cfd);
+  column_family_datas.push_back(cfd);
+  
+  edit_in[i].MergeColumnFamily(cfd->GetName());
+  edit_in[i].SetColumnFamily(cfd->GetID());
+  edits_in.push_back(&edit_in[i++]);
+  edit_lists.push_back(edits_in);
+  edits_in.clear();
+  this->mutex_.Lock();
+  mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+  this->mutex_.Unlock();
+
   // Put source
-  for(auto id : source_cfds){
-    
+  for(auto id : del_cfd){
 	cfd = cfs->GetColumnFamily(id);
+	if(int(del_cfd.size()==1) && cfd->IsMade()) 
+	  return nullptr;
     column_family_datas.push_back(cfd);
   
 	edit_in[i].MergeColumnFamily(cfd->GetName());
@@ -75,26 +89,27 @@ ColumnFamilyData* DBImpl::MergeColumnFamily(std::vector<int> source_cfds,
     edits_in.push_back(&edit_in[i++]);
     edit_lists.push_back(edits_in);
     edits_in.clear();
+	this->mutex_.Lock();
     mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+	this->mutex_.Unlock();
 
-    }   
+  }   
 
   {
     InstrumentedMutexLock l(&mutex_);
 
+    cfd = cfs->GetColumnFamily(source_cfd);
     autovector<VersionEdit*> edits_out;
     VersionEdit edit_out;
   
     mutex_.AssertHeld();
-    cfd = cfs->GetColumnFamily(target_cfd);
-    std::string smallest=cfd->GetSmallestKey();
-    std::string largest=cfd->GetLargestKey();
-    uint32_t next_cf_id = cfs->GetNextColumnFamilyID();
+	uint32_t next_cf_id = cfs->GetNextColumnFamilyID();
     edit_out.SetColumnFamily(next_cf_id);
     std::string cf_name = "default" + std::to_string(next_cf_id);
 
     edit_out.AddColumnFamily(cf_name);
     edit_out.SetLogNumber(0);
+
     edit_out.SetColumnFamilyKeyRange(smallest, largest);
     edits_out.push_back(&edit_out);
     edit_lists.push_back(edits_out);
@@ -104,14 +119,14 @@ ColumnFamilyData* DBImpl::MergeColumnFamily(std::vector<int> source_cfds,
     superversion_contexts.emplace_back(SuperVersionContext(true));
     
 
-    uint32_t entries = source_cfds.size() + 1;
+    uint32_t entries = del_cfd.size() + 1 + 1;
     for (auto& edits: edit_lists){
       edits[0]->MarkAtomicGroup(--entries);
     }
 	
 	assert(entries == 0);
 	
-	for(i=0;i<int(column_family_datas.size());i++){
+	for(i=1;i<int(column_family_datas.size());i++){
       EraseThreadStatusCfInfo(column_family_datas[i]);
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
 			"Dropped column family with id %u\n", column_family_datas[i]->GetID());
@@ -132,13 +147,12 @@ ColumnFamilyData* DBImpl::MergeColumnFamily(std::vector<int> source_cfds,
       s = cfd_out_i->AddDirectories();
     }
 
-    fprintf(stdout, "Install SuperVersion\n");
+    //fprintf(stdout, "Install SuperVersion\n");
 
     if (s.ok()) {
 	  single_column_family_mode_ = false;
       auto* cfd_out_i = versions_->GetColumnFamilySet()->GetColumnFamily(cf_name_list[0]);
 	  column_family_datas.push_back(cfd_out_i);
-	  fprintf(stdout,"Left Split is %d\n",unscheduled_splits_);
 	  InstallSuperVersionAndScheduleWork(cfd_out_i, &superversion_contexts[0],*cfd_out_i->GetLatestMutableCFOptions());
 	  if (!cfd_out_i->mem()->IsSnapshotSupported()) {
 	     is_snapshot_supported_ = false;
@@ -155,7 +169,7 @@ ColumnFamilyData* DBImpl::MergeColumnFamily(std::vector<int> source_cfds,
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
 		  "Added column family with id %u\n", column_family_datas.back()->GetID());
   }
-  fprintf(stdout,"finished\n");
+  //fprintf(stdout,"finished\n");
   //PrintLogicalColumnFamily();
   auto* cfd_out = versions_->GetColumnFamilySet()->GetColumnFamily(cf_name_list[0]);
   return cfd_out;
@@ -170,7 +184,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
   ColumnFamilyData* cfd = sst_split_files[0].cfd;
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
   size_t split_cnt = sst_split_files.size();
-  fprintf(stdout, "split_cnt : %ld\n", split_cnt);
+  //fprintf(stdout, "split_cnt : %ld\n", split_cnt);
   s = CheckCompressionSupported(cf_options);
   if (s.ok() && immutable_db_options_.allow_concurrent_memtable_write) {
     s = CheckConcurrentWritesSupported(cf_options);
@@ -234,7 +248,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     assert(new_children_cnt == cf_name_list.size());
     assert(new_children_cnt == superversion_contexts.size());
 
-	  fprintf(stdout, "edit list size : %ld\n", edit_lists.size());
+	  //fprintf(stdout, "edit list size : %ld\n", edit_lists.size());
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
 			  "Split File Cnt %lu, edit size %lu",
 			  split_cnt, edit_lists.size());
@@ -270,7 +284,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 
 	  // Install Superversion to new CFs
 
-	  fprintf(stdout, "Install SuperVersion\n");
+	  //fprintf(stdout, "Install SuperVersion\n");
 	  if (s.ok()) {
 		  ROCKS_LOG_INFO(immutable_db_options_.info_log,
 				  "Split column family [%s] (ID %u)",
@@ -319,26 +333,26 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
       NewThreadStatusCfInfo(column_family_datas[i]);
     }
   }
-  fprintf(stdout, "Split mt\n");
+  //fprintf(stdout, "Split mt\n");
 
   // 2.split memtables
   WriteContext context;
   {
     InstrumentedMutexLock l(&mutex_);
 
-    fprintf(stdout, "Switch mt\n");
+    //fprintf(stdout, "Switch mt\n");
     if (!cfd->mem()->IsEmpty()) {
       cfd->Ref();
       s = SwitchMemtable(cfd, &context);
       cfd->Unref();
     }
-    fprintf(stdout, "Split mt\n");
+    //fprintf(stdout, "Split mt\n");
 
     if (s.ok()) {
       cfd->Ref();
-      fprintf(stdout, "Split mt(2)\n");
+      //fprintf(stdout, "Split mt(2)\n");
       s = SplitMemtables(cfd);
-      fprintf(stdout, "Split mt(3)\n");
+      //fprintf(stdout, "Split mt(3)\n");
       cfd->Unref();
     } else {
       ROCKS_LOG_ERROR(immutable_db_options_.info_log,
@@ -405,7 +419,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     }
   } // InstrumentedMutexLock l(&mutex_)
   PrintLogicalColumnFamily();
-  fprintf(stdout, "Split sst\n");
+  //fprintf(stdout, "Split sst\n");
 
   // now we prepare sst split
   auto vstorage = cfd->current()->storage_info();
@@ -414,7 +428,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     vstorage->AddToFilesMarkedForSplit(meta);
     //sst_split_file.DeleteInfo(); // free info
   }
-  fprintf(stdout, "Split sst(2)\n");
+  //fprintf(stdout, "Split sst(2)\n");
   
   SchedulePendingSplit(cfd);
   return Status::OK();
