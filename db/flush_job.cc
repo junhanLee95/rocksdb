@@ -500,16 +500,21 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 	  std::cout << "FlushJob::Run() sub table_properties" << std::endl;
       for (size_t i = 1; i < flush_->sub_flush_states.size(); i++) {
 		SubflushState* sub_flush = &flush_->sub_flush_states[i];
-	      //std::cout << "FlushJob::Run() loop 1" << std::endl;
+		ColumnFamilyData *sub_cfd = children_nodes_[i-1]->cfd_;
+
+	    //std::cout << "FlushJob::Run() " << i << " sub_table_properties.num_entries " << sub_flush->sub_table_properties.num_entries<< std::endl;
         if (sub_flush->sub_table_properties.num_entries != 0) {
 	      //std::cout << "FlushJob::Run() loop 2" << std::endl;
-          tmp_cfds.emplace_back(children_nodes_[i-1]->cfd_);
-	      //std::cout << "FlushJob::Run() loop 3" << std::endl;
+          tmp_cfds.emplace_back(sub_cfd);
+	      //std::cout << "FlushJob::Run() children_nodes_[i-1]-> cfd_ " << children_nodes_[i-1]->cfd_->GetName() << std::endl;
           mutable_cf_options_list.emplace_back(&mutable_cf_options_);
 	      //std::cout << "FlushJob::Run() loop 4" << std::endl;
           tmp_file_meta.emplace_back(&sub_flush->sub_meta);
 	      //std::cout << "FlushJob::Run() loop 5" << std::endl;
-          autovector<VersionEdit*> edits;
+          //autovector<VersionEdit*> edits;
+
+		  sub_flush->sub_edit->SetColumnFamily(sub_cfd->GetID());
+
           edit_list[edit_idx].emplace_back(sub_flush->sub_edit);
           edit_lists.emplace_back(edit_list[edit_idx]);
 	      //std::cout << "FlushJob::Run() sub table_properties" << std::endl;
@@ -523,11 +528,14 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
       // column families.
       // This function involves LogAndApply().
 
-      /*for(auto es: edit_lists) {
+	  /*
+	  for(auto es: edit_lists) {
         for(auto e: es) {
           fprintf(stdout, "%s\n" , e->DebugString().c_str());
         } 
-      }*/
+      }
+	  */
+
       status = cfd_->imm()->InstallMemtableSplitThenFlushResults(
         edit_lists, tmp_cfds, mutable_cf_options_list, mems_, versions_,
         db_mutex_, tmp_file_meta, &job_context_->memtables_to_free,
@@ -1093,12 +1101,10 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
     // threads could be concurrently producing compacted files for
     // that key range.
     // Add file to L0
-    std::cout << "FlushJob::ProcessKeyValueFlush() -> AddFile()"<< std::endl;
 	edit->AddFile(0 , meta->fd.GetNumber(), meta->fd.GetPathId(),
 				   meta->fd.GetFileSize(), meta->smallest, meta->largest,
 				   meta->fd.smallest_seqno, meta->fd.largest_seqno,
 				   meta->marked_for_compaction);
-    std::cout << "FlushJob::ProcessKeyValueFlush() <- AddFile()"<< std::endl;
   }
 
   sub_flush->status = status;

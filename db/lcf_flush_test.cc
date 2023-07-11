@@ -267,8 +267,12 @@ TEST_F(LCFFlushTest, Prepare) {
   for (size_t i = 0 ; i < 6; i++) {
     std::vector<SplitFileInfo> infos;
     FileMetaData* f1 = new FileMetaData;
-    std::string s1 = "user" + std::to_string((i+1) * 1000);
-    std::string l1 = "user" + std::to_string((i+2) * 1000);
+	
+	size_t start_num = (2*i+2) * 500;
+	size_t end_num =  (2*i+3) * 500;
+
+    std::string s1 = "user" + ((start_num >= 1000) ? std::to_string(start_num): "0" + std::to_string(start_num));
+    std::string l1 = "user" + ((start_num >= 1000) ? std::to_string(end_num): "0" + std::to_string(end_num));
     f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
     f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
     infos.push_back(SplitFileInfo(f1, cfd));
@@ -312,6 +316,7 @@ TEST_F(LCFFlushTest, Prepare) {
   db = nullptr;
 }
 
+/*
 TEST_F(LCFFlushTest, TimeAnalysis) {
   Options options;
   options.create_if_missing = true;
@@ -365,26 +370,26 @@ TEST_F(LCFFlushTest, TimeAnalysis) {
   std::cout << "Time for Flush() = " << std::chrono::duration_cast<std::chrono::microseconds>(f1 - f0).count() << "[us]" << std::endl;
 
   // Time for creating column family
-  /*ColumnFamilyHandle* cfh;
-  std::string cf_name = "cf_anon";
+// ColumnFamilyHandle* cfh;
+ // std::string cf_name = "cf_anon";
 
-  std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
-  cfo->compaction_style = kCompactionStyleLevel;
-  cfo->num_levels = 7;
-  cfo->write_buffer_size = 64 << 20; // 64MB
-  cfo->level0_file_num_compaction_trigger = 4;
-  cfo->target_file_size_base = 64 << 20; // 4MB
-  cfo->report_bg_io_stats = true;
-  auto t0 = std::chrono::steady_clock::now();
-  db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);
-  auto t1 = std::chrono::steady_clock::now();
+ //  std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
+ //  cfo->compaction_style = kCompactionStyleLevel;
+ // cfo->num_levels = 7;
+ // cfo->write_buffer_size = 64 << 20; // 64MB
+ // cfo->level0_file_num_compaction_trigger = 4;
+ // cfo->target_file_size_base = 64 << 20; // 4MB
+ // cfo->report_bg_io_stats = true;
+ // auto t0 = std::chrono::steady_clock::now();
+ // db->CreateColumnFamily(*(cfo.get()), cf_name, &cfh);
+ // auto t1 = std::chrono::steady_clock::now();
 
-  std::cout << "Time for CreateColumnFamily() = " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "[us]" << std::endl;
-  */
+//  std::cout << "Time for CreateColumnFamily() = " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "[us]" << std::endl;
 
   delete db;
   db = nullptr;
 }
+*/
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

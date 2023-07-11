@@ -710,16 +710,18 @@ Status BuildParentTable(
     uint64_t merge_start_micros = env->NowMicros();
     // JH: choose builder to add by corresponding keys
     size_t child_idx = 0; // -1 if parent, child_idx if child
+
     CompactionIterator c_iter(
         iter, internal_comparator.user_comparator(), &merge, kMaxSequenceNumber,
         &snapshots, earliest_write_conflict_snapshot, snapshot_checker, env,
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
+
     c_iter.SeekToFirst();
+    bool to_parent = true;
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
-      bool to_parent = true;
       std::string user_key_str = c_iter.user_key().ToString();
       while (child_idx < children_size) {
         if (user_key_str.compare(get_lmost_key(children_nodes[child_idx])) >= 0 &&
@@ -980,10 +982,10 @@ Status BuildsubTable(
 	  }
 
 	  if (user_key.compare(sub_flush_end) > 0) {
-        std::cout << "BuildsubTable() job_id " << job_id << " sub_flush_id " << sub_flush_id  
-		  << " sub_flush_start " << sub_flush_start  << " sub_flush_end " << sub_flush_end 
-		  << " user_key " << user_key  << " " << user_key.compare(sub_flush_start) 
-		   << " " << user_key.compare(sub_flush_end) << std::endl;
+		if (sub_flush_id == 4) {
+		  fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
+				  user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
+		}
 	    break;
 	  }
 
@@ -1008,7 +1010,6 @@ Status BuildsubTable(
                                      tombstone.seq_, internal_comparator);
     }
 
-    std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 4"<< std::endl;
 
     // Finish and check for builder errors
     tp = builder->GetTableProperties();
@@ -1027,7 +1028,6 @@ Status BuildsubTable(
           builder->FileSize(), finish_micros);
     }
 
-    std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 5"<< std::endl;
 
     if (s.ok() && !empty) {
       uint64_t file_size = builder->FileSize();
@@ -1040,7 +1040,6 @@ Status BuildsubTable(
       }
     }
     delete builder;
-    std::cout << "BuildsubTable() job_id " << job_id << " sub_flush_id " << sub_flush_id  << " line 6"<< std::endl;
 
     // Finish and check for file errors
     if (s.ok() && !empty) {
@@ -1051,7 +1050,6 @@ Status BuildsubTable(
       s = file_writer->Close();
     }
 
-    std::cout << "BuildsubTable() job_id " << job_id << " sub_flush_id " << sub_flush_id  << " line 7"<< std::endl;
 
     if (s.ok() && !empty) {
       // Verify that the table is usable
