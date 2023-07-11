@@ -331,12 +331,15 @@ void FlushJob::Prepare() {
 
   for (int child_idx = 0; child_idx < num_boundaries; child_idx++) {
     FileMetaData sub_meta;
+	VersionEdit* sub_edit = new VersionEdit();
+
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     std::string start_key = get_lmost_key(children_nodes_[child_idx]);
     std::string end_key = get_rmost_key(children_nodes_[child_idx]);
-
+	sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
     flush_->sub_flush_states.emplace_back(flush_, start_key, end_key, sub_meta,
-                                          new VersionEdit(), child_idx+1);
+                                          sub_edit, child_idx+1);
+
   }
    
   /*
@@ -369,7 +372,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   assert(pick_memtable_called);
   AutoThreadOperationStageUpdater stage_run(
       ThreadStatus::STAGE_FLUSH_RUN);
-  std::cout << "FlushJob::Run() start" << std::endl;
+  //std::cout << "FlushJob::Run() start" << std::endl;
   if (mems_.empty()) {
     ROCKS_LOG_BUFFER(log_buffer_, "[%s] Nothing in memtable to flush",
                      cfd_->GetName().c_str());
@@ -399,7 +402,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   // This will release and re-acquire the mutex.
   Status status;
   if (db_options_.allow_column_family_split) {
-	std::cout << "FlushJob::Run() Multi-threaded Split-then-flush" << std::endl;
+	//std::cout << "FlushJob::Run() Multi-threaded Split-then-flush" << std::endl;
     const size_t num_threads = flush_->sub_flush_states.size();
     assert(num_threads > 0);
     // Launch a thread for each of subcompactions 1...num_threads-1
@@ -419,7 +422,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     for (auto& thread : thread_pool) {
       thread.join();
     }
-	std::cout << "FlushJob::Run() after thread.join()" << std::endl;
+	//std::cout << "FlushJob::Run() after thread.join()" << std::endl;
 
     // Check if any thread encountered an error during execution
     for (const auto& state : flush_->sub_flush_states) {
@@ -433,7 +436,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
       status = output_file_directory_->Fsync();
     }
     base_->Unref();
-	std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
+	//std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
     //s = WriteLevel0Tables();  
   } else {
     status = WriteLevel0Table();  
@@ -497,7 +500,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
         edit_idx ++;
       }
 
-	  std::cout << "FlushJob::Run() sub table_properties" << std::endl;
+	  //std::cout << "FlushJob::Run() sub table_properties" << std::endl;
       for (size_t i = 1; i < flush_->sub_flush_states.size(); i++) {
 		SubflushState* sub_flush = &flush_->sub_flush_states[i];
 		ColumnFamilyData *sub_cfd = children_nodes_[i-1]->cfd_;
@@ -512,9 +515,6 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
           tmp_file_meta.emplace_back(&sub_flush->sub_meta);
 	      //std::cout << "FlushJob::Run() loop 5" << std::endl;
           //autovector<VersionEdit*> edits;
-
-		  sub_flush->sub_edit->SetColumnFamily(sub_cfd->GetID());
-
           edit_list[edit_idx].emplace_back(sub_flush->sub_edit);
           edit_lists.emplace_back(edit_list[edit_idx]);
 	      //std::cout << "FlushJob::Run() sub table_properties" << std::endl;
@@ -1026,7 +1026,7 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
     ScopedArenaIterator iter(
           NewMergingIterator(&cfd_->internal_comparator(), &memtables[0],
                              static_cast<int>(memtables.size()), &arena));
-    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildTable()"<< std::endl;
+//    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildTable()"<< std::endl;
     //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id 
 //		<< " iter valid " << iter.get()->Valid()<< std::endl;
 
@@ -1048,14 +1048,14 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
             0 /* level */, current_time,
             oldest_key_time, write_hint);  
 
-    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildTable()"<< std::endl;
+//    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildTable()"<< std::endl;
   } else {
     ColumnFamilyData* sub_cfd =  children_nodes_[sub_flush->sub_flush_id - 1]->cfd_;
     ScopedArenaIterator sub_iter(
           NewMergingIterator(&sub_cfd->internal_comparator(), &memtables[0],
                              static_cast<int>(memtables.size()), &arena));
 
-    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildsubTable() " << sub_flush->sub_flush_id<< std::endl;
+//    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildsubTable() " << sub_flush->sub_flush_id<< std::endl;
     //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id 
 //		<< " sub_iter valid " << sub_iter.get()->Valid()<< std::endl;
 	status = BuildsubTable(
@@ -1073,10 +1073,10 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 			  sub_flush->start, sub_flush->end, sub_flush->sub_flush_id);
     //std::cout << "FlushJob::ProcessKeyValueFlush() " << sub_flush->sub_flush_id  << " <-BuildsubTable()"<< std::endl;
 	
-    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildsubTable() "<< sub_flush->sub_flush_id << std::endl;
+//    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildsubTable() "<< sub_flush->sub_flush_id << std::endl;
   }
   LogFlush(db_options_.info_log);
-    std::cout << "FlushJob::ProcessKeyValueFlush() <- LogFlush()"<< std::endl;
+//    std::cout << "FlushJob::ProcessKeyValueFlush() <- LogFlush()"<< std::endl;
   //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id << std::endl;
 
   if (status.ok() && output_file_directory_ != nullptr && sync_output_directory_) {
@@ -1090,7 +1090,7 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   // should not be added to the manifest.
   VersionEdit* edit = sub_flush->sub_flush_id ? sub_flush->sub_edit: edit_;
   FileMetaData* meta = sub_flush->sub_flush_id ? &sub_flush->sub_meta: &meta_;
-  std::cout << "FlushJob::ProcessKeyValueFlush() <- Fsync() " << sub_flush->sub_flush_id << std::endl;
+ // std::cout << "FlushJob::ProcessKeyValueFlush() <- Fsync() " << sub_flush->sub_flush_id << std::endl;
 
 
   assert(edit);

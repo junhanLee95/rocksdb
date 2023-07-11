@@ -972,9 +972,6 @@ Status BuildsubTable(
 
       std::string user_key = c_iter.user_key().ToString();
 
-	  if (user_key.empty()) {
-        std::cout << "user_key is empty() "<< std::endl;
-	  }
 
 
 	  if (user_key.compare(sub_flush_start) < 0) {
@@ -982,10 +979,8 @@ Status BuildsubTable(
 	  }
 
 	  if (user_key.compare(sub_flush_end) > 0) {
-		if (sub_flush_id == 4) {
-		  fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
+		fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
 				  user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
-		}
 	    break;
 	  }
 
