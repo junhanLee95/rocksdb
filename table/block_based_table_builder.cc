@@ -505,7 +505,10 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     auto should_flush = r->flush_block_policy->Update(key, value);
     if (should_flush) {
       assert(!r->data_block.empty());
+      uint64_t data_block_m_start_micros = r->ioptions.env->NowMicros();
       Flush();
+      uint64_t data_block_m_finish_micros = r->ioptions.env->NowMicros();
+      r->props.data_block_m_time += (data_block_m_finish_micros - data_block_m_start_micros);
 
       if (r->state == Rep::State::kBuffered &&
           r->data_begin_offset > r->target_file_size) {
@@ -521,18 +524,27 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
       // entries in the first block and < all entries in subsequent
       // blocks.
       if (ok() && r->state == Rep::State::kUnbuffered) {
+        uint64_t index_start_micros = r->ioptions.env->NowMicros();
         r->index_builder->AddIndexEntry(&r->last_key, &key, r->pending_handle);
+        uint64_t index_finish_micros = r->ioptions.env->NowMicros();
+        r->props.index_block_time += (index_finish_micros - index_start_micros);
       }
     }
 
     // Note: PartitionedFilterBlockBuilder requires key being added to filter
     // builder after being added to index builder.
     if (r->state == Rep::State::kUnbuffered && r->filter_builder != nullptr) {
+      uint64_t filter_start_micros = r->ioptions.env->NowMicros();
       r->filter_builder->Add(ExtractUserKey(key));
+      uint64_t filter_finish_micros = r->ioptions.env->NowMicros();
+      r->props.filter_block_time += (filter_finish_micros - filter_start_micros);
     }
 
     r->last_key.assign(key.data(), key.size());
+    uint64_t data_start_micros = r->ioptions.env->NowMicros();
     r->data_block.Add(key, value);
+    uint64_t data_finish_micros = r->ioptions.env->NowMicros();
+    r->props.data_block_time += (data_finish_micros - data_start_micros);
     if (r->state == Rep::State::kBuffered) {
       // Buffer keys to be replayed during `Finish()` once compression
       // dictionary has been finalized.
