@@ -360,7 +360,6 @@ void FlushJob::Prepare() {
 void FlushJob::SetChildrenNodes() {
   db_mutex_->AssertHeld();
   children_nodes_ = cfd_->GetChildrenNodes();
-  std::cout << "SetChildrenNodes() children_nodes_.size() "<< children_nodes_.size() << std::endl;
   children_metas_.reserve(children_nodes_.size());
 }
 

@@ -884,6 +884,7 @@ Status BuildsubTable(
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
+  assert(sub_flush_id);
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
@@ -979,8 +980,11 @@ Status BuildsubTable(
 	  }
 
 	  if (user_key.compare(sub_flush_end) > 0) {
+
+		/*
 		fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
 				  user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
+		*/
 	    break;
 	  }
 

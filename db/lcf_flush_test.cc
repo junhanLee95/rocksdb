@@ -254,25 +254,46 @@ TEST_F(LCFFlushTest, Prepare) {
   ColumnFamilyData* cfd =
       static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
 
+  const std::string CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
+
+  std::random_device random_device;
+  std::mt19937 generator(random_device());
+  std::uniform_int_distribution<> distribution(0, CHARACTERS.size() -1);
+
   // Prepare Memtable
-  for(int i = 1000; i< 7000; i++) {
-    std::string key = "user" + std::to_string(i); 
-    std::string value = "abcdef" + std::to_string(i) + "ghijk";
+  // Generate 64k KV-pair
+  int kv_base = 10000;
+  int kv_size = 65536;
+  for(int i = kv_base; i < kv_base + kv_size; i++) {
+	// 23-byte key 
+    std::string key = "user00000000000000" + std::to_string(i); 
+    //std::string value = "abcde" + std::to_string(i) + "fghijklmno"+ "pqr";
+	// 1000-byte value
+	std::string value;
+	for(int j = 0; i < 1000; j++) {
+		value += CHARACTERS[distribution(generator)];
+	}
     db->Put(WriteOptions(), cfh, key, value);
   } 
 
   // Next, we construct two-level partition tree.
   
   double total_split_time = 0.0;
-  for (size_t i = 0 ; i < 6; i++) {
+  int num_column_family = 6;
+  int column_family_size = kv_size / num_column_family;
+
+  for (int i = 0 ; i < num_column_family ; i++) {
     std::vector<SplitFileInfo> infos;
     FileMetaData* f1 = new FileMetaData;
-	
-	size_t start_num = (2*i+2) * 500;
-	size_t end_num =  (2*i+3) * 500;
 
-    std::string s1 = "user" + ((start_num >= 1000) ? std::to_string(start_num): "0" + std::to_string(start_num));
-    std::string l1 = "user" + ((start_num >= 1000) ? std::to_string(end_num): "0" + std::to_string(end_num));
+	size_t start_num = kv_base + i * column_family_size;
+	size_t end_num =  kv_base + (i+1) * column_family_size;
+	if (i == num_column_family - 1) {
+		end_num = kv_base + kv_size -1;
+	}
+
+    std::string s1 = "user00000000000000" + std::to_string(start_num);
+    std::string l1 = "user00000000000000" + std::to_string(end_num);
     f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
     f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
     infos.push_back(SplitFileInfo(f1, cfd));
