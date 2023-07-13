@@ -1042,6 +1042,7 @@ Status BuildsubTable(
 
       uint64_t string_cmp_start_micros = env->NowMicros();
       if (user_key.compare(sub_flush_start) < 0) {
+        c_iter.Next();
         continue;
       }
 
