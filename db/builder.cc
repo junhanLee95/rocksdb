@@ -89,7 +89,6 @@ Status BuildTable(
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
   meta->fd.file_size = 0;
-  std::cout << "BuildTable()" << std::endl;
   iter->SeekToFirst();
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
       new CompactionRangeDelAggregator(&internal_comparator, snapshots));
@@ -887,6 +886,10 @@ Status BuildsubTable(
   meta->fd.file_size = 0;
   iter->SeekToFirst();
 
+  if (sub_flush_id == 0) {
+    return s;
+  }
+
 
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
       new CompactionRangeDelAggregator(&internal_comparator, snapshots));
@@ -978,10 +981,10 @@ Status BuildsubTable(
 
 	  if (user_key.compare(sub_flush_end) > 0) {
 
-		/*
-		fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
+      /*
+		  fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
 				  user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
-		*/
+          */
 	    break;
 	  }
 

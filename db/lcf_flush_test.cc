@@ -246,7 +246,7 @@ TEST_F(LCFFlushTest, Prepare) {
   options.allow_column_family_split = true;
   options.atomic_flush = false;
 
-  std::string db_name = "/mnt/lcf_db_path";
+  std::string db_name = "/mnt/rocksdb_test";
   DB* db;
   ASSERT_OK(DB::Open(options, db_name, &db));
 
@@ -279,7 +279,7 @@ TEST_F(LCFFlushTest, Prepare) {
   // Next, we construct two-level partition tree.
   
   double total_split_time = 0.0;
-  int num_column_family = 6;
+  int num_column_family = 12;
   int column_family_size = kv_size / num_column_family;
 
   for (int i = 0 ; i < num_column_family ; i++) {
