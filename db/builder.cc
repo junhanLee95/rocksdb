@@ -579,8 +579,7 @@ Status BuildTables(
         children_metas[i].fd.file_size = file_size;
         children_metas[i].marked_for_compaction = children_builders[i]->NeedCompact();
         assert(children_metas[i].fd.GetFileSize() > 0);
-        tp = children_builders[i]->GetTableProperties(); // refresh not that builder is finished
-        children_table_properties[i] = tp; 
+        children_table_properties[i] = children_builders[i]->GetTableProperties(); // refresh not that builder is finished
       }
       delete children_builders[i];
     }
@@ -684,7 +683,12 @@ Status BuildTables(
   // not only parent builder.
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger, ioptions.listeners, dbname, column_family_name, fname,
-      job_id, meta->fd, tp, reason, s);
+      job_id, meta->fd, *table_properties, reason, s);
+  for(size_t i=0; i<children_size; i++) {
+    EventHelpers::LogAndNotifyTableFileCreationFinished(
+        event_logger, ioptions.listeners, dbname, children_nodes[i]->cfd_->GetName(), children_fnames[i],
+        job_id, children_metas[i].fd, children_table_properties[i], reason, s);
+  }
 
   return s;
 }
