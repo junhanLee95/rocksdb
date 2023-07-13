@@ -78,6 +78,7 @@ CompactionIterator::CompactionIterator(
       current_key_committed_(false) {
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
   assert(snapshots_ != nullptr);
+  internaliter_next_micros_ = 0;
   bottommost_level_ =
       compaction_ == nullptr ? false : compaction_->bottommost_level();
   if (compaction_ != nullptr) {
@@ -155,9 +156,11 @@ void CompactionIterator::Next() {
   } else {
     // Only advance the input iterator if there is no merge output and the
     // iterator is not already at the next record.
+    uint64_t internaliter_start_micros = env_->NowMicros();
     if (!at_next_) {
       input_->Next();
     }
+    internaliter_next_micros_ += (env_->NowMicros() -  internaliter_start_micros);
     NextFromInput();
   }
 

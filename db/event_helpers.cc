@@ -103,6 +103,9 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
               << "filter_block_creation" << table_properties.filter_block_time
               << "index_block_creation" << table_properties.index_block_time
               << "data_block_m_creation" << table_properties.data_block_m_time
+              << "flush_policy" << table_properties.flush_policy_time
+              << "etc" << table_properties.etc_time
+              << "stat" << table_properties.stat_time
               /* JH: for debugging */
               << "filter_policy_name" << table_properties.filter_policy_name;
 

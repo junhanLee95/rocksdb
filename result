@@ -1,0 +1,61 @@
+[==========] Running 2 tests from 1 test case.
+[----------] Global test environment set-up.
+[----------] 2 tests from LCFFlushTest
+[ RUN      ] LCFFlushTest.Prepare
+root exist? :1
+root id? :0
+Time for SplitColumnFamilyFromSstFiles() = 8889[us]
+Time for SplitColumnFamilyFromSstFiles() = 2930[us]
+Time for SplitColumnFamilyFromSstFiles() = 3086[us]
+Time for SplitColumnFamilyFromSstFiles() = 3066[us]
+Time for SplitColumnFamilyFromSstFiles() = 3601[us]
+Time for SplitColumnFamilyFromSstFiles() = 4501[us]
+Time for SplitColumnFamilyFromSstFiles() = 4281[us]
+Time for SplitColumnFamilyFromSstFiles() = 4477[us]
+Time for Split() = 34831[us]
+SetChildrenNodes() children_nodes_.size() 8
+FlushJob::Prepare() check2 sub_flush_start 1 user1000 1
+FlushJob::Prepare() check2 sub_flush_end 1 user2000
+FlushJob::Prepare() check2 sub_flush_start 2 user2001 2
+FlushJob::Prepare() check2 sub_flush_end 2 user3000
+FlushJob::Prepare() check2 sub_flush_start 3 user3001 3
+FlushJob::Prepare() check2 sub_flush_end 3 user4000
+FlushJob::Prepare() check2 sub_flush_start 4 user4001 4
+FlushJob::Prepare() check2 sub_flush_end 4 user5000
+FlushJob::Prepare() check2 sub_flush_start 5 user5001 5
+FlushJob::Prepare() check2 sub_flush_end 5 user6000
+FlushJob::Prepare() check2 sub_flush_start 6 user6001 6
+FlushJob::Prepare() check2 sub_flush_end 6 user7000
+FlushJob::Prepare() check2 sub_flush_start 7 user7001 7
+FlushJob::Prepare() check2 sub_flush_end 7 user8000
+FlushJob::Prepare() check2 sub_flush_start 8 user8001 8
+FlushJob::Prepare() check2 sub_flush_end 8 user9000
+FlushJob::Run() start
+FlushJob::Run() Multi-threaded Split-then-flush
+FlushJob::ProcessKeyValueFlush() ->BuildsubTable()
+FlushJob::ProcessKeyValueFlush() ->BuildsubTable()
+FlushJob::ProcessKeyValueFlush() ->BuildsubTable()
+meta fd getnumber10
+meta fd getnumberFlushJob::ProcessKeyValueFlush() ->BuildsubTable()meta fd getpathid90
+meta fd getnumber11
+FlushJob::ProcessKeyValueFlush() ->BuildsubTable()
+FlushJob::ProcessKeyValueFlush() ->BuildsubTable()
+
+FlushJob::ProcessKeyValueFlush() ->BuildsubTable()
+meta fd getnumber14
+FlushJob::ProcessKeyValueFlush() ->BuildTable()meta fd getpathid0
+meta fd getnumber15
+
+meta fd getpathid0
+FlushJob::ProcessKeyValueFlush() ->BuildsubTable()meta fd getnumber12
+meta fd getpathid0
+meta fd getpathid0
+
+meta fd getpathidmeta fd getnumber0meta fd getnumber16
+
+meta fd getpathid0
+13BuildsubTable() 12 2 line 1
+BuildsubTable() 12 2 sub_flush_start user2001 key user1000
+BuildsubTable() 12 BuildsubTable() BuildsubTable() 12 126  line 1
+BuildsubTable() 12 6 sub_flush_start user6001 key user1000
+BuildsubTable() 12 6 sub_flush_start user6001 key user1001

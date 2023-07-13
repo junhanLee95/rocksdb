@@ -1,0 +1,1 @@
+sudo ./db_bench --db=/mnt/rocksdb_test --key_size=24 --value_size=1000 --threads=10 --statistics=true --benchmarks=fillrandom,stats,levelstats --report_interval_seconds=1 --report_bg_io_stats=true --report_file_operations=true --stats_interval_seconds=1 --num=100000

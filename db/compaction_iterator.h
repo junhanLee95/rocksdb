@@ -107,6 +107,9 @@ class CompactionIterator {
   const Slice& user_key() const { return current_user_key_; }
   const CompactionIterationStats& iter_stats() const { return iter_stats_; }
 
+  uint64_t GetInternalIterNextMicros(void) {
+    return internaliter_next_micros_;
+  }
  private:
   // Processes the input stream to find the next output
   void NextFromInput();
@@ -216,6 +219,8 @@ class CompactionIterator {
   std::vector<size_t> level_ptrs_;
   CompactionIterationStats iter_stats_;
 
+  uint64_t internaliter_next_micros_;
+
   // Used to avoid purging uncommitted values. The application can specify
   // uncommitted values by providing a SnapshotChecker object.
   bool current_key_committed_;
@@ -224,5 +229,6 @@ class CompactionIterator {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.
     return shutting_down_ && shutting_down_->load(std::memory_order_relaxed);
   }
+
 };
 }  // namespace rocksdb

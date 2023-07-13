@@ -502,7 +502,10 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     }
 #endif  // NDEBUG
 
+    uint64_t flush_policy_start_micros = r->ioptions.env->NowMicros();
     auto should_flush = r->flush_block_policy->Update(key, value);
+    uint64_t flush_policy_micros = r->ioptions.env->NowMicros() - flush_policy_start_micros;
+    r->props.flush_policy_time += flush_policy_micros;
     if (should_flush) {
       assert(!r->data_block.empty());
       uint64_t data_block_m_start_micros = r->ioptions.env->NowMicros();
@@ -546,6 +549,8 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     r->data_block.Add(key, value);
     uint64_t data_finish_micros = r->ioptions.env->NowMicros();
     r->props.data_block_time += (data_finish_micros - data_start_micros);
+
+    uint64_t etc_1_micros = r->ioptions.env->NowMicros();
     if (r->state == Rep::State::kBuffered) {
       // Buffer keys to be replayed during `Finish()` once compression
       // dictionary has been finalized.
@@ -559,6 +564,8 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     NotifyCollectTableCollectorsOnAdd(key, value, r->offset,
                                       r->table_properties_collectors,
                                       r->ioptions.info_log);
+    uint64_t etc_micros = r->ioptions.env->NowMicros() - etc_1_micros;
+    r->props.etc_time += etc_micros;
 
   } else if (value_type == kTypeRangeDeletion) {
     r->range_del_block.Add(key, value);
@@ -569,6 +576,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     assert(false);
   }
 
+  uint64_t stat_start_micros = r->ioptions.env->NowMicros() ;
   r->props.num_entries++;
   r->props.raw_key_size += key.size();
   r->props.raw_value_size += value.size();
@@ -606,6 +614,8 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
 			r->props.prefix_key_props[prefix_key_type].largest_key_str.compare(key.data()) < 0){
 		r->props.prefix_key_props[prefix_key_type].largest_key_str.assign(key.data());
 	}
+  uint64_t stat_micros = r->ioptions.env->NowMicros() - stat_start_micros ;
+  r->props.stat_time += stat_micros;
 }
 
 void BlockBasedTableBuilder::Flush() {
