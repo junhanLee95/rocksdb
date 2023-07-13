@@ -107,6 +107,10 @@ class CompactionIterator {
   const Slice& user_key() const { return current_user_key_; }
   const CompactionIterationStats& iter_stats() const { return iter_stats_; }
 
+  uint64_t GetInternalIterNextMicros(void) {
+    return internaliter_next_micros_; 
+  }
+
  private:
   // Processes the input stream to find the next output
   void NextFromInput();
@@ -215,6 +219,8 @@ class CompactionIterator {
   // is in or beyond the last file checked during the previous call
   std::vector<size_t> level_ptrs_;
   CompactionIterationStats iter_stats_;
+
+  uint64_t internaliter_next_micros_;
 
   // Used to avoid purging uncommitted values. The application can specify
   // uncommitted values by providing a SnapshotChecker object.

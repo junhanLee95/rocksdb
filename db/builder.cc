@@ -711,18 +711,37 @@ Status BuildParentTable(
     // JH: choose builder to add by corresponding keys
     size_t child_idx = 0; // -1 if parent, child_idx if child
 
+    uint64_t citerinit_start_micros = env->NowMicros();
     CompactionIterator c_iter(
         iter, internal_comparator.user_comparator(), &merge, kMaxSequenceNumber,
         &snapshots, earliest_write_conflict_snapshot, snapshot_checker, env,
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
+    uint64_t citerinit_micros = env->NowMicros() - citerinit_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citerinit_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        citerinit_micros);
 
+    uint64_t citerseek_start_micros = env->NowMicros();
     c_iter.SeekToFirst();
+    uint64_t citerseek_micros = env->NowMicros() - citerseek_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citerseek_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        citerseek_micros);
+
+    uint64_t citernext_micros=0;
+    uint64_t string_cmp_micros=0;
+    uint64_t meta_update_micros=0;
+    uint64_t add_micros=0;
+
     bool to_parent = true;
-    for (; c_iter.Valid(); c_iter.Next()) {
+    for (; c_iter.Valid();) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
       std::string user_key_str = c_iter.user_key().ToString();
+      uint64_t string_cmp_start_micros = env->NowMicros();
       while (child_idx < children_size) {
         if (user_key_str.compare(get_lmost_key(children_nodes[child_idx])) >= 0 &&
             user_key_str.compare(get_rmost_key(children_nodes[child_idx])) <= 0)
@@ -739,9 +758,18 @@ Status BuildParentTable(
           child_idx ++;
         }
       }
+      uint64_t string_cmp_finish_micros = env->NowMicros() - string_cmp_start_micros;
+      string_cmp_micros += string_cmp_finish_micros;
+
       if (to_parent || child_idx == children_size) { // parent
+        uint64_t add_start_micros = env->NowMicros();
         builder->Add(key, value);
+        uint64_t add_finish_micros = env->NowMicros();
+        add_micros += (add_finish_micros - add_start_micros);
+        uint64_t meta_update_start_micros = env->NowMicros();
         meta->UpdateBoundaries(key, c_iter.ikey().sequence);  
+        uint64_t meta_update_finish_micros = env->NowMicros();
+        meta_update_micros += (meta_update_finish_micros - meta_update_start_micros);
       }
       
       // TODO(noetzli): Update stats after flush, too.
@@ -750,12 +778,37 @@ Status BuildParentTable(
         ThreadStatusUtil::SetThreadOperationProperty(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
+      uint64_t citernext_start_micros = env->NowMicros();
+      c_iter.Next();
+      uint64_t citernext_finish_micros = env->NowMicros();
+      citernext_micros += (citernext_finish_micros - citernext_start_micros);
     }
     uint64_t merge_micros = env->NowMicros() - merge_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_merge_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
         merge_micros);
+
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_add_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        add_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_metaupdate_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        meta_update_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_stringcmp_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        string_cmp_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citernext_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        citernext_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_iiternext_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        c_iter.GetInternalIterNextMicros());
 
     // TODO(Junhan): Consider adding rangedel tombstone when split-then-flush
     auto range_del_it = range_del_agg->NewIterator();
@@ -952,54 +1005,102 @@ Status BuildsubTable(
                       snapshot_checker);
 
     uint64_t merge_start_micros = env->NowMicros();
+    uint64_t citerinit_start_micros = env->NowMicros();
     CompactionIterator c_iter(
         iter, internal_comparator.user_comparator(), &merge, kMaxSequenceNumber,
         &snapshots, earliest_write_conflict_snapshot, snapshot_checker, env,
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
+    uint64_t citerinit_micros = env->NowMicros() - citerinit_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citerinit_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        citerinit_micros);
 
-
-	/* Made by Kyoungho Koo
- 	 * : for multi-threaded split-then-flush
-	 */
+    /* Made by Kyoungho Koo
+     * : for multi-threaded split-then-flush
+     */
+    uint64_t citerseek_start_micros = env->NowMicros();
     c_iter.SeekToFirst();
+    uint64_t citerseek_micros = env->NowMicros() - citerseek_start_micros;
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citerseek_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        citerseek_micros);
 
-    for (; c_iter.Valid(); c_iter.Next()) {
+    uint64_t citernext_micros = 0;
+    uint64_t string_cmp_micros = 0;
+    uint64_t meta_update_micros = 0;
+    uint64_t add_micros = 0;
+
+    for (; c_iter.Valid(); ) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
 
       std::string user_key = c_iter.user_key().ToString();
 
 
+      uint64_t string_cmp_start_micros = env->NowMicros();
+      if (user_key.compare(sub_flush_start) < 0) {
+        continue;
+      }
 
-	  if (user_key.compare(sub_flush_start) < 0) {
-	    continue;
-	  }
+      if (user_key.compare(sub_flush_end) > 0) {
 
-	  if (user_key.compare(sub_flush_end) > 0) {
+        /*
+           fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
+           user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
+         */
+        break;
+      }
+      uint64_t string_cmp_finish_micros = env->NowMicros();
+      string_cmp_micros += (string_cmp_finish_micros - string_cmp_start_micros);
 
-		/*
-		fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
-				  user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
-		*/
-	    break;
-	  }
-
+      uint64_t add_start_micros = env->NowMicros();
       builder->Add(key, value);
+      uint64_t add_finish_micros = env->NowMicros();
+      add_micros += (add_finish_micros - add_start_micros);
+      uint64_t meta_update_start_micros = env->NowMicros();
       meta->UpdateBoundaries(key, c_iter.ikey().sequence);
-
+      uint64_t meta_update_finish_micros = env->NowMicros();
+      meta_update_micros += (meta_update_finish_micros - meta_update_start_micros);
       // TODO(noetzli): Update stats after flush, too.
       if (io_priority == Env::IO_HIGH &&
           IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
         ThreadStatusUtil::SetThreadOperationProperty(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
+      uint64_t citernext_start_micros = env->NowMicros();
+      c_iter.Next();
+      uint64_t citernext_finish_micros = env->NowMicros();
+      citernext_micros += (citernext_finish_micros - citernext_start_micros);
     }
     uint64_t merge_micros = env->NowMicros() - merge_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_merge_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
         merge_micros);
+
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_add_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        add_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_metaupdate_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        meta_update_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_stringcmp_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        string_cmp_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citernext_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        citernext_micros);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_iiternext_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        c_iter.GetInternalIterNextMicros());
 
     auto range_del_it = range_del_agg->NewIterator();
     for (range_del_it->SeekToFirst(); range_del_it->Valid();
