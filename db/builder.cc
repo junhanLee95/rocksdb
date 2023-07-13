@@ -153,24 +153,90 @@ Status BuildTable(
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
     c_iter.SeekToFirst();
-    for (; c_iter.Valid(); c_iter.Next()) {
+
+    uint64_t intvs[6] = {0,};
+    
+    //for (; c_iter.Valid(); c_iter.Next()) {
+    for (; ;) {
+      
+      uint64_t tmp[8];
+      tmp[0] = env->NowMicros();
+
+      if (!c_iter.Valid()) {
+        tmp[7] = env->NowMicros();
+        intvs[0] += tmp[7] - tmp[0];
+        break;
+      }
+
+      tmp[1] = env->NowMicros();
+      intvs[0] += tmp[1] - tmp[0];
+
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
+
+      tmp[2] = env->NowMicros();
+      intvs[1] += tmp[2] - tmp[1];
+
       builder->Add(key, value);
+
+      tmp[3] = env->NowMicros();
+      intvs[2] += tmp[3] - tmp[2];
+
       meta->UpdateBoundaries(key, c_iter.ikey().sequence);
 
+      tmp[4] = env->NowMicros();
+      intvs[3] += tmp[4] - tmp[3];
+       
       // TODO(noetzli): Update stats after flush, too.
       if (io_priority == Env::IO_HIGH &&
           IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
         ThreadStatusUtil::SetThreadOperationProperty(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
+
+      tmp[5] = env->NowMicros();
+      intvs[4] += tmp[5] - tmp[4];
+
+      c_iter.Next();
+
+      tmp[6] = env->NowMicros();
+      intvs[5] += tmp[6] - tmp[5];
     }
     uint64_t merge_micros = env->NowMicros() - merge_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_merge_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
         merge_micros);
+
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citervalid_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[0]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_stringcmp_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[1]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_add_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[2]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_metaupdate_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[3]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_threadstatus_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[4]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_citernext_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[5]);
+
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_iiternext_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        c_iter.GetInternalIterNextMicros());
 
     auto range_del_it = range_del_agg->NewIterator();
     for (range_del_it->SeekToFirst(); range_del_it->Valid();
@@ -938,7 +1004,11 @@ Status BuildsubTable(
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
   meta->fd.file_size = 0;
-  iter->SeekToFirst();
+
+  // WOW
+  IterKey start_iter;
+  start_iter.SetInternalKey(Slice(sub_flush_start), kMaxSequenceNumber, kValueTypeForSeek);
+  iter->Seek(start_iter.GetInternalKey());
 
 
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
@@ -1028,53 +1098,74 @@ Status BuildsubTable(
         column_family_name.c_str(), job_id,
         citerseek_micros);
 
-    uint64_t citernext_micros = 0;
-    uint64_t string_cmp_micros = 0;
-    uint64_t meta_update_micros = 0;
-    uint64_t add_micros = 0;
+    uint64_t intvs[6] = {0,};
 
-    for (; c_iter.Valid(); ) {
+    for (;;) {
+
+      uint64_t tmp[11];
+      tmp[0] = env->NowMicros();
+
+      if (!c_iter.Valid()) {
+        tmp[10] = env->NowMicros();
+        intvs[0] += tmp[10] - tmp[0];
+        break;
+      }
+
+      tmp[1] = env->NowMicros();
+      intvs[0] += tmp[1] - tmp[0];
+
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
 
       std::string user_key = c_iter.user_key().ToString();
 
 
-      uint64_t string_cmp_start_micros = env->NowMicros();
       if (user_key.compare(sub_flush_start) < 0) {
+        tmp[7] = env->NowMicros();
         c_iter.Next();
+        tmp[8] = env->NowMicros();
+        intvs[5] += tmp[8] - tmp[7];
+        intvs[1] += tmp[7] - tmp[1];
         continue;
       }
 
       if (user_key.compare(sub_flush_end) > 0) {
-
+        tmp[9] = env->NowMicros();
+        intvs[1] += tmp[9] - tmp[1];
         /*
            fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
            user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
          */
         break;
       }
-      uint64_t string_cmp_finish_micros = env->NowMicros();
-      string_cmp_micros += (string_cmp_finish_micros - string_cmp_start_micros);
 
-      uint64_t add_start_micros = env->NowMicros();
+      tmp[2] = env->NowMicros();
+      intvs[1] += tmp[2] - tmp[1];
+
       builder->Add(key, value);
-      uint64_t add_finish_micros = env->NowMicros();
-      add_micros += (add_finish_micros - add_start_micros);
-      uint64_t meta_update_start_micros = env->NowMicros();
+
+      tmp[3] = env->NowMicros();
+      intvs[2] += tmp[3] - tmp[2];
+
       meta->UpdateBoundaries(key, c_iter.ikey().sequence);
-      uint64_t meta_update_finish_micros = env->NowMicros();
-      meta_update_micros += (meta_update_finish_micros - meta_update_start_micros);
+
+      tmp[4] = env->NowMicros();
+      intvs[3] += tmp[4] - tmp[3];
       // TODO(noetzli): Update stats after flush, too.
       if (io_priority == Env::IO_HIGH &&
           IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
         ThreadStatusUtil::SetThreadOperationProperty(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
-      uint64_t citernext_start_micros = env->NowMicros();
+
+      tmp[5] = env->NowMicros();
+      intvs[4] += tmp[5] - tmp[4];
+
       c_iter.Next();
-      uint64_t citernext_finish_micros = env->NowMicros();
-      citernext_micros += (citernext_finish_micros - citernext_start_micros);
+
+      tmp[6] = env->NowMicros();
+      intvs[5] += tmp[6] - tmp[5];
+
     }
     uint64_t merge_micros = env->NowMicros() - merge_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
@@ -1083,21 +1174,30 @@ Status BuildsubTable(
         merge_micros);
 
     ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] flush_add_time(us) %" PRIu64,
+        "[%s] [JOB %d] flush_citervalid_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
-        add_micros);
-    ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] flush_metaupdate_time(us) %" PRIu64,
-        column_family_name.c_str(), job_id,
-        meta_update_micros);
+        intvs[0]);
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_stringcmp_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
-        string_cmp_micros);
+        intvs[1]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_add_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[2]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_metaupdate_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[3]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_threadstatus_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[4]);
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_citernext_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
-        citernext_micros);
+        intvs[5]);
+
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_iiternext_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
