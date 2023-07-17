@@ -1,6 +1,7 @@
 // Author: Dohyun Kim (ehgus421210@kaist.ac.kr)
 // Note: Partition tree for logical column family.
-//
+// Modified by : Junhan (junhanlee2020@gmail.com)
+// Note: add rw mutex to partition tree for the synchronization.
 
 #include "db/partition_tree.h"
 
@@ -89,6 +90,7 @@ int PartitionTreeNode::GetDepth(void) {
 
 PartitionTree::PartitionTree( 
     ColumnFamilyData* column_family_data) {
+  WriteLock wl(&rwlock_);
   root_ = new PartitionTreeNode(column_family_data);
   if (column_family_data != nullptr) {
       column_family_data->SetPartitionTreeNode(root_);  
@@ -106,6 +108,7 @@ PartitionTree::~PartitionTree() {
 
 void PartitionTree::SetRootColumnFamily (
     ColumnFamilyData* column_family_data) {
+  WriteLock wl(&rwlock_);
   root_->SetColumnFamily(column_family_data);
 
   //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
@@ -116,6 +119,7 @@ void PartitionTree::SetRootColumnFamily (
 Status PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
+  WriteLock wl(&rwlock_);
 
   /*fprintf(stdout, "[InsertSplittedColumnFamily] base CFD[%d] %s - [%s, %s]\n",  
             base_cfd->GetID(),
@@ -236,6 +240,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
 }
 
 ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
+  ReadLock rl(&rwlock_);
   PartitionTreeNode *cnode = root_; // current node
   PartitionTreeNode *nnode = nullptr; // next node
 
@@ -268,6 +273,7 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
 }
 
 std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Slice &key) {
+  ReadLock rl(&rwlock_);
   std::vector<ColumnFamilyData*> search_cfds; // cfds to return
   PartitionTreeNode *cnode = root_; // current node
   PartitionTreeNode *nnode = nullptr; // next node
@@ -291,6 +297,7 @@ std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Sli
 }
   
 void PartitionTree::PrintAll() {
+  ReadLock rl(&rwlock_);
   root_->Print("0", true);
 }
  

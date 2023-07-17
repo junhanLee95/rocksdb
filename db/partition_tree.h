@@ -1,6 +1,7 @@
 // Author: Dohyun Kim (ehgus421210@kaist.ac.kr)
 // Note: Partition tree for logical column family.
-// 
+// Modified by : Junhan (junhanlee2020@gmail.com)
+// Note: add rw mutex to partition tree for the synchronization.
 
 #pragma once 
 
@@ -10,6 +11,8 @@
 #include <iostream>
 
 #include "db/column_family.h"
+#include "port/port.h"
+#include "util/mutexlock.h"
 
 #define get_lmost_key(n) ((n)->cfd_->GetSmallestKey())
 #define get_rmost_key(n) ((n)->cfd_->GetLargestKey())
@@ -46,6 +49,7 @@ class PartitionTree {
 
   PartitionTreeNode* root_ = nullptr;
   std::unordered_map<uint32_t, PartitionTreeNode*> partition_nodes_;
+  mutable port::RWMutex rwlock_;
 
   PartitionTree() {};
   PartitionTree(ColumnFamilyData *cfd);
