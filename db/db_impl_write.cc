@@ -1908,6 +1908,15 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   
 
   ColumnFamilyHandle* lcfh = db_impl->GetColumnFamilyHandle(cfd->GetID());
+  // key range assertion check
+  if (cfd->GetName() != "default" &&
+     (cfd->GetSmallestKey().compare(key.ToString()) > 0 ||
+      cfd->GetLargestKey().compare(key.ToString()) < 0)) {
+    fprintf(stderr, "DB:Put error(1) key %s range %s[%s,%s]\n",
+            key.ToString().c_str(),
+            cfd->GetName().c_str(),
+            cfd->GetSmallestKey().c_str(), cfd->GetLargestKey().c_str());
+  }
   // Pre-allocate size of write batch conservatively.
   // 8 bytes are taken by header, 4 bytes for count, 1 byte for type,
   // and we allocate 11 extra bytes for key length, as well as value length.

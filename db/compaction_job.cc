@@ -1362,6 +1362,7 @@ Status CompactionJob::FinishCompactionOutputFile(
                     meta->largest.DebugString(false).c_str());
         ROCKS_LOG_INFO(db_options_.info_log, "cfd(%s) efficiency : %f, threshold : %f", cfd->GetName().c_str(),
                     efficiency, threshold);
+        LogFlush(db_options_.info_log);
         versions_->AddSplitFile(meta, cfd);
       //fprintf(stdout, "meta smallest : %s\n", meta->smallest.DebugString(false).c_str());
       //fprintf(stdout, "meta largest : %s\n", meta->largest.DebugString(false).c_str());

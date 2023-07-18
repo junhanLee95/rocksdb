@@ -59,6 +59,7 @@ class PartitionTree {
   Status InsertSplittedColumnFamily (ColumnFamilyData *base_cfd, const std::vector<ColumnFamilyData*> &new_cfds);
   ColumnFamilyData *SearchColumnFamily (const Slice &key); 
   std::vector<ColumnFamilyData*> SearchAllColumnFamilies (const Slice &key); 
+  std::vector<PartitionTreeNode*> GetChildrenNodes(PartitionTreeNode* node);
   
   void PrintAll();
 };

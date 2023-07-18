@@ -1050,7 +1050,7 @@ PartitionTreeNode* ColumnFamilyData::GetPartitionTreeNode(void) {
 }
 
 std::vector<PartitionTreeNode*> ColumnFamilyData::GetChildrenNodes(void) {
-  return partition_tree_node_->lower_level_nodes_;
+  return column_family_set_->partition_tree_->GetChildrenNodes(partition_tree_node_);
 }
 
 
@@ -1573,7 +1573,7 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
 
   nnode = cfd->GetPartitionTreeNode();
   assert(nnode != nullptr);
-  cnodes = nnode->GetChildrenNodes();
+  cnodes = get_partition_tree()->GetChildrenNodes(nnode); //nnode->GetChildrenNodes();
 
   if (cnodes.empty()) { // put all sst_split_files to children
     ROCKS_LOG_INFO(db_options_->info_log.get(),

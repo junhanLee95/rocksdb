@@ -4,7 +4,7 @@
 // Note: add rw mutex to partition tree for the synchronization.
 
 #include "db/partition_tree.h"
-
+#include <assert.h>
 
 namespace rocksdb {
 
@@ -152,6 +152,8 @@ Status PartitionTree::InsertSplittedColumnFamily (
   }*/
 
   for (auto new_cfd: new_cfds) {
+    
+
     auto node = new PartitionTreeNode(new_cfd);
     node->depth_ = base_node->depth_+1;
     assert (new_cfd != nullptr);
@@ -161,6 +163,18 @@ Status PartitionTree::InsertSplittedColumnFamily (
     std::string n_largest = new_cfd->GetLargestKey();
     assert(!n_smallest.empty());
     assert(!n_largest.empty());
+    // boundary check and let's debug it!
+    std::string b_smallest = get_lmost_key(base_node);
+    std::string b_largest = get_rmost_key(base_node);
+    if (!b_smallest.empty() && !b_largest.empty()) {
+      if (!(b_smallest.compare(n_smallest) <= 0 &&
+            n_largest.compare(b_largest) <= 0)) {
+        fprintf(stderr, "InsertSplittedColumnFamily error(1) p[%s, %s] c[%s, %s]\n",
+            b_smallest.c_str(), b_largest.c_str(),
+            n_smallest.c_str(), n_largest.c_str());
+        exit(1);    
+      }
+    }
     /*
     fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s - [%s, %s]\n", 
             new_cfd->GetID(), 
@@ -233,6 +247,12 @@ Status PartitionTree::InsertSplittedColumnFamily (
       std::string p_largest = p_cfd->GetLargestKey();
       std::string l_smallest = l_cfd->GetSmallestKey();
       assert(p_largest.compare(l_smallest) < 0);
+      if(p_largest.compare(l_smallest) >= 0) {
+        //exit and let's debug it!
+        fprintf(stderr, "InsertSplittedColumnFamily error(2) %s %s\n",
+                p_largest.c_str(), l_smallest.c_str());
+        exit(1);
+      }
     }
   }
 
@@ -258,11 +278,22 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
     cnode = nnode; 
   }
 
+  if(cnode->cfd_->GetName() != "default") {
+    assert (key.ToString().compare(get_lmost_key(cnode) >= 0));
+    assert (key.ToString().compare(get_rmost_key(cnode) <= 0));
+    if(key.ToString().compare(get_lmost_key(cnode)) < 0 || 
+       key.ToString().compare(get_rmost_key(cnode)) > 0) {
+      fprintf(stderr, "SearchColumnFamily error(1) %s [%s, %s]\n",
+          key.ToString().c_str(),
+          get_lmost_key(cnode).c_str(),
+          get_rmost_key(cnode).c_str());
+    }
+  }
   /*ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
                  "CFD[%s] Search... %s < [%s] < %s", 
                  cnode->cfd_->GetName().c_str(),
                  get_lmost_key(cnode).c_str(),
-                 key.data(),
+                 key.ToString(),
                  get_rmost_key(cnode).c_str());*/
 
   
@@ -294,6 +325,11 @@ std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Sli
     cnode->cfd_->GetName().c_str(), get_lmost_key(cnode).c_str(), key.data(), get_rmost_key(cnode).c_str());*/
   
   return search_cfds;
+}
+
+std::vector<PartitionTreeNode*> PartitionTree::GetChildrenNodes(PartitionTreeNode* node) {
+  ReadLock rl(&rwlock_);
+  return node->GetChildrenNodes();
 }
   
 void PartitionTree::PrintAll() {
