@@ -415,7 +415,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 
     // Always schedule the first subflush (whether or not there are also
     // others) in the current thread to be efficient with resources
-    ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
+//    ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
 
 
     for (auto& thread : thread_pool) {
