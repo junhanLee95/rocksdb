@@ -279,8 +279,8 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
   }
 
   if(cnode->cfd_->GetName() != "default") {
-    assert (key.ToString().compare(get_lmost_key(cnode) >= 0));
-    assert (key.ToString().compare(get_rmost_key(cnode) <= 0));
+    assert (key.ToString().compare(get_lmost_key(cnode)) >= 0);
+    assert (key.ToString().compare(get_rmost_key(cnode)) <= 0);
     if(key.ToString().compare(get_lmost_key(cnode)) < 0 || 
        key.ToString().compare(get_rmost_key(cnode)) > 0) {
       fprintf(stderr, "SearchColumnFamily error(1) %s [%s, %s]\n",

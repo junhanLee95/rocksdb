@@ -1896,7 +1896,8 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   auto cfd = cfh->cfd();
   ColumnFamilySet* cfs = cfd->GetColumnFamilySet();
 
-  // Dohyun Kim: Partition Tree Search (NO Mutex)
+  // Dohyun Kim: Partition Tree Search
+  // Junhan : This search acquires RW Mutex to traverse the partition tree.
   DBImpl* db_impl = reinterpret_cast<DBImpl*>(this);
   if (db_impl->immutable_db_options_.allow_column_family_split) {
     cfd = cfs->GetLogicalColumnFamily(key);
@@ -1905,23 +1906,53 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
                    key.ToString().c_str(),
                    cfd->GetID());  */
   }
-  
-
-  ColumnFamilyHandle* lcfh = db_impl->GetColumnFamilyHandle(cfd->GetID());
   // key range assertion check
   if (cfd->GetName() != "default" &&
-     (cfd->GetSmallestKey().compare(key.ToString()) > 0 ||
-      cfd->GetLargestKey().compare(key.ToString()) < 0)) {
+      (cfd->GetSmallestKey().compare(key.ToString()) > 0 ||
+       cfd->GetLargestKey().compare(key.ToString()) < 0)) {
     fprintf(stderr, "DB:Put error(1) key %s range %s[%s,%s]\n",
+        key.ToString().c_str(),
+        cfd->GetName().c_str(),
+        cfd->GetSmallestKey().c_str(), cfd->GetLargestKey().c_str());
+    exit(1);
+  }
+  // TODO(Junhan):
+  // why cfd and cfh have different ID.... fix this.
+
+  /*
+  ColumnFamilyHandle* lcfh = db_impl->GetColumnFamilyHandle(cfd->GetID());
+  if (lcfh == nullptr) {
+    fprintf(stderr, "DB:Put error(2) key %s range %s[%s,%s]\n",
             key.ToString().c_str(),
             cfd->GetName().c_str(),
             cfd->GetSmallestKey().c_str(), cfd->GetLargestKey().c_str());
+    exit(1);
+   
   }
+  ColumnFamilyData* lcfd = reinterpret_cast<ColumnFamilyHandleImpl*>(lcfh)->cfd();
+  if (lcfd->GetName() != "default" &&
+      (lcfd->GetSmallestKey().compare(key.ToString()) > 0 ||
+       lcfd->GetLargestKey().compare(key.ToString()) < 0))
+  {
+    fprintf(stderr, "DB:Put error(3) key %s range %s(%d)[%s,%s] %s(%d) [%s,%s]\n",
+            key.ToString().c_str(),
+            lcfh->GetName().c_str(),
+            lcfh->GetID(),
+            cfd->GetSmallestKey().c_str(),cfd->GetLargestKey().c_str(),
+            lcfd->GetName().c_str(),
+            lcfd->GetID(),
+            lcfd->GetSmallestKey().c_str(),lcfd->GetLargestKey().c_str());
+    exit(1);
+  }*/
+
+
+
   // Pre-allocate size of write batch conservatively.
   // 8 bytes are taken by header, 4 bytes for count, 1 byte for type,
   // and we allocate 11 extra bytes for key length, as well as value length.
   WriteBatch batch(key.size() + value.size() + 24);
-  Status s = batch.Put(lcfh, key, value);
+  //Status s = batch.Put(lcfh, key, value);
+  Status s = batch.Put(cfd->GetID(), key, value);
   if (!s.ok()) {
     return s;
   }

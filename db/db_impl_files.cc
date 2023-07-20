@@ -122,6 +122,9 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
                                       cf_name_list,
                                       mutable_cf_options_list);
     // prepare superversion_contexts 
+    // the first one is for parent
+    superversion_contexts.emplace_back(SuperVersionContext(true));
+    // now prepare for children nodes
     for (size_t i = 0; i < new_children_cnt; i++) {
       superversion_contexts.emplace_back(SuperVersionContext(true));
     }
@@ -129,7 +132,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     assert(new_children_cnt == edit_lists.size() - 1);
     assert(new_children_cnt == mutable_cf_options_list.size() - 1);
     assert(new_children_cnt == cf_name_list.size());
-    assert(new_children_cnt == superversion_contexts.size());
+    assert(new_children_cnt + 1 == superversion_contexts.size());
 
 	  //fprintf(stdout, "edit list size : %ld\n", edit_lists.size());
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -172,14 +175,16 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 	  }
 
 	  // Install Superversion to new CFs
-
-	  //fprintf(stdout, "Install SuperVersion\n");
 	  if (s.ok()) {
 		  ROCKS_LOG_INFO(immutable_db_options_.info_log,
 				  "SplitColumnFamilyFromSstFiles: Split column family [%s] (ID %u)",
 				  cfd->GetName().c_str(),
 				  (unsigned) cfd->GetID());
 
+      // 1. Install Superversion to parent CF
+      InstallSuperVersionAndScheduleWork(cfd, &superversion_contexts[0],
+        *cfd->GetLatestMutableCFOptions());
+      // 2. Install Superversion to children CFs
 		  single_column_family_mode_ = false;
 
 		  for (size_t i = 0; i < new_children_cnt; i++) {
@@ -187,7 +192,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 				  ->GetColumnFamily(cf_name_list[i]);
 			  assert(cfd_out_i != nullptr);
 			  column_family_datas.push_back(cfd_out_i);
-			  InstallSuperVersionAndScheduleWork(cfd_out_i, &superversion_contexts[i],
+			  InstallSuperVersionAndScheduleWork(cfd_out_i, &superversion_contexts[i+1],
 					  *cfd_out_i->GetLatestMutableCFOptions());
 
 			  if (!cfd_out_i->mem()->IsSnapshotSupported()) {

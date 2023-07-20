@@ -26,6 +26,7 @@ namespace rocksdb {
 
 class LCFFlushTest : public testing::Test {
  public:
+  static const int split_cnt = 8;
   LCFFlushTest() {
   }
 
@@ -45,6 +46,26 @@ class LCFFlushTest : public testing::Test {
     dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level" + ToString(level), &value); 
     return std::stoi(value);
   }
+
+  void TEST_Split(DB* db, int from, int to, std::pair<std::string, std::string> (&ranges)[split_cnt])
+  {
+    ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+    ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+    ColumnFamilyData* cfd_from = cfd->GetColumnFamilySet()->GetColumnFamily(from);
+    std::vector<SplitFileInfo> infos;
+    FileMetaData* f = new FileMetaData;
+    std::string s = ranges[to].first;
+    std::string l = ranges[to].second;
+    f->smallest = InternalKey(Slice(s), 0, kTypeValue);
+    f->largest = InternalKey(Slice(l), 0, kTypeValue);
+    infos.push_back(SplitFileInfo(f, cfd_from));
+    dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+    infos.clear();  
+    delete f;
+  }
+
+
 };
 
 // why default3 has overlapping ranges..
@@ -236,7 +257,7 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   delete db;
   db = nullptr;
 }*/
-
+/*
 TEST_F(LCFFlushTest, TimeAnalysis) {
   Options options;
   options.create_if_missing = true;
@@ -290,7 +311,7 @@ TEST_F(LCFFlushTest, TimeAnalysis) {
   std::cout << "Time for Flush() = " << std::chrono::duration_cast<std::chrono::microseconds>(f1 - f0).count() << "[us]" << std::endl;
 
   // Time for creating column family
-  /*ColumnFamilyHandle* cfh;
+  ColumnFamilyHandle* cfh;
   std::string cf_name = "cf_anon";
 
   std::unique_ptr<ColumnFamilyOptions> cfo(new ColumnFamilyOptions());
@@ -305,8 +326,79 @@ TEST_F(LCFFlushTest, TimeAnalysis) {
   auto t1 = std::chrono::steady_clock::now();
 
   std::cout << "Time for CreateColumnFamily() = " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "[us]" << std::endl;
-  */
+  
 
+  delete db;
+  db = nullptr;
+}*/
+
+TEST_F(LCFFlushTest, SyncTest) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =2;
+  options.allow_column_family_split = true;
+  options.atomic_flush = false;
+
+  std::string db_name = "/mnt/rocksdb_test";
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+
+  // Prepare Memtable
+  for(int i = 100000000; i< 300000000; i=i+100000) {
+    std::string key = "user00000000000" + std::to_string(i); 
+    std::string value = "abcdef" + std::to_string(i) + "ghijk";
+    db->Put(WriteOptions(), cfh, key, value);
+  } 
+
+  std::pair<std::string, std::string> ranges[split_cnt];
+  // default
+  ranges[0].first = "";
+  ranges[0].second = "";
+  // default1
+  ranges[1].first = "user00000000000236767394";
+  ranges[1].second = "user00000000000247956368";
+  // default2
+  ranges[2].first = "user00000000000197950326";
+  ranges[2].second = "user00000000000203711025";
+  // default3
+  ranges[3].first = "user00000000000241853162";
+  ranges[3].second = "user00000000000244677830";
+  // default4
+  ranges[4].first = "user00000000000058503907";
+  ranges[4].second = " user00000000000064967958";
+  // default5
+  ranges[5].first = "user00000000000070155474";
+  ranges[5].second = "user00000000000072724504";
+  // default6
+  ranges[6].first = "user00000000000012247591";
+  ranges[6].second = "user00000000000017499706";
+  // default7
+  ranges[7].first = "user00000000000016353858";
+  ranges[7].second = "user00000000000211468523";
+
+  // [SPLIT] default -> default1
+  TEST_Split(db, 0/*from*/, 1/*to*/, ranges);
+  // [SPLIT] default -> default2
+  TEST_Split(db, 0/*from*/, 2/*to*/, ranges);
+  // [SPLIT] default1 -> default3
+  TEST_Split(db, 1/*from*/, 3/*to*/, ranges);
+  // [SPLIT] default -> default4
+  TEST_Split(db, 0/*from*/, 4/*to*/, ranges);
+  // [SPLIT] default -> default5
+  TEST_Split(db, 0/*from*/, 5/*to*/, ranges);
+  // [SPLIT] default -> default6
+  TEST_Split(db, 0/*from*/, 6/*to*/, ranges);
+  // [SPLIT] default6 -> default7
+  //TEST_Split(db, 6/*from*/, 7/*to*/, ranges);
+
+
+  // Flush
+  db->Flush(FlushOptions(), cfh);
+
+  // clean up
   delete db;
   db = nullptr;
 }

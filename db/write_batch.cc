@@ -654,6 +654,12 @@ Status WriteBatch::Put(ColumnFamilyHandle* column_family, const Slice& key,
                                  value);
 }
 
+Status WriteBatch::Put(uint32_t cf_id, const Slice& key,
+                       const Slice& value) {
+  return WriteBatchInternal::Put(this, cf_id, key,
+                                 value);
+}
+
 Status WriteBatchInternal::CheckSlicePartsLength(const SliceParts& key,
                                                  const SliceParts& value) {
   size_t total_key_bytes = 0;

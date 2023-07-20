@@ -906,14 +906,13 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
       /*fprintf(stdout, "ProcessKeyValueSplit: user_key -> %s child -> [%s, %s]\n",
             user_key_str.c_str(),
             child_smallest.c_str(),
-            child_largest.c_str());
-      ROCKS_LOG_INFO(
+            child_largest.c_str());*/
+      /*ROCKS_LOG_INFO(
           db_options_.info_log,
           "ProcessKeyValueSplit: user_key -> %s child -> [%s, %s]\n",
           user_key_str.c_str(),
           child_smallest.c_str(),
-          child_largest.c_str());
-      LogFlush(db_options_.info_log);*/
+          child_largest.c_str());*/
       if (user_key_str.compare(child_smallest) < 0) {
         // user key is within parent's key range, not children nodes
         /*fprintf(stdout, "ProcessKeyValueSplit - is_parent\n");
@@ -980,6 +979,11 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
 
     // add item to the corresponding builder
     if (is_child) {
+      /*ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "ProcessKeyValueSplit: user_key -> %s goes to child",
+          c_iter->user_key().ToString().c_str());*/
+
       sub_split->child_builder->Add(key, value);
       sub_split->child_current_output_file_size = sub_split->child_builder->FileSize();
       sub_split->child_current_output()->meta.UpdateBoundaries(
@@ -996,6 +1000,11 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
 
     }
     else {
+      /*ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "ProcessKeyValueSplit: user_key -> %s goes to parent",
+          c_iter->user_key().ToString().c_str());*/
+
       sub_split->parent_builder->Add(key, value);
       sub_split->parent_current_output_file_size = sub_split->parent_builder->FileSize();
       sub_split->parent_current_output()->meta.UpdateBoundaries(

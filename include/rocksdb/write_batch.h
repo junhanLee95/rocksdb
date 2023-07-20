@@ -66,6 +66,8 @@ class WriteBatch : public WriteBatchBase {
   // Store the mapping "key->value" in the database.
   Status Put(ColumnFamilyHandle* column_family, const Slice& key,
              const Slice& value) override;
+  Status Put(uint32_t cf_id, const Slice& key,
+             const Slice& value);
   Status Put(const Slice& key, const Slice& value) override {
     return Put(nullptr, key, value);
   }
