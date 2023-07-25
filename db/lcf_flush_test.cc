@@ -263,11 +263,11 @@ TEST_F(LCFFlushTest, Prepare) {
   options.create_if_missing = true;
   options.max_background_jobs =32;
   options.max_write_buffer_number =2;
+  options.atomic_flush = false;
   //options.allow_column_family_split = false;
   options.allow_column_family_split = true;
-  options.atomic_flush = false;
   int kv_size = 65536;
-  int num_cf = 2;
+  int num_cf = 32;
 
   std::string db_name = "/mnt/rocksdb_test";
   DB* db;
@@ -282,6 +282,7 @@ TEST_F(LCFFlushTest, Prepare) {
   std::random_device random_device;
   std::mt19937 generator(random_device());
   std::uniform_int_distribution<> distribution(0, CHARACTERS.size() -1);
+
 
   // Prepare Memtable
   // Generate 64k KV-pair
