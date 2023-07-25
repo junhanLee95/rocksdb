@@ -918,7 +918,7 @@ Status BuildsubTable(
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
-	void(sub_flush_id); /* unused */
+	(void)sub_flush_id; /* unused */
   assert(sub_flush_id);
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
