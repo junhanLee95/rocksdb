@@ -910,20 +910,31 @@ Status BuildParentTable(
         column_family_name.c_str(), job_id,
         citerseek_micros);
 
-    uint64_t citernext_micros=0;
-    uint64_t string_cmp_micros=0;
-    uint64_t meta_update_micros=0;
-    uint64_t add_micros=0;
 
 
 
+    uint64_t intvs[6] = {0,};
 		for (size_t i = 0; i < children_size + 1; i++) {
 
-			for (; c_iters[i]->Valid();) {
+			for (;;) {
+
+				uint64_t tmp[9];
+				tmp[0] = env->NowMicros();
+				if (!c_iters[i]->Valid()) {
+					tmp[7] = env->NowMicros();
+					intvs[0] += tmp[7] - tmp[0];
+
+					break;
+				}
+
+				tmp[1] = env->NowMicros();
+				intvs[0] += tmp[1] - tmp[0];
+
+
 				const Slice& key = c_iters[i]->key();
 				const Slice& value = c_iters[i]->value();
 				std::string user_key_str = c_iters[i]->user_key().ToString();
-				uint64_t string_cmp_start_micros = env->NowMicros();
+
 
 				if(i == children_size || 
 						user_key_str.compare(sub_starts[i]) < 0) {
@@ -931,20 +942,25 @@ Status BuildParentTable(
 					std::cout << "BuildParentTable() Build "<< i << " user_key_str "<< user_key_str 
 						<< " sub_start "<< sub_starts[i] << std::endl; 
 						*/
-					uint64_t add_start_micros = env->NowMicros();
+					tmp[2] = env->NowMicros();
+					intvs[1] += tmp[2] - tmp[1];
+
 					builder->Add(key, value);
-					uint64_t add_finish_micros = env->NowMicros();
-					add_micros += (add_finish_micros - add_start_micros);
-					uint64_t meta_update_start_micros = env->NowMicros();
+
+					tmp[3] = env->NowMicros();
+					intvs[2] += tmp[3] - tmp[2];
+
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
-					uint64_t meta_update_finish_micros = env->NowMicros();
-					meta_update_micros += (meta_update_finish_micros - meta_update_start_micros);
+
+					tmp[4] = env->NowMicros();
+					intvs[3] += tmp[4] - tmp[3];
+
 				} else {
+					tmp[8] = env->NowMicros();
+					intvs[1] += tmp[8] - tmp[1];
 					break;
 				}
 
-				uint64_t string_cmp_finish_micros = env->NowMicros() - string_cmp_start_micros;
-				string_cmp_micros += string_cmp_finish_micros;
 				
 				// TODO(noetzli): Update stats after flush, too.
 				if (io_priority == Env::IO_HIGH &&
@@ -952,10 +968,11 @@ Status BuildParentTable(
 					ThreadStatusUtil::SetThreadOperationProperty(
 							ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
 				}
-				uint64_t citernext_start_micros = env->NowMicros();
+				tmp[5] = env->NowMicros();
+				intvs[4] += tmp[5] - tmp[4];
 				c_iters[i]->Next();
-				uint64_t citernext_finish_micros = env->NowMicros();
-				citernext_micros += (citernext_finish_micros - citernext_start_micros);
+				tmp[6] = env->NowMicros();
+				intvs[5] += tmp[6] - tmp[5];
 			}
 		}
 
@@ -967,21 +984,29 @@ Status BuildParentTable(
         merge_micros);
 
     ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] flush_add_time(us) %" PRIu64,
+        "[%s] [JOB %d] flush_citervalid_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
-        add_micros);
-    ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] flush_metaupdate_time(us) %" PRIu64,
-        column_family_name.c_str(), job_id,
-        meta_update_micros);
+        intvs[0]);
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_stringcmp_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
-        string_cmp_micros);
+        intvs[1]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_add_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[2]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_metaupdate_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[3]);
+    ROCKS_LOG_INFO(ioptions.info_log,
+        "[%s] [JOB %d] flush_threadstatus_time(us) %" PRIu64,
+        column_family_name.c_str(), job_id,
+        intvs[4]);
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_citernext_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
-        citernext_micros);
+        intvs[5]);
 
     // TODO(Junhan): Consider adding rangedel tombstone when split-then-flush
     auto range_del_it = range_del_agg->NewIterator();

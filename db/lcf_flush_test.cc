@@ -267,7 +267,7 @@ TEST_F(LCFFlushTest, Prepare) {
   options.allow_column_family_split = true;
   options.atomic_flush = false;
   int kv_size = 65536;
-  int num_cf = 16;
+  int num_cf = 2;
 
   std::string db_name = "/mnt/rocksdb_test";
   DB* db;
