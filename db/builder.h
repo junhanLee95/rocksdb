@@ -39,6 +39,7 @@ class TableBuilder;
 class WritableFileWriter;
 class InternalStats;
 
+
 // @param column_family_name Name of the column family that is also identified
 //    by column_family_id, or empty string if unknown. It must outlive the
 //    TableBuilder returned by this function.
@@ -115,7 +116,7 @@ extern Status BuildTables(
 Status BuildParentTable(
     const std::string& dbname, Env* env, const ImmutableCFOptions& ioptions,
     const MutableCFOptions& mutable_cf_options, const EnvOptions& env_options,
-    TableCache* table_cache, InternalIterator* iter,
+    TableCache* table_cache, std::vector<ScopedArenaIterator*> iters,
     std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
     range_del_iters,
     FileMetaData* meta, 
@@ -133,7 +134,8 @@ Status BuildParentTable(
     EventLogger* event_logger, int job_id,
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
-    Env::WriteLifeTimeHint write_hint);
+    Env::WriteLifeTimeHint write_hint, 
+		std::vector<std::string> sub_starts, std::vector<std::string> sub_ends);
 
 
 Status BuildsubTable(

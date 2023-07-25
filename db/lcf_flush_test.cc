@@ -237,6 +237,7 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   db = nullptr;
 }*/
 
+
 TEST_F(LCFFlushTest, Prepare) {
   Options options;
   options.create_if_missing = true;
@@ -245,6 +246,8 @@ TEST_F(LCFFlushTest, Prepare) {
   //options.allow_column_family_split = false;
   options.allow_column_family_split = true;
   options.atomic_flush = false;
+  int kv_size = 65536;
+  int num_cf = 16;
 
   std::string db_name = "/mnt/rocksdb_test";
   DB* db;
@@ -263,34 +266,30 @@ TEST_F(LCFFlushTest, Prepare) {
   // Prepare Memtable
   // Generate 64k KV-pair
   int kv_base = 10000;
-  int kv_size = 65536;
   for(int i = kv_base; i < kv_base + kv_size; i++) {
 	// 23-byte key 
     std::string key = "user00000000000000" + std::to_string(i); 
     //std::string value = "abcde" + std::to_string(i) + "fghijklmno"+ "pqr";
-	// 1000-byte value
-	std::string value;
-	for(int j = 0; i < 1000; j++) {
-		value += CHARACTERS[distribution(generator)];
-	}
+		// 1000-byte value
+	  std::string value;
+		for(int j = 0; i < 1000; j++) {
+			value += CHARACTERS[distribution(generator)];
+		}
     db->Put(WriteOptions(), cfh, key, value);
   } 
 
   // Next, we construct two-level partition tree.
   
   double total_split_time = 0.0;
-  int num_column_family = 6;
-  int column_family_size = kv_size / num_column_family;
+  int cf_size = kv_size / num_cf;
+	int cf_intv = cf_size / num_cf;
 
-  for (int i = 0 ; i < num_column_family ; i++) {
+  for (int i = 0 ; i < num_cf -1 ; i++) {
     std::vector<SplitFileInfo> infos;
     FileMetaData* f1 = new FileMetaData;
 
-	size_t start_num = kv_base + i * column_family_size;
-	size_t end_num =  kv_base + (i+1) * column_family_size;
-	if (i == num_column_family - 1) {
-		end_num = kv_base + kv_size -1;
-	}
+		size_t start_num = kv_base + i * cf_size + (i+1) * cf_intv;
+		size_t end_num =  kv_base + (i+1) * cf_size + (i+1) * cf_intv;
 
     std::string s1 = "user00000000000000" + std::to_string(start_num);
     std::string l1 = "user00000000000000" + std::to_string(end_num);

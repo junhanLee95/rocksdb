@@ -494,7 +494,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   assert(rep_->state != Rep::State::kClosed);
   if (!ok()) return;
   ValueType value_type = ExtractValueType(key);
-	PrefixKeyType prefix_key_type = key.ExtractPrefixKeyType();
+	//PrefixKeyType prefix_key_type = key.ExtractPrefixKeyType();
   if (IsValueType(value_type)) {
 #ifndef NDEBUG
     if (r->props.num_entries > r->props.num_range_deletions) {
@@ -588,6 +588,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   }
 
 	// update prefix key props
+	/*
 	if(r->props.prefix_key_props[prefix_key_type].prefix_key_str.empty()){
 		r->props.prefix_key_props[prefix_key_type].prefix_key_str.assign(PREFIX_NAMES[prefix_key_type]);
 	}
@@ -612,6 +613,8 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
 			r->props.prefix_key_props[prefix_key_type].largest_key_str.compare(key.data()) < 0){
 		r->props.prefix_key_props[prefix_key_type].largest_key_str.assign(key.data());
 	}
+	*/
+
   uint64_t stat_micros = r->ioptions.env->NowMicros() - stat_start_micros;
   r->props.stat_time += stat_micros;
 }

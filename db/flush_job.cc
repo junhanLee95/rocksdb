@@ -155,6 +155,22 @@ struct FlushJob::FlushState {
         num_input_records(0),
         num_output_records(0) {}
 
+	std::vector<std::string>  GetSubflushStarts() {
+		std::vector<std::string> starts;
+		for (size_t i = 1; i < sub_flush_states.size(); i++) {
+			starts.push_back(sub_flush_states[i].start);
+		}
+		return starts;
+	}
+
+	std::vector<std::string>  GetSubflushEnds() {
+		std::vector<std::string> ends;
+		for (size_t i = 1; i < sub_flush_states.size(); i++) {
+			ends.push_back(sub_flush_states[i].end);
+		}
+		return ends;
+	}
+
 };
 
 
@@ -336,7 +352,7 @@ void FlushJob::Prepare() {
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     std::string start_key = get_lmost_key(children_nodes_[child_idx]);
     std::string end_key = get_rmost_key(children_nodes_[child_idx]);
-	sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
+	  sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
     flush_->sub_flush_states.emplace_back(flush_, start_key, end_key, sub_meta,
                                           sub_edit, child_idx+1);
 
@@ -407,7 +423,6 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     // Launch a thread for each of subcompactions 1...num_threads-1
     std::vector<port::Thread> thread_pool;
     thread_pool.reserve(num_threads - 1);
-    //for (size_t i = 1; i < flush_->sub_flush_states.size(); i++) {
     for (size_t i = 1; i < num_threads; i++) {
       thread_pool.emplace_back(&FlushJob::ProcessKeyValueFlush, this,
                         &flush_->sub_flush_states[i]);
@@ -415,13 +430,12 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 
     // Always schedule the first subflush (whether or not there are also
     // others) in the current thread to be efficient with resources
-//    ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
+    ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
 
 
     for (auto& thread : thread_pool) {
       thread.join();
     }
-	//std::cout << "FlushJob::Run() after thread.join()" << std::endl;
 
     // Check if any thread encountered an error during execution
     for (const auto& state : flush_->sub_flush_states) {
@@ -986,21 +1000,8 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   auto write_hint = cfd_->CalculateSSTWriteHint(0);
   //db_mutex_->Unlock(); Maybe invokey by Run method
 
-  std::vector<InternalIterator*> memtables;
-  std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
-        range_del_iters;
   ReadOptions ro;
   ro.total_order_seek = true;
-  Arena arena;
-
-  for (MemTable* m : mems_) {
-    memtables.push_back(m->NewIterator(ro, &arena));
-    auto* range_del_iter =
-    m->NewRangeTombstoneIterator(ro, kMaxSequenceNumber);
-    if (range_del_iter != nullptr) {
-      range_del_iters.emplace_back(range_del_iter);
-    }
-  }
 
 
 
@@ -1020,18 +1021,35 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   uint64_t oldest_key_time =
 	  mems_.front()->ApproximateOldestKeyTime();
 
-  //std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildTable()"<< std::endl;
   if (sub_flush->sub_flush_id == 0) {
-    ScopedArenaIterator iter(
-          NewMergingIterator(&cfd_->internal_comparator(), &memtables[0],
-                             static_cast<int>(memtables.size()), &arena));
-//    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildTable()"<< std::endl;
-    //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id 
-//		<< " iter valid " << iter.get()->Valid()<< std::endl;
+		size_t children_size = children_nodes_.size();
+
+		std::vector<std::vector<InternalIterator*>> memtabless(children_size +1);
+
+		std::vector<Arena> arenas(children_size + 1);
+		std::vector<ScopedArenaIterator *> iters;
+		std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
+					range_del_iters;
+
+
+		for (size_t i = 0; i < children_size + 1; i++) {
+			for (MemTable* m : mems_) {
+				InternalIterator * iiter = m->NewIterator(ro, &arenas[i]);
+				memtabless[i].push_back(iiter);
+				auto* range_del_iter =
+				m->NewRangeTombstoneIterator(ro, kMaxSequenceNumber);
+				if (range_del_iter != nullptr) {
+					range_del_iters.emplace_back(range_del_iter);
+				}
+			}
+			ScopedArenaIterator* iter = new ScopedArenaIterator(NewMergingIterator(&cfd_->internal_comparator(), &memtabless[i][0],
+															 static_cast<int>(memtabless[i].size()), &arenas[i]));
+			iters.push_back(iter);
+		}
 
     status = BuildParentTable(
             dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
-            env_options_, cfd_->table_cache(), iter.get(),
+            env_options_, cfd_->table_cache(), iters,
             std::move(range_del_iters), &meta_,
             cfd_->internal_comparator(),
             cfd_->int_tbl_prop_collector_factories(), cfd_->GetID(),
@@ -1045,10 +1063,25 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
             event_logger_, job_context_->job_id,
             Env::IO_HIGH, &table_properties_,
             0 /* level */, current_time,
-            oldest_key_time, write_hint);  
+            oldest_key_time, write_hint,
+						sub_flush->flush_state->GetSubflushStarts(),
+						sub_flush->flush_state->GetSubflushEnds());  
 
 //    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildTable()"<< std::endl;
   } else {
+		std::vector<InternalIterator*> memtables;
+		std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
+					range_del_iters;
+		Arena arena;
+
+		for (MemTable* m : mems_) {
+			memtables.push_back(m->NewIterator(ro, &arena));
+			auto* range_del_iter =
+			m->NewRangeTombstoneIterator(ro, kMaxSequenceNumber);
+			if (range_del_iter != nullptr) {
+				range_del_iters.emplace_back(range_del_iter);
+			}
+		}
     ColumnFamilyData* sub_cfd =  children_nodes_[sub_flush->sub_flush_id - 1]->cfd_;
     ScopedArenaIterator sub_iter(
           NewMergingIterator(&sub_cfd->internal_comparator(), &memtables[0],
@@ -1057,19 +1090,19 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 //    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildsubTable() " << sub_flush->sub_flush_id<< std::endl;
     //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id 
 //		<< " sub_iter valid " << sub_iter.get()->Valid()<< std::endl;
-	status = BuildsubTable(
-			  dbname_, db_options_.env, *sub_cfd->ioptions(), mutable_cf_options_,
-			  env_options_, sub_cfd->table_cache(), sub_iter.get(),
-			  std::move(range_del_iters), &sub_flush->sub_meta, sub_cfd->internal_comparator(),
-			  sub_cfd->int_tbl_prop_collector_factories(), sub_cfd->GetID(),
-			  sub_cfd->GetName(), existing_snapshots_,
-			  earliest_write_conflict_snapshot_, snapshot_checker_,
-			  output_compression_, mutable_cf_options_.sample_for_compression,
-			  sub_cfd->ioptions()->compression_opts,
-			  mutable_cf_options_.paranoid_file_checks, sub_cfd->internal_stats(),
-			  TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
-			  Env::IO_HIGH, &sub_flush->sub_table_properties, 0 , current_time, oldest_key_time, write_hint,
-			  sub_flush->start, sub_flush->end, sub_flush->sub_flush_id);
+		status = BuildsubTable(
+					dbname_, db_options_.env, *sub_cfd->ioptions(), mutable_cf_options_,
+					env_options_, sub_cfd->table_cache(), sub_iter.get(),
+					std::move(range_del_iters), &sub_flush->sub_meta, sub_cfd->internal_comparator(),
+					sub_cfd->int_tbl_prop_collector_factories(), sub_cfd->GetID(),
+					sub_cfd->GetName(), existing_snapshots_,
+					earliest_write_conflict_snapshot_, snapshot_checker_,
+					output_compression_, mutable_cf_options_.sample_for_compression,
+					sub_cfd->ioptions()->compression_opts,
+					mutable_cf_options_.paranoid_file_checks, sub_cfd->internal_stats(),
+					TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
+					Env::IO_HIGH, &sub_flush->sub_table_properties, 0 , current_time, oldest_key_time, write_hint,
+					sub_flush->start, sub_flush->end, sub_flush->sub_flush_id);
     //std::cout << "FlushJob::ProcessKeyValueFlush() " << sub_flush->sub_flush_id  << " <-BuildsubTable()"<< std::endl;
 	
 //    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildsubTable() "<< sub_flush->sub_flush_id << std::endl;

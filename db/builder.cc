@@ -686,7 +686,7 @@ Status BuildTables(
 Status BuildParentTable(
     const std::string& dbname, Env* env, const ImmutableCFOptions& ioptions,
     const MutableCFOptions& mutable_cf_options, const EnvOptions& env_options,
-    TableCache* table_cache, InternalIterator* iter,
+    TableCache* table_cache, std::vector<ScopedArenaIterator*> iters,
     std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
     range_del_iters,
     FileMetaData* meta, 
@@ -704,7 +704,8 @@ Status BuildParentTable(
     EventLogger* event_logger, int job_id,
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
-    Env::WriteLifeTimeHint write_hint) {
+    Env::WriteLifeTimeHint write_hint, 
+		std::vector<std::string> sub_starts, std::vector<std::string> sub_ends) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -716,9 +717,32 @@ Status BuildParentTable(
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
   meta->fd.file_size = 0;
-  iter->SeekToFirst();
+
+
+	std::vector <IterKey> start_iter(children_size);
+	for (size_t i = 0; i < children_size + 1; i++) {
+		InternalIterator* iter = iters[i]->get();
+		if (i == 0) {
+			iter->SeekToFirst();
+			continue;
+		}
+		start_iter[i-1].SetInternalKey(Slice(sub_ends[i-1]), kMaxSequenceNumber, kValueTypeForSeek);
+		iter->Seek(start_iter[i-1].GetInternalKey());
+	}
+
+	bool iter_valid = true;
+	for (size_t i = 0; i < children_size + 1; i++) {
+		InternalIterator* iter = iters[i]->get();
+		if (!iter->Valid()) {
+			iter_valid = false;
+			break;
+		}
+	}
+
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
       new CompactionRangeDelAggregator(&internal_comparator, snapshots));
+
+	//TODO: Have to change this... koo..
   for (auto& range_del_iter : range_del_iters) {
     range_del_agg->AddTombstones(std::move(range_del_iter));
   }
@@ -731,7 +755,7 @@ Status BuildParentTable(
 #endif  // !ROCKSDB_LITE
   TableProperties tp;
 
-  if (iter->Valid() || !range_del_agg->IsEmpty()) {
+  if (iter_valid || !range_del_agg->IsEmpty()) {
     TableBuilder* builder;
     std::unique_ptr<WritableFileWriter> file_writer;
     // Currently we only enable dictionary compression during compaction to the
@@ -775,14 +799,27 @@ Status BuildParentTable(
 
     uint64_t merge_start_micros = env->NowMicros();
     // JH: choose builder to add by corresponding keys
-    size_t child_idx = 0; // -1 if parent, child_idx if child
+    //size_t child_idx = 0; // -1 if parent, child_idx if child
 
     uint64_t citerinit_start_micros = env->NowMicros();
-    CompactionIterator c_iter(
+
+
+		std::vector<CompactionIterator*> c_iters;
+
+
+		for (size_t i = 0; i < children_size + 1; i++) {
+			InternalIterator* iter = iters[i]->get();
+			
+			CompactionIterator* c_iter = new CompactionIterator(
         iter, internal_comparator.user_comparator(), &merge, kMaxSequenceNumber,
         &snapshots, earliest_write_conflict_snapshot, snapshot_checker, env,
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
+			c_iter->SeekToFirst();
+		  c_iters.push_back(c_iter);
+		}
+
+
     uint64_t citerinit_micros = env->NowMicros() - citerinit_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_citerinit_time(us) %" PRIu64,
@@ -790,7 +827,6 @@ Status BuildParentTable(
         citerinit_micros);
 
     uint64_t citerseek_start_micros = env->NowMicros();
-    c_iter.SeekToFirst();
     uint64_t citerseek_micros = env->NowMicros() - citerseek_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_citerseek_time(us) %" PRIu64,
@@ -802,53 +838,51 @@ Status BuildParentTable(
     uint64_t meta_update_micros=0;
     uint64_t add_micros=0;
 
-    bool to_parent = true;
-    for (; c_iter.Valid();) {
-      const Slice& key = c_iter.key();
-      const Slice& value = c_iter.value();
-      std::string user_key_str = c_iter.user_key().ToString();
-      uint64_t string_cmp_start_micros = env->NowMicros();
-      while (child_idx < children_size) {
-        if (user_key_str.compare(get_lmost_key(children_nodes[child_idx])) >= 0 &&
-            user_key_str.compare(get_rmost_key(children_nodes[child_idx])) <= 0)
-        {
-          to_parent = false;
-          break; 
-        }
-        else if(user_key_str.compare(get_lmost_key(children_nodes[child_idx])) < 0) {
-          to_parent = true;
-          break;
-        }
-        else {
-          // increment idx
-          child_idx ++;
-        }
-      }
-      uint64_t string_cmp_finish_micros = env->NowMicros() - string_cmp_start_micros;
-      string_cmp_micros += string_cmp_finish_micros;
 
-      if (to_parent || child_idx == children_size) { // parent
-        uint64_t add_start_micros = env->NowMicros();
-        builder->Add(key, value);
-        uint64_t add_finish_micros = env->NowMicros();
-        add_micros += (add_finish_micros - add_start_micros);
-        uint64_t meta_update_start_micros = env->NowMicros();
-        meta->UpdateBoundaries(key, c_iter.ikey().sequence);  
-        uint64_t meta_update_finish_micros = env->NowMicros();
-        meta_update_micros += (meta_update_finish_micros - meta_update_start_micros);
-      }
-      
-      // TODO(noetzli): Update stats after flush, too.
-      if (io_priority == Env::IO_HIGH &&
-          IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
-        ThreadStatusUtil::SetThreadOperationProperty(
-            ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
-      }
-      uint64_t citernext_start_micros = env->NowMicros();
-      c_iter.Next();
-      uint64_t citernext_finish_micros = env->NowMicros();
-      citernext_micros += (citernext_finish_micros - citernext_start_micros);
-    }
+
+		for (size_t i = 0; i < children_size + 1; i++) {
+
+			for (; c_iters[i]->Valid();) {
+				const Slice& key = c_iters[i]->key();
+				const Slice& value = c_iters[i]->value();
+				std::string user_key_str = c_iters[i]->user_key().ToString();
+				uint64_t string_cmp_start_micros = env->NowMicros();
+
+				if(i == children_size || 
+						user_key_str.compare(sub_starts[i]) < 0) {
+					/*
+					std::cout << "BuildParentTable() Build "<< i << " user_key_str "<< user_key_str 
+						<< " sub_start "<< sub_starts[i] << std::endl; 
+						*/
+					uint64_t add_start_micros = env->NowMicros();
+					builder->Add(key, value);
+					uint64_t add_finish_micros = env->NowMicros();
+					add_micros += (add_finish_micros - add_start_micros);
+					uint64_t meta_update_start_micros = env->NowMicros();
+					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
+					uint64_t meta_update_finish_micros = env->NowMicros();
+					meta_update_micros += (meta_update_finish_micros - meta_update_start_micros);
+				} else {
+					break;
+				}
+
+				uint64_t string_cmp_finish_micros = env->NowMicros() - string_cmp_start_micros;
+				string_cmp_micros += string_cmp_finish_micros;
+				
+				// TODO(noetzli): Update stats after flush, too.
+				if (io_priority == Env::IO_HIGH &&
+						IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
+					ThreadStatusUtil::SetThreadOperationProperty(
+							ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
+				}
+				uint64_t citernext_start_micros = env->NowMicros();
+				c_iters[i]->Next();
+				uint64_t citernext_finish_micros = env->NowMicros();
+				citernext_micros += (citernext_finish_micros - citernext_start_micros);
+			}
+		}
+
+
     uint64_t merge_micros = env->NowMicros() - merge_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
         "[%s] [JOB %d] flush_merge_time(us) %" PRIu64,
@@ -871,10 +905,6 @@ Status BuildParentTable(
         "[%s] [JOB %d] flush_citernext_time(us) %" PRIu64,
         column_family_name.c_str(), job_id,
         citernext_micros);
-    ROCKS_LOG_INFO(ioptions.info_log,
-        "[%s] [JOB %d] flush_iiternext_time(us) %" PRIu64,
-        column_family_name.c_str(), job_id,
-        c_iter.GetInternalIterNextMicros());
 
     // TODO(Junhan): Consider adding rangedel tombstone when split-then-flush
     auto range_del_it = range_del_agg->NewIterator();
@@ -892,40 +922,70 @@ Status BuildParentTable(
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
     ROCKS_LOG_INFO(ioptions.info_log, "[%s] FlushJob: parent's num_entries : %ld",
                    column_family_name.c_str(), builder->NumEntries());
-    Status iter_s = c_iter.status();
-    s = c_iter.status();
-    if (!iter_s.ok() || empty) {
-      builder->Abandon();
-    } else {
-      uint64_t finish_start_micros = env->NowMicros();
-      s = builder->Finish();
-      uint64_t finish_micros = env->NowMicros() - finish_start_micros;
-      ROCKS_LOG_INFO(ioptions.info_log,
-          "[%s] [JOB %d] flush_finish_time(us) %" PRIu64,
-          column_family_name.c_str(), job_id,
-          finish_micros);
-    }
-    if (s.ok() && !empty) {
-      uint64_t file_size = builder->FileSize();
-      meta->fd.file_size = file_size;
-      meta->marked_for_compaction = builder->NeedCompact();
-      assert(meta->fd.GetFileSize() > 0);
-      tp = builder->GetTableProperties(); // refresh now that builder is finished
-      if (table_properties) {
-        *table_properties = tp;
-      }
-    }
-    delete builder;
 
-    // Finish and check for file errors
-    uint64_t sync_start_micros = env->NowMicros();
-    if (s.ok() && !empty) {
-      StopWatch sw(env, ioptions.statistics, TABLE_SYNC_MICROS);
-      s = file_writer->Sync(ioptions.use_fsync);
-    }
-    if (s.ok() && !empty) {
-      s = file_writer->Close();
-    }
+
+
+		bool finish_builder = true;
+		bool refresh_builder = true;
+		bool file_sync = true;
+		bool file_close = true;
+		for (size_t i = 0; i < children_size + 1; i++) {
+			Status iter_s = c_iters[i]->status();
+			s = c_iters[i]->status();
+
+			if (!(!iter_s.ok() || empty)) {
+				finish_builder = false;
+			}
+
+			if (!(s.ok() && !empty)) {
+				refresh_builder = false;
+			}
+
+			// Finish and check for file errors
+			if (!(s.ok() && !empty)) {
+				file_sync = false;
+			}
+
+			if (!(s.ok() && !empty)) {
+				file_close = false;
+			}
+		}
+
+		if (finish_builder) {
+			builder->Abandon();
+		} else {
+			uint64_t finish_start_micros = env->NowMicros();
+			s = builder->Finish();
+			uint64_t finish_micros = env->NowMicros() - finish_start_micros;
+			ROCKS_LOG_INFO(ioptions.info_log,
+					"[%s] [JOB %d] flush_finish_time(us) %" PRIu64,
+					column_family_name.c_str(), job_id,
+					finish_micros);
+		}
+
+		if (refresh_builder) {
+			uint64_t file_size = builder->FileSize();
+			meta->fd.file_size = file_size;
+			meta->marked_for_compaction = builder->NeedCompact();
+			assert(meta->fd.GetFileSize() > 0);
+			tp = builder->GetTableProperties(); // refresh now that builder is finished
+			if (table_properties) {
+				*table_properties = tp;
+			}
+		}
+		delete builder;
+
+		uint64_t sync_start_micros = env->NowMicros();
+		if (file_sync) {
+			StopWatch sw(env, ioptions.statistics, TABLE_SYNC_MICROS);
+			s = file_writer->Sync(ioptions.use_fsync);
+		}
+
+		if (file_close) {
+			s = file_writer->Close();
+		}
+
+
 
     uint64_t sync_micros = env->NowMicros() - sync_start_micros;
     ROCKS_LOG_INFO(ioptions.info_log,
@@ -933,7 +993,7 @@ Status BuildParentTable(
         column_family_name.c_str(), job_id,
         sync_micros);
 
-    if (s.ok() && !empty) {
+    if (refresh_builder) {
       // Verify that the table is usable
       // We set for_compaction to false and don't OptimizeForCompactionTableRead
       // here because this is a special case after we finish the table building
@@ -958,13 +1018,16 @@ Status BuildParentTable(
   }
 
   // Check for input iterator errors
-  if (!iter->status().ok()) {
-    s = iter->status();
-  }
+	for (size_t i = 0; i < children_size + 1; i++) {
+		InternalIterator* iter = iters[i]->get();
+		if (!iter->status().ok()) {
+			s = iter->status();
+		}
+		if (!s.ok() || meta->fd.GetFileSize() == 0) {
+			env->DeleteFile(fname);
+		}
+	}
 
-  if (!s.ok() || meta->fd.GetFileSize() == 0) {
-    env->DeleteFile(fname);
-  }
 
   // Output to event logger and fire events.
   // TODO(JH): TableProperties tp needs to reflect the characteristics of child builders,
@@ -1100,6 +1163,7 @@ Status BuildsubTable(
 
     uint64_t intvs[6] = {0,};
 
+		//bool first = true;
     for (;;) {
 
       uint64_t tmp[11];
@@ -1118,6 +1182,13 @@ Status BuildsubTable(
       const Slice& value = c_iter.value();
 
       std::string user_key = c_iter.user_key().ToString();
+
+			/*
+			if (first) {
+				std::cout << "BuildsubTable() "<< user_key << std::endl;
+				first = false;
+			}
+			*/
 
 
       if (user_key.compare(sub_flush_start) < 0) {
