@@ -266,8 +266,14 @@ TEST_F(LCFFlushTest, Prepare) {
   //options.allow_column_family_split = false;
   options.allow_column_family_split = true;
   options.atomic_flush = false;
+	
+	static class std::shared_ptr<rocksdb::Statistics> dbstats;
+  dbstats = rocksdb::CreateDBStatistics();
+  dbstats->set_stats_level(static_cast<StatsLevel>
+			(rocksdb::StatsLevel::kExceptDetailedTimers));
+	options.statistics = dbstats;
   int kv_size = 65536;
-  int num_cf = 2;
+  int num_cf = 1;
 
   std::string db_name = "/mnt/rocksdb_test";
   DB* db;
