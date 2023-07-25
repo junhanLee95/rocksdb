@@ -418,6 +418,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   Status status;
   if (db_options_.allow_column_family_split) {
 	//std::cout << "FlushJob::Run() Multi-threaded Split-then-flush" << std::endl;
+		const uint64_t start_micros = db_options_.env->NowMicros();
     const size_t num_threads = flush_->sub_flush_states.size();
     assert(num_threads > 0);
     // Launch a thread for each of subcompactions 1...num_threads-1
@@ -451,6 +452,9 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     base_->Unref();
 	//std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
     //s = WriteLevel0Tables();  
+		InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
+		stats.micros = db_options_.env->NowMicros() - start_micros;
+		RecordTimeToHistogram(stats_, FLUSH_TIME, stats.micros);
   } else {
     status = WriteLevel0Table();  
   }

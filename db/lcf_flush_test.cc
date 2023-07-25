@@ -267,7 +267,14 @@ TEST_F(LCFFlushTest, Prepare) {
   //options.allow_column_family_split = false;
   options.allow_column_family_split = true;
   int kv_size = 65536;
-  int num_cf = 32;
+  int num_cf = 1;
+
+	static class std::shared_ptr<rocksdb::Statistics> dbstats;
+	dbstats = rocksdb::CreateDBStatistics();
+	dbstats->set_stats_level(static_cast<StatsLevel>
+			(rocksdb::StatsLevel::kExceptDetailedTimers));
+	options.statistics = dbstats;
+
 
   std::string db_name = "/mnt/rocksdb_test";
   DB* db;
@@ -334,6 +341,8 @@ TEST_F(LCFFlushTest, Prepare) {
   db->Flush(FlushOptions(), cfh);
   auto f1 = std::chrono::steady_clock::now();
   std::cout << "Time for Flush() = " << std::chrono::duration_cast<std::chrono::microseconds>(f1 - f0).count() << "[us]" << std::endl;
+
+	fprintf(stdout,"STATISTICS:\n%s\n", dbstats->ToString().c_str());
 
   delete db;
   db = nullptr;

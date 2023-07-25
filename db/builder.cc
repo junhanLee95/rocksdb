@@ -631,7 +631,6 @@ Status BuildParentTable(
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
 
-  assert(!children_nodes.empty());
   size_t children_size = children_nodes.size();
 
   // Reports the IOStats for flush for every following bytes.
