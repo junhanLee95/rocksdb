@@ -160,7 +160,7 @@ void CompactionIterator::Next() {
     if (!at_next_) {
       input_->Next();
     }
-    internaliter_next_micros_ += (env_->NowMicros() -  internaliter_start_micros);
+    internaliter_next_micros_ += (env_->NowMicros() - internaliter_start_micros);
     NextFromInput();
   }
 

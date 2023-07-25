@@ -20,6 +20,7 @@
 #include "rocksdb/status.h"
 #include "rocksdb/table_properties.h"
 #include "rocksdb/types.h"
+#include "rocksdb/slice.h"
 #include "table/scoped_arena_iterator.h"
 #include "util/event_logger.h"
 
@@ -37,6 +38,7 @@ class VersionEdit;
 class TableBuilder;
 class WritableFileWriter;
 class InternalStats;
+
 
 // @param column_family_name Name of the column family that is also identified
 //    by column_family_id, or empty string if unknown. It must outlive the
@@ -111,4 +113,49 @@ extern Status BuildTables(
     const uint64_t creation_time = 0, const uint64_t oldest_key_time = 0,
     Env::WriteLifeTimeHint write_hint = Env::WLTH_NOT_SET);
 
+Status BuildParentTable(
+    const std::string& dbname, Env* env, const ImmutableCFOptions& ioptions,
+    const MutableCFOptions& mutable_cf_options, const EnvOptions& env_options,
+    TableCache* table_cache, std::vector<ScopedArenaIterator*> iters,
+    std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
+    range_del_iters,
+    FileMetaData* meta, 
+    const InternalKeyComparator& internal_comparator,
+    const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
+        int_tbl_prop_collector_factories,
+    uint32_t column_family_id, const std::string& column_family_name,
+    std::vector<SequenceNumber> snapshots,
+    SequenceNumber earliest_write_conflict_snapshot,
+    SnapshotChecker* snapshot_checker, const CompressionType compression,
+    uint64_t sample_for_compression, const CompressionOptions& compression_opts,
+    bool paranoid_file_checks, InternalStats* internal_stats,
+    TableFileCreationReason reason,
+    std::vector<PartitionTreeNode*>& children_nodes,
+    EventLogger* event_logger, int job_id,
+    const Env::IOPriority io_priority, TableProperties* table_properties,
+    int level, const uint64_t creation_time, const uint64_t oldest_key_time,
+    Env::WriteLifeTimeHint write_hint, 
+		std::vector<std::string> sub_starts, std::vector<std::string> sub_ends);
+
+
+Status BuildsubTable(
+    const std::string& dbname, Env* env, const ImmutableCFOptions& ioptions,
+    const MutableCFOptions& mutable_cf_options, const EnvOptions& env_options,
+    TableCache* table_cache, InternalIterator* iter,
+    std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
+        range_del_iters,
+    FileMetaData* meta, const InternalKeyComparator& internal_comparator,
+    const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
+        int_tbl_prop_collector_factories,
+    uint32_t column_family_id, const std::string& column_family_name,
+    std::vector<SequenceNumber> snapshots,
+    SequenceNumber earliest_write_conflict_snapshot,
+    SnapshotChecker* snapshot_checker, const CompressionType compression,
+    uint64_t sample_for_compression, const CompressionOptions& compression_opts,
+    bool paranoid_file_checks, InternalStats* internal_stats,
+    TableFileCreationReason reason, EventLogger* event_logger, int job_id,
+    const Env::IOPriority io_priority, TableProperties* table_properties,
+    int level, const uint64_t creation_time, const uint64_t oldest_key_time,
+    Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, 
+	int sub_flush_id);
 }  // namespace rocksdb

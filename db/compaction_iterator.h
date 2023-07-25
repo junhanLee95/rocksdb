@@ -108,8 +108,9 @@ class CompactionIterator {
   const CompactionIterationStats& iter_stats() const { return iter_stats_; }
 
   uint64_t GetInternalIterNextMicros(void) {
-    return internaliter_next_micros_;
+    return internaliter_next_micros_; 
   }
+
  private:
   // Processes the input stream to find the next output
   void NextFromInput();

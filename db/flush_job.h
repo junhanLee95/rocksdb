@@ -69,13 +69,19 @@ class FlushJob {
            Directory* output_file_directory, CompressionType output_compression,
            Statistics* stats, EventLogger* event_logger, bool measure_io_stats,
            const bool sync_output_directory, const bool write_manifest,
-           Env::Priority thread_pri);
+           Env::Priority thread_pri/*, FlushJobStats *flush_job_stats*/);
 
   ~FlushJob();
 
   // Require db_mutex held.
   // Once PickMemTable() is called, either Run() or Cancel() has to be called.
   void PickMemTable();
+
+  /* Made by Kyoungho Koo
+   * : for multi-threaded split-then-flush
+   */
+  void Prepare();
+
   void SetChildrenNodes();
   Status Run(LogsWithPrepTracker* prep_tracker = nullptr,
              FileMetaData* file_meta = nullptr);
@@ -84,11 +90,14 @@ class FlushJob {
   const autovector<MemTable*>& GetMemTables() const { return mems_; }
 
  private:
+  struct SubflushState;
+
   void ReportStartedFlush();
   void ReportFlushInputSize(const autovector<MemTable*>& mems);
   void RecordFlushIOStats();
   Status WriteLevel0Table();
   Status WriteLevel0Tables(); // for split-then-flush
+  void ProcessKeyValueFlush(SubflushState* sub_flush);
 
   const std::string& dbname_;
   ColumnFamilyData* cfd_;
@@ -138,11 +147,18 @@ class FlushJob {
   // commit to the MANIFEST.
   const bool write_manifest_;
 
+  // CompactionJob state
+  struct FlushState;
+  FlushState* flush_;
+  //FlushJobStats* flush_job_stats_;
+
   // Variables below are set by PickMemTable():
   FileMetaData meta_;
   std::vector<FileMetaData> children_metas_; // file metadata of L0 for children nodes
                                              // Note that the size of children_metas_ is equal
                                              // to the size of children_nodes_
+
+  //mutable InstrumentedMutex sub_mutex_;
   autovector<MemTable*> mems_;
   VersionEdit* edit_;
   std::vector<VersionEdit> children_edits_; // version edit of L0 for children nodes

@@ -165,9 +165,16 @@ Status DBImpl::FlushMemTableToOutputFile(
 
   FileMetaData file_meta;
 
-  TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:BeforePickMemtables");
-  flush_job.PickMemTable();
-  TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:AfterPickMemtables");
+
+  if (immutable_db_options_.allow_column_family_split) {
+	  TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:BeforePrepare");
+	  flush_job.Prepare();
+	  TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:AfterPrepare");
+  } else {
+	  TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:BeforePickMemtables");
+	  flush_job.PickMemTable();
+	  TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:AfterPickMemtables");
+  }
 
 #ifndef ROCKSDB_LITE
   // may temporarily unlock and lock the mutex.

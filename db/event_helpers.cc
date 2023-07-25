@@ -98,7 +98,7 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
                             table_properties.num_entries)
               << "num_data_blocks" << table_properties.num_data_blocks
               << "num_entries" << table_properties.num_entries
-              /* JH: for debugging */
+              /* JH: for debugging (collect flush stat) */
               << "data_block_creation" << table_properties.data_block_time
               << "filter_block_creation" << table_properties.filter_block_time
               << "index_block_creation" << table_properties.index_block_time
@@ -106,7 +106,7 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
               << "flush_policy" << table_properties.flush_policy_time
               << "etc" << table_properties.etc_time
               << "stat" << table_properties.stat_time
-              /* JH: for debugging */
+              /* JH: for debugging (collect flush stat) */
               << "filter_policy_name" << table_properties.filter_policy_name;
 
 			// prefix key properties
