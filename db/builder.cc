@@ -89,7 +89,6 @@ Status BuildTable(
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
   meta->fd.file_size = 0;
-  std::cout << "BuildTable()" << std::endl;
   iter->SeekToFirst();
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
       new CompactionRangeDelAggregator(&internal_comparator, snapshots));
