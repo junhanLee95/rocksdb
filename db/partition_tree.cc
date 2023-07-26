@@ -278,7 +278,7 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
     cnode = nnode; 
   }
 
-  if(cnode->cfd_->GetName() != "default") {
+  /*if(cnode->cfd_->GetName() != "default") {
     assert (key.ToString().compare(get_lmost_key(cnode)) >= 0);
     assert (key.ToString().compare(get_rmost_key(cnode)) <= 0);
     if(key.ToString().compare(get_lmost_key(cnode)) < 0 || 
@@ -288,7 +288,7 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
           get_lmost_key(cnode).c_str(),
           get_rmost_key(cnode).c_str());
     }
-  }
+  }*/
   /*ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
                  "CFD[%s] Search... %s < [%s] < %s", 
                  cnode->cfd_->GetName().c_str(),

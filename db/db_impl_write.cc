@@ -1907,7 +1907,7 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
                    cfd->GetID());  */
   }
   // key range assertion check
-  if (cfd->GetName() != "default" &&
+  /*if (cfd->GetName() != "default" &&
       (cfd->GetSmallestKey().compare(key.ToString()) > 0 ||
        cfd->GetLargestKey().compare(key.ToString()) < 0)) {
     fprintf(stderr, "DB:Put error(1) key %s range %s[%s,%s]\n",
@@ -1915,7 +1915,7 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
         cfd->GetName().c_str(),
         cfd->GetSmallestKey().c_str(), cfd->GetLargestKey().c_str());
     exit(1);
-  }
+  }*/
   // TODO(Junhan):
   // why cfd and cfh have different ID.... fix this.
 

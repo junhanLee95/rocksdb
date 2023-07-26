@@ -10,6 +10,7 @@
 #include <sstream>
 #include <iomanip>
 #include <chrono>
+#include <thread>
 
 #include "db/db_impl.h"
 #include "db/version_set.h"
@@ -21,6 +22,7 @@
 #include "util/testharness.h"
 #include "util/testutil.h"
 #include "utilities/merge_operators.h"
+#include "port/port.h"
 
 namespace rocksdb {
 
@@ -46,6 +48,29 @@ class LCFFlushTest : public testing::Test {
     dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level" + ToString(level), &value); 
     return std::stoi(value);
   }
+
+	static void PrepareMemtable(DB* db, ColumnFamilyHandle* cfh, int kv_base, int kv_size ) {
+		std::cout << "[START]Prepare\n";
+    const std::string CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
+		std::random_device random_device;
+		std::mt19937 generator(random_device());
+		std::uniform_int_distribution<> distribution(0, CHARACTERS.size() -1);
+
+	  std::cout << "kv_base  : " << kv_base << std::endl;
+	  std::cout << "kv_size  : " << kv_size << std::endl;
+		for(int i = kv_base; i < kv_base + kv_size; i++) {
+			// 23-byte key 
+			std::string key = "user00000000000000" + std::to_string(i); 
+			//std::string value = "abcde" + std::to_string(i) + "fghijklmno"+ "pqr";
+			// 1000-byte value
+			std::string value;
+			for(int j = 0; i < 1000; j++) {
+				value += CHARACTERS[distribution(generator)];
+			}
+			db->Put(WriteOptions(), cfh, key, value);
+		} 
+		std::cout << "[END]Prepare\n";
+	}
 
   void TEST_Split(DB* db, int from, int to, std::pair<std::string, std::string> (&ranges)[split_cnt])
   {
@@ -267,6 +292,7 @@ TEST_F(LCFFlushTest, Prepare) {
   //options.allow_column_family_split = false;
   options.allow_column_family_split = true;
   int kv_size = 65536;
+	int kv_base = 10000;
   int num_cf = 1;
 
 	static class std::shared_ptr<rocksdb::Statistics> dbstats;
@@ -284,27 +310,17 @@ TEST_F(LCFFlushTest, Prepare) {
   ColumnFamilyData* cfd =
       static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
 
-  const std::string CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
-
-  std::random_device random_device;
-  std::mt19937 generator(random_device());
-  std::uniform_int_distribution<> distribution(0, CHARACTERS.size() -1);
-
 
   // Prepare Memtable
-  // Generate 64k KV-pair
-  int kv_base = 10000;
-  for(int i = kv_base; i < kv_base + kv_size; i++) {
-	// 23-byte key 
-    std::string key = "user00000000000000" + std::to_string(i); 
-    //std::string value = "abcde" + std::to_string(i) + "fghijklmno"+ "pqr";
-		// 1000-byte value
-	  std::string value;
-		for(int j = 0; i < 1000; j++) {
-			value += CHARACTERS[distribution(generator)];
-		}
-    db->Put(WriteOptions(), cfh, key, value);
-  } 
+	int num_thread = 16;
+	std::vector<port::Thread> thread_pool;
+	thread_pool.reserve(num_thread);
+	for(int i=0; i<num_thread; i++) {
+	  thread_pool.emplace_back(&PrepareMemtable, db, cfh, kv_base + i * kv_size/num_thread, kv_size/num_thread);
+  }
+	for (auto& thread : thread_pool) {
+		thread.join();
+	}
 
   // Next, we construct two-level partition tree.
   
