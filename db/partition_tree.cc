@@ -4,6 +4,7 @@
 // Note: add rw mutex to partition tree for the synchronization.
 
 #include "db/partition_tree.h"
+#include "util/stop_watch.h"
 #include <assert.h>
 
 namespace rocksdb {
@@ -89,7 +90,9 @@ int PartitionTreeNode::GetDepth(void) {
 // PartitionTree function.
 
 PartitionTree::PartitionTree( 
-    ColumnFamilyData* column_family_data) {
+    ColumnFamilyData* column_family_data) :
+	ioptions_(column_family_data->ioptions()) {
+  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_C);
   WriteLock wl(&rwlock_);
   root_ = new PartitionTreeNode(column_family_data);
   if (column_family_data != nullptr) {
@@ -101,6 +104,7 @@ PartitionTree::PartitionTree(
 }
 
 PartitionTree::~PartitionTree() {
+  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_D);
   //fprintf(stdout, "[PartitionTree] delete partition tree node\n");
   delete root_;
   partition_nodes_.clear();
@@ -108,6 +112,7 @@ PartitionTree::~PartitionTree() {
 
 void PartitionTree::SetRootColumnFamily (
     ColumnFamilyData* column_family_data) {
+  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_S);
   WriteLock wl(&rwlock_);
   root_->SetColumnFamily(column_family_data);
 
@@ -119,6 +124,7 @@ void PartitionTree::SetRootColumnFamily (
 Status PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
+  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_I);
   WriteLock wl(&rwlock_);
 
   /*fprintf(stdout, "[InsertSplittedColumnFamily] base CFD[%d] %s - [%s, %s]\n",  
@@ -261,21 +267,17 @@ Status PartitionTree::InsertSplittedColumnFamily (
 
 ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
   ReadLock rl(&rwlock_);
+  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_SE);
   PartitionTreeNode *cnode = root_; // current node
-  PartitionTreeNode *nnode = nullptr; // next node
+  PartitionTreeNode *nnode = cnode->SearchNextNode(key); // next node
 
-  while (true) {
+  while(nnode != nullptr) {
     /*ROCKS_LOG_INFO(cnode->cfd_->ioptions()->info_log,
                  "SearchColumnFamily : %s(%d)\n", 
                  cnode->cfd_->GetName().c_str(),
                  cnode->cfd_->GetID());*/
-
+		cnode = nnode;
     nnode = cnode->SearchNextNode(key);
-
-    if (nnode == nullptr) 
-      break; 
-
-    cnode = nnode; 
   }
 
   /*if(cnode->cfd_->GetName() != "default") {
@@ -304,6 +306,7 @@ ColumnFamilyData* PartitionTree::SearchColumnFamily (const Slice &key) {
 }
 
 std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Slice &key) {
+  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_SES);
   ReadLock rl(&rwlock_);
   std::vector<ColumnFamilyData*> search_cfds; // cfds to return
   PartitionTreeNode *cnode = root_; // current node
@@ -328,6 +331,7 @@ std::vector<ColumnFamilyData*> PartitionTree::SearchAllColumnFamilies (const Sli
 }
 
 std::vector<PartitionTreeNode*> PartitionTree::GetChildrenNodes(PartitionTreeNode* node) {
+  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_G);
   ReadLock rl(&rwlock_);
   return node->GetChildrenNodes();
 }

@@ -424,6 +424,14 @@ enum Histograms : uint32_t {
   BLOB_DB_DECOMPRESSION_MICROS,
   // Time spent flushing memtable to disk
   FLUSH_TIME,
+  DB_PTREE,
+  DB_PTREELOCK_C,
+  DB_PTREELOCK_D,
+  DB_PTREELOCK_S,
+  DB_PTREELOCK_I,
+  DB_PTREELOCK_SE,
+  DB_PTREELOCK_SES,
+  DB_PTREELOCK_G,
 
   HISTOGRAM_ENUM_MAX,
 };

@@ -50,7 +50,8 @@ class PartitionTree {
   PartitionTreeNode* root_ = nullptr;
   std::unordered_map<uint32_t, PartitionTreeNode*> partition_nodes_;
   mutable port::RWMutex rwlock_;
-
+  const ImmutableCFOptions* ioptions_;
+  
   PartitionTree() {};
   PartitionTree(ColumnFamilyData *cfd);
   ~PartitionTree();
