@@ -72,6 +72,30 @@ class LCFFlushTest : public testing::Test {
 		std::cout << "[END]Prepare\n";
 	}
 
+	static void PrepareColumnFamily(DBImpl* db_impl, ColumnFamilyData* cfd,
+                  int kv_base, int cf_size, int i) {
+    std::vector<SplitFileInfo> infos;
+    FileMetaData* f1 = new FileMetaData;
+
+    size_t start_num = kv_base + i*cf_size;
+    size_t end_num = kv_base + (i+1)*cf_size - 1;
+
+    std::string s1 = "user00000000000000" + std::to_string(start_num);
+    std::string l1 = "user00000000000000" + std::to_string(end_num);
+    
+		std::cout << "[START]Prepare " << i << "-th thread [ " << s1 << ", " << l1 << "]\n";
+    f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+    f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+
+    infos.push_back(SplitFileInfo(f1, cfd));
+
+    db_impl->SplitColumnFamilyFromSstFiles(infos);
+
+    delete f1;
+    infos.clear();
+	}
+
+
   void TEST_Split(DB* db, int from, int to, std::pair<std::string, std::string> (&ranges)[split_cnt])
   {
     ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
@@ -282,6 +306,51 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   delete db;
   db = nullptr;
 }*/
+
+TEST_F(LCFFlushTest, PrepareMultipleCFs) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =2;
+  options.atomic_flush = false;
+  //options.allow_column_family_split = false;
+  options.allow_column_family_split = true;
+  int kv_size = 65536;
+	int kv_base = 10000;
+
+	static class std::shared_ptr<rocksdb::Statistics> dbstats;
+	dbstats = rocksdb::CreateDBStatistics();
+	dbstats->set_stats_level(static_cast<StatsLevel>
+			(rocksdb::StatsLevel::kExceptDetailedTimers));
+	options.statistics = dbstats;
+
+
+  std::string db_name = "/mnt/rocksdb_test";
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+  // Prepare column family
+	int num_thread = 16;
+  int cf_size = kv_size / num_thread;
+
+	std::vector<port::Thread> thread_pool;
+	thread_pool.reserve(num_thread);
+	for(int i=0; i<num_thread; i++) {
+	  thread_pool.emplace_back(&PrepareColumnFamily, dbfull(db), cfd,
+                             kv_base, cf_size, i);
+  }
+	for (auto& thread : thread_pool) {
+		thread.join();
+	}
+
+  delete db;
+  db = nullptr;
+}
+
 /*
 TEST_F(LCFFlushTest, Prepare) {
   Options options;
@@ -363,7 +432,7 @@ TEST_F(LCFFlushTest, Prepare) {
   delete db;
   db = nullptr;
 }*/
-
+/*
 TEST_F(LCFFlushTest, SyncTest) {
   Options options;
   options.create_if_missing = true;
@@ -427,7 +496,7 @@ TEST_F(LCFFlushTest, SyncTest) {
   // clean up
   delete db;
   db = nullptr;
-}
+}*/
 
 /*
 TEST_F(LCFFlushTest, TimeAnalysis) {

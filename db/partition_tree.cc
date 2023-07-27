@@ -36,7 +36,7 @@ void PartitionTreeNode::SetColumnFamily (
 
 PartitionTreeNode *PartitionTreeNode::SearchNextNode (
     const Slice &key) {
-    
+  ReadLock rl(&rwlock_);
   if (lower_level_nodes_.empty()) 
     return nullptr;
 
@@ -56,16 +56,19 @@ PartitionTreeNode *PartitionTreeNode::SearchNextNode (
 }
 
 PartitionTreeNode* PartitionTreeNode::GetParentNode(void) {
+  ReadLock rl(&rwlock_);
   return parent_node_;
 }
 
 std::vector<PartitionTreeNode*> PartitionTreeNode::GetChildrenNodes(void) {
+  ReadLock rl(&rwlock_);
   return lower_level_nodes_; 
 }
 
 void PartitionTreeNode::Print(
     std::string TreeID, 
     bool recursive) {
+  ReadLock rl(&rwlock_);
   ROCKS_LOG_INFO(cfd_->ioptions()->info_log,
                  "%-6s LCF[%d] %s => [%s, %s]\n", 
                  TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 
@@ -84,6 +87,7 @@ void PartitionTreeNode::Print(
 }
 
 int PartitionTreeNode::GetDepth(void) {
+  ReadLock rl(&rwlock_);
   return depth_; 
 }
 
@@ -112,8 +116,8 @@ Status PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
   StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_I);
-  WriteLock wl(&rwlock_);
-
+  WriteLock wl(&rwlock_); //we replaced this with partition tree node scale lock
+  //ReadLock rl(&rwlock_);
   /*fprintf(stdout, "[InsertSplittedColumnFamily] base CFD[%d] %s - [%s, %s]\n",  
             base_cfd->GetID(),
             base_cfd->GetName().c_str(),
@@ -144,10 +148,8 @@ Status PartitionTree::InsertSplittedColumnFamily (
   }*/
 
   for (auto new_cfd: new_cfds) {
-    
-
     auto node = new PartitionTreeNode(new_cfd);
-    node->depth_ = base_node->depth_+1;
+    node->depth_ = base_node->GetDepth()+1;
     assert (new_cfd != nullptr);
     new_cfd->SetPartitionTreeNode(node);  
 
@@ -174,6 +176,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
             n_smallest.c_str(), 
             n_largest.c_str()
             );*/
+    //WriteLock wl(&base_node->rwlock_);
     int l, r, m;
     l = 0;
     r = base_node->lower_level_nodes_.size() - 1;
