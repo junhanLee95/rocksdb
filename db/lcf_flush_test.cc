@@ -282,7 +282,7 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   delete db;
   db = nullptr;
 }*/
-
+/*
 TEST_F(LCFFlushTest, Prepare) {
   Options options;
   options.create_if_missing = true;
@@ -362,8 +362,8 @@ TEST_F(LCFFlushTest, Prepare) {
 
   delete db;
   db = nullptr;
-}
-/*
+}*/
+
 TEST_F(LCFFlushTest, SyncTest) {
   Options options;
   options.create_if_missing = true;
@@ -407,9 +407,6 @@ TEST_F(LCFFlushTest, SyncTest) {
   // default6
   ranges[6].first = "user00000000000012247591";
   ranges[6].second = "user00000000000017499706";
-  // default7
-  ranges[7].first = "user00000000000016353858";
-  ranges[7].second = "user00000000000211468523";
 
   // [SPLIT] default -> default1
   TEST_Split(db, 0, 1, ranges);
@@ -423,9 +420,6 @@ TEST_F(LCFFlushTest, SyncTest) {
   TEST_Split(db, 0, 5, ranges);
   // [SPLIT] default -> default6
   TEST_Split(db, 0, 6, ranges);
-  // [SPLIT] default6 -> default7
-  //TEST_Split(db, 6, 7, ranges);
-
 
   // Flush
   db->Flush(FlushOptions(), cfh);
@@ -433,7 +427,7 @@ TEST_F(LCFFlushTest, SyncTest) {
   // clean up
   delete db;
   db = nullptr;
-}*/
+}
 
 /*
 TEST_F(LCFFlushTest, TimeAnalysis) {

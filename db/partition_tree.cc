@@ -1,7 +1,7 @@
 // Author: Dohyun Kim (ehgus421210@kaist.ac.kr)
 // Note: Partition tree for logical column family.
 // Modified by : Junhan (junhanlee2020@gmail.com)
-// Note: add rw mutex to partition tree for the synchronization.
+// Note: add rw mutex to partition tree node for the synchronization.
 
 #include "db/partition_tree.h"
 #include "util/stop_watch.h"
@@ -100,14 +100,12 @@ PartitionTree::PartitionTree(
   }
   //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
-  partition_nodes_.insert({column_family_data->GetID(), root_}); 
 }
 
 PartitionTree::~PartitionTree() {
   StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_D);
   //fprintf(stdout, "[PartitionTree] delete partition tree node\n");
   delete root_;
-  partition_nodes_.clear();
 }
 
 void PartitionTree::SetRootColumnFamily (
@@ -118,7 +116,6 @@ void PartitionTree::SetRootColumnFamily (
 
   //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
 
-  partition_nodes_.insert({column_family_data->GetID(), root_});
 }
 
 Status PartitionTree::InsertSplittedColumnFamily (
@@ -138,8 +135,7 @@ Status PartitionTree::InsertSplittedColumnFamily (
     return Status::OK(); 
   }
 
-  auto base_node_iter = partition_nodes_.find(base_cfd->GetID());
-  auto base_node = base_node_iter->second;
+  auto base_node = base_cfd->GetPartitionTreeNode();
 
   // TODO: check violation 1. 
   // Violation 1. The key range of splitted nodes under the base should be 
@@ -228,8 +224,6 @@ Status PartitionTree::InsertSplittedColumnFamily (
                                          node);
     //JH: Set parent node
     node->parent_node_ = base_node;
-    //JH: Add child node to partition_nodes_ map
-    partition_nodes_.insert({new_cfd->GetID(), node});
   }
 
   for (size_t i = 0; i < base_node->lower_level_nodes_.size(); i++) {

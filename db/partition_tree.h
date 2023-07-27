@@ -29,6 +29,7 @@ class PartitionTreeNode {
 
   std::vector<PartitionTreeNode*> lower_level_nodes_;
   PartitionTreeNode *parent_node_ = nullptr;
+  mutable port::RWMutex rwlock_;
   
   PartitionTreeNode() {};
   PartitionTreeNode(ColumnFamilyData*); 
@@ -48,7 +49,6 @@ class PartitionTree {
  public:
 
   PartitionTreeNode* root_ = nullptr;
-  std::unordered_map<uint32_t, PartitionTreeNode*> partition_nodes_;
   mutable port::RWMutex rwlock_;
   const ImmutableCFOptions* ioptions_;
   
