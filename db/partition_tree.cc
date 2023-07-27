@@ -108,16 +108,6 @@ PartitionTree::~PartitionTree() {
   delete root_;
 }
 
-void PartitionTree::SetRootColumnFamily (
-    ColumnFamilyData* column_family_data) {
-  StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_S);
-  WriteLock wl(&rwlock_);
-  root_->SetColumnFamily(column_family_data);
-
-  //fprintf(stdout, "[PartitionTree] Insert New CFD %d\n", column_family_data->GetID());
-
-}
-
 Status PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
