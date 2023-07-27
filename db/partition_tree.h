@@ -49,7 +49,6 @@ class PartitionTree {
  public:
 
   PartitionTreeNode* root_ = nullptr;
-  mutable port::RWMutex rwlock_;
   const ImmutableCFOptions* ioptions_;
   
   PartitionTree() {};

@@ -306,7 +306,7 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   delete db;
   db = nullptr;
 }*/
-
+/*
 TEST_F(LCFFlushTest, PrepareMultipleCFs) {
   Options options;
   options.create_if_missing = true;
@@ -333,8 +333,8 @@ TEST_F(LCFFlushTest, PrepareMultipleCFs) {
   ColumnFamilyData* cfd =
       static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
 
-  // Prepare column family
-	int num_thread = 16;
+  // Prepare column family - level 1
+	int num_thread = 8;
   int cf_size = kv_size / num_thread;
 
 	std::vector<port::Thread> thread_pool;
@@ -347,11 +347,13 @@ TEST_F(LCFFlushTest, PrepareMultipleCFs) {
 		thread.join();
 	}
 
+  thread_pool.clear();
+
   delete db;
   db = nullptr;
 }
+*/
 
-/*
 TEST_F(LCFFlushTest, Prepare) {
   Options options;
   options.create_if_missing = true;
@@ -362,7 +364,7 @@ TEST_F(LCFFlushTest, Prepare) {
   options.allow_column_family_split = true;
   int kv_size = 65536;
 	int kv_base = 10000;
-  int num_cf = 1;
+  int num_cf = 4;
 
 	static class std::shared_ptr<rocksdb::Statistics> dbstats;
 	dbstats = rocksdb::CreateDBStatistics();
@@ -431,7 +433,7 @@ TEST_F(LCFFlushTest, Prepare) {
 
   delete db;
   db = nullptr;
-}*/
+}
 /*
 TEST_F(LCFFlushTest, SyncTest) {
   Options options;
