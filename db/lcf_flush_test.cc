@@ -64,7 +64,7 @@ class LCFFlushTest : public testing::Test {
 			//std::string value = "abcde" + std::to_string(i) + "fghijklmno"+ "pqr";
 			// 1000-byte value
 			std::string value;
-			for(int j = 0; i < 1000; j++) {
+			for(int j = 0; j < 1000; j++) {
 				value += CHARACTERS[distribution(generator)];
 			}
 			db->Put(WriteOptions(), cfh, key, value);
@@ -306,7 +306,7 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   delete db;
   db = nullptr;
 }*/
-/*
+
 TEST_F(LCFFlushTest, PrepareMultipleCFs) {
   Options options;
   options.create_if_missing = true;
@@ -315,8 +315,8 @@ TEST_F(LCFFlushTest, PrepareMultipleCFs) {
   options.atomic_flush = false;
   //options.allow_column_family_split = false;
   options.allow_column_family_split = true;
-  int kv_size = 65536;
-	int kv_base = 10000;
+  int kv_size = 65536*16;
+	int kv_base = 1000000;
 
 	static class std::shared_ptr<rocksdb::Statistics> dbstats;
 	dbstats = rocksdb::CreateDBStatistics();
@@ -349,11 +349,21 @@ TEST_F(LCFFlushTest, PrepareMultipleCFs) {
 
   thread_pool.clear();
 
+  // Prepare Memtable
+	num_thread = 8;
+	thread_pool.reserve(num_thread);
+	for(int i=0; i<num_thread; i++) {
+	  thread_pool.emplace_back(&PrepareMemtable, db, cfh, kv_base + i * kv_size/num_thread, kv_size/num_thread);
+  }
+	for (auto& thread : thread_pool) {
+		thread.join();
+	}
+
+	fprintf(stdout,"STATISTICS:\n%s\n", dbstats->ToString().c_str());
   delete db;
   db = nullptr;
 }
-*/
-
+/*
 TEST_F(LCFFlushTest, Prepare) {
   Options options;
   options.create_if_missing = true;
@@ -433,7 +443,7 @@ TEST_F(LCFFlushTest, Prepare) {
 
   delete db;
   db = nullptr;
-}
+}*/
 /*
 TEST_F(LCFFlushTest, SyncTest) {
   Options options;

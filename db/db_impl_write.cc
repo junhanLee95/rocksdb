@@ -1894,19 +1894,19 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
                const Slice& key, const Slice& value) {
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
-  ColumnFamilySet* cfs = cfd->GetColumnFamilySet();
+  //ColumnFamilySet* cfs = cfd->GetColumnFamilySet();
 
   // Dohyun Kim: Partition Tree Search
   // Junhan : This search acquires RW Mutex to traverse the partition tree.
-  DBImpl* db_impl = reinterpret_cast<DBImpl*>(this);
+  /*DBImpl* db_impl = reinterpret_cast<DBImpl*>(this);
   if (db_impl->immutable_db_options_.allow_column_family_split) {
 		StopWatch write_sw(db_impl->env_, db_impl->immutable_db_options_.statistics.get(), DB_PTREE);
     cfd = cfs->GetLogicalColumnFamily(key);
-    /*ROCKS_LOG_INFO(db_impl->immutable_db_options_.info_log,
-                   "Put key : %s (ID %d)",
-                   key.ToString().c_str(),
-                   cfd->GetID());  */
-  }
+    //ROCKS_LOG_INFO(db_impl->immutable_db_options_.info_log,
+    //               "Put key : %s (ID %d)",
+    //               key.ToString().c_str(),
+    //               cfd->GetID());  
+  }*/
   // key range assertion check
   /*if (cfd->GetName() != "default" &&
       (cfd->GetSmallestKey().compare(key.ToString()) > 0 ||
