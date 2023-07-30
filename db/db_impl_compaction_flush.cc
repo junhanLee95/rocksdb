@@ -2007,6 +2007,7 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
       fta->thread_pri_ = Env::Priority::LOW;
       env_->Schedule(&DBImpl::BGWorkSplit, fta, Env::Priority::LOW, this,
                      &DBImpl::UnscheduleSplitCallback);
+      unscheduled_splits_ --;
   }
 
   if (bg_compaction_paused_ > 0) {
@@ -2141,7 +2142,6 @@ DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   }
   //assert(unscheduled_splits_ >= static_cast<int>(split_req.size()));
   //unscheduled_splits_ -= static_cast<int>(split_req.size());
-  unscheduled_splits_ -= 1;
   split_queue_.pop_front();
   assert(cfd->queued_for_split());
   ROCKS_LOG_INFO(
