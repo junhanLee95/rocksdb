@@ -653,6 +653,7 @@ Status BuildParentTable(
 	for (size_t i = 0; i < children_size + 1; i++) {
 		InternalIterator* iter = iters[i]->get();
 		if (!iter->Valid()) {
+      ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] BuildParentTable() iter is not valid", job_id);
 			iter_valid = false;
 			break;
 		}
@@ -733,34 +734,32 @@ Status BuildParentTable(
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
 			c_iter->SeekToFirst();
+      // JH : exclude sub_ends[i-1]
+      if (c_iter->Valid()) {
+        c_iter->Next(); 
+      } else {
+        ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable() c_iter next", job_id);
+      }
+
 		  c_iters.push_back(c_iter);
 		}
-
 
 		for (size_t i = 0; i < children_size + 1; i++) {
 			for (;;) {
 				if (!c_iters[i]->Valid()) {
+          ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable() c_iter valid", job_id);
 					break;
 				}
-
 				const Slice& key = c_iters[i]->key();
 				const Slice& value = c_iters[i]->value();
 				std::string user_key_str = c_iters[i]->user_key().ToString();
-
-
 				if(i == children_size || 
 						user_key_str.compare(sub_starts[i]) < 0) {
-					
-					std::cout << "BuildParentTable() Build "<< i << " user_key_str "<< user_key_str 
-						<< std::endl; 
-						
 					builder->Add(key, value);
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
 				} else {
 					break;
 				}
-
-				
 				// TODO(noetzli): Update stats after flush, too.
 				if (io_priority == Env::IO_HIGH &&
 						IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
@@ -770,8 +769,6 @@ Status BuildParentTable(
 				c_iters[i]->Next();
 			}
 		}
-
-
 
     // TODO(Junhan): Consider adding rangedel tombstone when split-then-flush
     auto range_del_it = range_del_agg->NewIterator();
