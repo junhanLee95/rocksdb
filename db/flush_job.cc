@@ -345,17 +345,20 @@ void FlushJob::Prepare() {
                      children_metas_.capacity());
   flush_->sub_flush_states.emplace_back(flush_, "", "", meta_, nullptr, 0);
 
+  std::vector<SuperVersionContext>& superversion_contexts = 
+      job_context_->superversion_contexts;
   for (int child_idx = 0; child_idx < num_boundaries; child_idx++) {
     FileMetaData sub_meta;
-	VersionEdit* sub_edit = new VersionEdit();
+    VersionEdit* sub_edit = new VersionEdit();
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     std::string start_key = get_lmost_key(children_nodes_[child_idx]);
     std::string end_key = get_rmost_key(children_nodes_[child_idx]);
-	  sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
+    sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
     flush_->sub_flush_states.emplace_back(flush_, start_key, end_key, sub_meta,
-                                          sub_edit, child_idx+1);
-
+        sub_edit, child_idx+1);
+    // JH: prepare superversion_contexts for child nodes
+    superversion_contexts.emplace_back(SuperVersionContext(true));
   }
    
   /*
@@ -417,7 +420,11 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   // This will release and re-acquire the mutex.
   Status status;
   if (db_options_.allow_column_family_split) {
-	//std::cout << "FlushJob::Run() Multi-threaded Split-then-flush" << std::endl;
+    ROCKS_LOG_INFO(
+        db_options_.info_log,
+        "Flushing [%s]",
+        cfd_->GetName().c_str());
+
 		const uint64_t start_micros = db_options_.env->NowMicros();
     const size_t num_threads = flush_->sub_flush_states.size();
     assert(num_threads > 0);

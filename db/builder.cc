@@ -750,10 +750,10 @@ Status BuildParentTable(
 
 				if(i == children_size || 
 						user_key_str.compare(sub_starts[i]) < 0) {
-					/*
+					
 					std::cout << "BuildParentTable() Build "<< i << " user_key_str "<< user_key_str 
-						<< " sub_start "<< sub_starts[i] << std::endl; 
-						*/
+						<< std::endl; 
+						
 					builder->Add(key, value);
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
 				} else {

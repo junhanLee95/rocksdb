@@ -57,7 +57,7 @@ class LCFFlushTest : public testing::Test {
 		std::uniform_int_distribution<> distribution(0, CHARACTERS.size() -1);
 
 	  std::cout << "kv_base  : " << kv_base << std::endl;
-	  std::cout << "kv_size  : " << kv_size << std::endl;
+	  std::cout << "kv_end  : " << kv_base+kv_size-1 << std::endl;
 		for(int i = kv_base; i < kv_base + kv_size; i++) {
 			// 23-byte key 
 			std::string key = "user00000000000000" + std::to_string(i); 

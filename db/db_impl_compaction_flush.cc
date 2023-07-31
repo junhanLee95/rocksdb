@@ -209,8 +209,24 @@ Status DBImpl::FlushMemTableToOutputFile(
   }
 
   if (s.ok()) {
-    InstallSuperVersionAndScheduleWork(cfd, superversion_context,
-                                       mutable_cf_options);
+    // JH: install superversion for children nodes after the flush job completion.
+    if (immutable_db_options_.allow_column_family_split) {
+      // Parent
+      int idx=0;
+      InstallSuperVersionAndScheduleWork(cfd, &job_context->superversion_contexts[idx++],
+          mutable_cf_options);
+      assert(job_context->superversion_contexts.size() == cfd->GetChildrenNodes().size() +1);
+      // Children
+      auto children_nodes = cfd->GetChildrenNodes();
+      for (auto node: children_nodes) {
+        // TODO(JH): now we assume mutable_cf_options for every column families are the same.
+        InstallSuperVersionAndScheduleWork(node->cfd_, &job_context->superversion_contexts[idx++],
+            mutable_cf_options);
+      }
+    } else {
+      InstallSuperVersionAndScheduleWork(cfd, superversion_context,
+          mutable_cf_options);
+    }
     if (made_progress) {
       *made_progress = true;
     }
@@ -221,9 +237,10 @@ Status DBImpl::FlushMemTableToOutputFile(
     if (immutable_db_options_.allow_column_family_split) {
       auto children_nodes = cfd->GetChildrenNodes();
       for(auto node: children_nodes) {
+        VersionStorageInfo::LevelSummaryStorage tmp_c;
         ROCKS_LOG_BUFFER(log_buffer, "[%s] children Level summary: %s\n",
                          node->cfd_->GetName().c_str(),
-                         node->cfd_->current()->storage_info()->LevelSummary(&tmp));  
+                         node->cfd_->current()->storage_info()->LevelSummary(&tmp_c));  
       }
       
     }
@@ -1994,6 +2011,7 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   }
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                      "unscheduled_splits_ : %d", unscheduled_splits_);
+
   if (immutable_db_options_.allow_column_family_split &&
       bg_flush_scheduled_ == 0 &&
       bg_compaction_scheduled_ == 0 &&
