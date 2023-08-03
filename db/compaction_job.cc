@@ -1352,7 +1352,7 @@ Status CompactionJob::FinishCompactionOutputFile(
 
     // JH: If db allows column family split,
     // Generate split request if necessary
-    if (db_options_.allow_column_family_split) {
+    /*if (db_options_.allow_column_family_split) {
       float threshold = 0.6 - 0.1 * cfd->GetPartitionTreeNode()->GetDepth();
       if (efficiency < threshold && compact_->compaction->output_level() == 1) {
         ROCKS_LOG_INFO(db_options_.info_log,
@@ -1366,11 +1366,11 @@ Status CompactionJob::FinishCompactionOutputFile(
         versions_->AddSplitFile(meta, cfd);
       //fprintf(stdout, "meta smallest : %s\n", meta->smallest.DebugString(false).c_str());
       //fprintf(stdout, "meta largest : %s\n", meta->largest.DebugString(false).c_str());
-      /*
-      auto vstorage = cfd->current()->storage_info();
-      vstorage->AddToFilesMarkedForSplit(meta);*/
+      
+      //auto vstorage = cfd->current()->storage_info();
+      //vstorage->AddToFilesMarkedForSplit(meta);
       }
-    }
+    }*/
   }
   std::string fname;
   FileDescriptor output_fd;
