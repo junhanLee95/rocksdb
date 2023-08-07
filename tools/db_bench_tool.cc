@@ -963,7 +963,8 @@ DEFINE_uint64(
     benchmark_write_rate_limit, 0,
     "If non-zero, db_bench will rate-limit the writes going into RocksDB. This "
     "is the global rate in bytes/second.");
-
+// the parameters of lcf
+DEFINE_bool(allow_column_family_split, false, "use lcf");
 // the parameters of mix_graph
 DEFINE_double(keyrange_dist_a, 0.0,
               "The parameter 'a' of prefix average access distribution "
@@ -3716,6 +3717,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   void InitializeOptionsGeneral(Options* opts) {
     Options& options = *opts;
 
+    options.allow_column_family_split = FLAGS_allow_column_family_split;
     options.create_missing_column_families = FLAGS_num_column_families > 1;
     options.statistics = dbstats;
     options.wal_dir = FLAGS_wal_dir;
@@ -6952,10 +6954,10 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   }
 };
 
-int db_bench_tool(int argc, char** argv, rocksdb::Env* bluefs_env) {
-  if(bluefs_env) {
+int db_bench_tool(int argc, char** argv/*, rocksdb::Env* bluefs_env*/) {
+  /*if(bluefs_env) {
     FLAGS_env = bluefs_env;
-  }
+  }*/
   rocksdb::port::InstallStackTraceHandler();
   static bool initialized = false;
   if (!initialized) {
