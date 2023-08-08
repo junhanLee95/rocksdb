@@ -965,6 +965,7 @@ DEFINE_uint64(
     "is the global rate in bytes/second.");
 // the parameters of lcf
 DEFINE_bool(allow_column_family_split, false, "use lcf");
+DEFINE_int32(static_lcf_num, 0, "number of static column families");
 // the parameters of mix_graph
 DEFINE_double(keyrange_dist_a, 0.0,
               "The parameter 'a' of prefix average access distribution "
@@ -3931,6 +3932,39 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 #endif  // ROCKSDB_LITE
     } else {
       s = DB::Open(options, db_name, &db->db);
+			// prepare static lcf if necessary
+			if (FLAGS_allow_column_family_split && FLAGS_static_lcf_num > 0) {
+				int32_t num_cf = FLAGS_static_lcf_num;
+				int64_t keyrange =  FLAGS_num;
+				int64_t unit = keyrange / num_cf;
+				int64_t unit_m = unit - 1;
+				fprintf(stdout, "num_cf : %d\n", num_cf);
+				fprintf(stdout, "keyrange : %" PRIu64 "\n", keyrange);
+				fprintf(stdout, "unit : %" PRIu64 "\n", unit);
+				DBImpl* db_impl = reinterpret_cast<DBImpl*>(db->db);
+				ColumnFamilyHandle* cfh = db_impl->DefaultColumnFamily();
+				ColumnFamilyData* cfd = static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+				std::unique_ptr<const char[]> start_key_guard;
+				Slice start_key = AllocateKey(&start_key_guard);
+				std::unique_ptr<const char[]> end_key_guard;
+				Slice end_key = AllocateKey(&end_key_guard);
+
+				for(int32_t i=0; i<num_cf; i++) {
+					uint64_t start_num = i * unit;
+					uint64_t end_num =  i * unit + unit_m;
+					GenerateKeyFromInt(start_num, FLAGS_num, &start_key);
+					GenerateKeyFromInt(end_num, FLAGS_num, &end_key);
+					std::vector<SplitFileInfo> infos;
+					FileMetaData* f1 = new FileMetaData;
+					f1->smallest = InternalKey(start_key, 0, kTypeValue);
+					f1->largest = InternalKey(end_key, 0, kTypeValue);
+					infos.push_back(SplitFileInfo(f1, cfd));
+					db_impl->SplitColumnFamilyFromSstFiles(infos);
+					delete f1;
+					infos.clear();
+				}
+			}
     }
     if (!s.ok()) {
       fprintf(stderr, "open error: %s\n", s.ToString().c_str());
