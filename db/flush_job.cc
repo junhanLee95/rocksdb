@@ -95,8 +95,8 @@ struct FlushJob::SubflushState {
   // 'start' is inclusive, 'end' is exclusive, and nullptr means unbounded
   //
   FlushState *flush_state;
-  std::string start;
-  std::string end;
+  Slice start;
+  Slice end;
 
   // The return status of this subflush
   Status status;
@@ -109,8 +109,8 @@ struct FlushJob::SubflushState {
 
 
 
-  SubflushState(FlushState *_flush, std::string _start, 
-		  std::string _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id)
+  SubflushState(FlushState *_flush, Slice _start, 
+		  Slice _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id)
       : flush_state(_flush),
 		start(_start),
         end(_end),
@@ -155,16 +155,16 @@ struct FlushJob::FlushState {
         num_input_records(0),
         num_output_records(0) {}
 
-	std::vector<std::string>  GetSubflushStarts() {
-		std::vector<std::string> starts;
+	std::vector<Slice> GetSubflushStarts() {
+		std::vector<Slice> starts;
 		for (size_t i = 1; i < sub_flush_states.size(); i++) {
 			starts.push_back(sub_flush_states[i].start);
 		}
 		return starts;
 	}
 
-	std::vector<std::string>  GetSubflushEnds() {
-		std::vector<std::string> ends;
+	std::vector<Slice> GetSubflushEnds() {
+		std::vector<Slice> ends;
 		for (size_t i = 1; i < sub_flush_states.size(); i++) {
 			ends.push_back(sub_flush_states[i].end);
 		}
@@ -352,8 +352,8 @@ void FlushJob::Prepare() {
     VersionEdit* sub_edit = new VersionEdit();
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
-    std::string start_key = get_lmost_key(children_nodes_[child_idx]);
-    std::string end_key = get_rmost_key(children_nodes_[child_idx]);
+    Slice start_key = get_lmost_key(children_nodes_[child_idx]);
+    Slice end_key = get_rmost_key(children_nodes_[child_idx]);
     sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
     flush_->sub_flush_states.emplace_back(flush_, start_key, end_key, sub_meta,
         sub_edit, child_idx+1);

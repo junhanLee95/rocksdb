@@ -402,7 +402,7 @@ void SuperVersionUnrefHandle(void* ptr) {
 }  // anonymous namespace
 
 ColumnFamilyData::ColumnFamilyData(
-    uint32_t id, const std::string& name, std::string smallest_user_key, std::string largest_user_key,  Version* _dummy_versions,
+    uint32_t id, const std::string& name, Slice smallest_user_key, Slice largest_user_key,  Version* _dummy_versions,
     Cache* _table_cache, WriteBufferManager* write_buffer_manager,
     const ColumnFamilyOptions& cf_options, const ImmutableDBOptions& db_options,
     const EnvOptions& env_options, ColumnFamilySet* column_family_set)
@@ -1033,11 +1033,11 @@ Compaction* ColumnFamilyData::PickSplit(
   return result;
 }
 
-std::string ColumnFamilyData::GetSmallestKey() {
+Slice ColumnFamilyData::GetSmallestKey() {
   return smallest_user_key_;
 }
 
-std::string ColumnFamilyData::GetLargestKey() {
+Slice ColumnFamilyData::GetLargestKey() {
   return largest_user_key_;
 }
 
@@ -1566,8 +1566,8 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
   // Predict split_cnt
   // Prepare smallest and largest key of each target column family.
   size_t split_cnt = 0; // number of partitions to create from the split job
-  std::vector<std::string> smallests; // key ranges(smallest) to split
-  std::vector<std::string> largests; // key ranges(largest) to split
+  std::vector<Slice> smallests; // key ranges(smallest) to split
+  std::vector<Slice> largests; // key ranges(largest) to split
   PartitionTreeNode* nnode; // parent node
   std::vector<PartitionTreeNode*> cnodes; // children nodes
 
@@ -1579,22 +1579,22 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
     ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: cnodes are empty");
     for (size_t i = 0; i < sst_split_files.size(); i++) {
-      smallests.push_back(sst_split_files[i].metadata->smallest.user_key().ToString(false));
-      largests.push_back(sst_split_files[i].metadata->largest.user_key().ToString(false));
+      smallests.push_back(sst_split_files[i].metadata->smallest.user_key());
+      largests.push_back(sst_split_files[i].metadata->largest.user_key());
     }
     split_cnt = sst_split_files.size();
   } else { // measure overlapping key ranges before putting sst_split_files to children
     size_t c_i = 0; // index for cnodes
-    std::string s_smallest; // sst_split_files' smallest key
-    std::string s_largest; // sst_split_files' largest key
+    Slice s_smallest; // sst_split_files' smallest key
+    Slice s_largest; // sst_split_files' largest key
 
     for (size_t s_i = 0; s_i < sst_split_files.size(); s_i ++) {
-      s_smallest = sst_split_files[s_i].metadata->smallest.user_key().ToString(false);
-      s_largest = sst_split_files[s_i].metadata->largest.user_key().ToString(false);    
+      s_smallest = sst_split_files[s_i].metadata->smallest.user_key();
+      s_largest = sst_split_files[s_i].metadata->largest.user_key();    
       ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: sst_split_file [%s, %s]", 
-                   s_smallest.c_str(),
-                   s_largest.c_str());
+                   s_smallest.ToString().c_str(),
+                   s_largest.ToString().c_str());
 
       if (c_i == cnodes.size()) { // we already looked up all children
         smallests.push_back(s_smallest);
@@ -1602,8 +1602,8 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
         split_cnt ++;
         ROCKS_LOG_INFO(db_options_->info_log.get(),
                        "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
-                       s_smallest.c_str(),
-                       s_largest.c_str(),
+                       s_smallest.ToString().c_str(),
+                       s_largest.ToString().c_str(),
                        split_cnt);
 
       } else { // we need to find cnodes with overlapping key ranges
@@ -1613,12 +1613,12 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
         for (; c_i < cnodes.size(); c_i++) {
           ColumnFamilyData* child_cfd =  cnodes[c_i]->cfd_;
           assert(child_cfd != nullptr);
-          std::string c_smallest = child_cfd->GetSmallestKey();
-          std::string c_largest = child_cfd->GetLargestKey();
+          Slice c_smallest = child_cfd->GetSmallestKey();
+          Slice c_largest = child_cfd->GetLargestKey();
           ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: look up child [%s, %s]", 
-                   c_smallest.c_str(),
-                   c_largest.c_str());
+                   c_smallest.ToString().c_str(),
+                   c_largest.ToString().c_str());
 
           bool overlap = !(s_largest.compare(c_smallest) < 0 || c_largest.compare(s_smallest) < 0);
           if (overlap) {
@@ -1636,62 +1636,56 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
 
         assert(from <= to);
 
-        std::string prefix_key = "user";
         if (found_overlap) {
           if (from == to) { // only one overlapping child column family
             ColumnFamilyData* child_cfd =  cnodes[from]->cfd_;
             assert(child_cfd != nullptr);
-            std::string c_smallest = child_cfd->GetSmallestKey();
-            std::string c_largest = child_cfd->GetLargestKey();
+            Slice c_smallest = child_cfd->GetSmallestKey();
+            Slice c_largest = child_cfd->GetLargestKey();
             AddKeyRangeIfNecessary(s_smallest, c_smallest,
                                      true /* include_left */,
                                      false /* include_right */,
                                      smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     &split_cnt);
             AddKeyRangeIfNecessary(c_largest, s_largest,
                                      false /* include_left */,
                                      true /* include_right */,
                                      smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     &split_cnt);
           } else {
             // check from 
             ColumnFamilyData* from_cfd =  cnodes[from]->cfd_;
             assert(from_cfd != nullptr);
-            std::string f_smallest = from_cfd->GetSmallestKey();
+            Slice f_smallest = from_cfd->GetSmallestKey();
             AddKeyRangeIfNecessary(s_smallest, f_smallest,
                                      true /* include_left */,
                                      false /* include_right */,
                                      smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     &split_cnt);
             // check from - to
             for (size_t i = from; i < to; i++) {
               ColumnFamilyData* cfd_1 =  cnodes[i]->cfd_;
               ColumnFamilyData* cfd_2 =  cnodes[i + 1]->cfd_;
               assert(cfd_1 != nullptr);
               assert(cfd_2 != nullptr);
-              std::string largest_1 = cfd_1->GetLargestKey();
-              std::string smallest_2 = cfd_2->GetSmallestKey();
+              Slice largest_1 = cfd_1->GetLargestKey();
+              Slice smallest_2 = cfd_2->GetSmallestKey();
               assert(largest_1.compare(smallest_2) <= 0); // children's key range must be not ovelapped
               AddKeyRangeIfNecessary(largest_1, smallest_2,
                                        false /* include_left */,
                                        false /* include_right */,
                                        smallests, largests,
-                                       &split_cnt,
-                                       prefix_key);
+                                       &split_cnt);
             }
             // check to
             ColumnFamilyData* to_cfd =  cnodes[to]->cfd_;
             assert(to_cfd != nullptr);
-            std::string t_largest = to_cfd->GetLargestKey();
+            Slice t_largest = to_cfd->GetLargestKey();
             AddKeyRangeIfNecessary(t_largest, s_largest,
                                      false /* include_left */,
                                      true /* include_right */,
                                      smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     &split_cnt);
           }
         } else {
           smallests.push_back(s_smallest);
@@ -1699,18 +1693,15 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
           split_cnt ++;
           ROCKS_LOG_INFO(db_options_->info_log.get(),
                          "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
-                         s_smallest.c_str(),
-                         s_largest.c_str(),
+                         s_smallest.ToString().c_str(),
+                         s_largest.ToString().c_str(),
                          split_cnt);
         }
 
         // update c_i
         c_i = to;
       }
-
-
     }
-
   }
 
   /*assert(smallests.size() == split_cnt);
@@ -1723,8 +1714,8 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
   for (size_t i = 0; i < split_cnt; i++) {
     ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: create new child [%s, %s]", 
-                   smallests[i].c_str(),
-                   largests[i].c_str());
+                   smallests[i].ToString().c_str(),
+                   largests[i].ToString().c_str());
     /*fprintf(stdout, "PrepareVersionEditsToSplit: create new child [%s, %s]", 
                    smallests[i].c_str(),
                    largests[i].c_str());*/
@@ -1733,8 +1724,8 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
     std::string cf_name = "default" + std::to_string(next_cf_id);
     edit_out[i].AddColumnFamily(cf_name/* cf name */);
     edit_out[i].SetLogNumber(logfile_number);
-    edit_out[i].SetColumnFamilyKeyRange(smallests[i].c_str() /*smallest*/,
-                                        largests[i].c_str()  /*largest*/);
+    edit_out[i].SetColumnFamilyKeyRange(smallests[i].ToString().c_str() /*smallest*/,
+                                        largests[i].ToString().c_str()  /*largest*/);
     edits_out.push_back(&edit_out[i]);
     edit_lists.push_back(edits_out);
     edits_out.clear();
@@ -1829,48 +1820,44 @@ void ColumnFamilySet::RemoveColumnFamily(ColumnFamilyData* cfd) {
   column_families_.erase(cfd->GetName());
 }
 
-void ColumnFamilySet::AddKeyRangeIfNecessary(std::string r1, std::string r2,
+void ColumnFamilySet::AddKeyRangeIfNecessary(Slice s1, Slice s2,
                                              bool include_left,
                                              bool include_right,
-                                             std::vector<std::string>& smallests,
-                                             std::vector<std::string>& largests,
-                                             size_t* split_cnt,
-                                             std::string prefix_key
+                                             std::vector<Slice>& smallests,
+                                             std::vector<Slice>& largests,
+                                             size_t* split_cnt
                                              ) {
-  //fprintf(stdout, "prefix_key : %s\n", prefix_key.c_str());
-  //fprintf(stdout, "r1 : %s\n", r1.c_str());
-  //fprintf(stdout, "r2 : %s\n", r2.c_str());
-  size_t psize = prefix_key.size();
-  long n1 = stol(r1.substr(psize, r1.size() - psize));
-  long n2 = stol(r2.substr(psize, r2.size() - psize));
+  std::string str1(s1.data());
+  const char* sz1 = s1.size();
+
+  std::string str2(s2.data());
+  const char* sz2 = s2.size();
 
   if (!include_left) {
-    n1 += 1;
+    // increment last character of s1's data
+    uint64_t v = 
+    str1[sz1-1] = static_cast<char>(static_cast<uint64_t>(str1[sz1-1]) + 1);
   }
   if (!include_right) {
-    n2 -= 1;
+    // decrement last character of s2's data
+    
+    str2[sz2-1] = static_cast<char>(static_cast<uint64_t>(str2[sz2-1]) - 1);
   }
 
-  if (n1 < n2) {
-    std::string s1 = std::to_string(n1);
-    s1.insert(0, r1.size() - s1.size() - psize, '0');
-    s1 = prefix_key + s1;
+  Slice n1(str1.c_str(), sz1);
+  Slice n2(str2.c_str(), sz2);
 
-    std::string s2 = std::to_string(n2);
-    s2.insert(0, r2.size() - s2.size() - psize, '0');
-    s2 = prefix_key + s2;
-
-    smallests.push_back(s1); 
-    largests.push_back(s2);        
+  if (n1.compare(n2) < 0) {
+    smallests.push_back(n1); 
+    largests.push_back(n2);        
 
     *split_cnt = *split_cnt + 1;
     ROCKS_LOG_INFO(db_options_->info_log,
                   "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
-                  s1.c_str(),
-                  s2.c_str(),
+                  n1.ToString().c_str(),
+                  n2.ToString().c_str(),
                   *split_cnt);
   } 
-
 }
 
 // under a DB mutex OR from a write thread

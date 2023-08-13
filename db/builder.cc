@@ -409,15 +409,15 @@ Status BuildTables(
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
       bool to_parent = true;
-      std::string user_key_str = c_iter.user_key().ToString();
+      Slice user_key = c_iter.user_key();
       while (child_idx < children_nodes.size()) {
-        if (user_key_str.compare(get_lmost_key(children_nodes[child_idx])) >= 0 &&
-            user_key_str.compare(get_rmost_key(children_nodes[child_idx])) <= 0)
+        if (user_key.compare(get_lmost_key(children_nodes[child_idx])) >= 0 &&
+            user_key.compare(get_rmost_key(children_nodes[child_idx])) <= 0)
         {
           to_parent = false;
           break; 
         }
-        else if(user_key_str.compare(get_lmost_key(children_nodes[child_idx])) < 0) {
+        else if(user_key.compare(get_lmost_key(children_nodes[child_idx])) < 0) {
           // to_parent = true
           break;
         }
@@ -625,7 +625,7 @@ Status BuildParentTable(
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
     Env::WriteLifeTimeHint write_hint, 
-		std::vector<std::string> sub_starts, std::vector<std::string> sub_ends) {
+		std::vector<Slice> sub_starts, std::vector<Slice> sub_ends) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -752,9 +752,9 @@ Status BuildParentTable(
 				}
 				const Slice& key = c_iters[i]->key();
 				const Slice& value = c_iters[i]->value();
-				std::string user_key_str = c_iters[i]->user_key().ToString();
+				Slice user_key = c_iters[i]->user_key();
 				if(i == children_size || 
-						user_key_str.compare(sub_starts[i]) < 0) {
+						user_key.compare(sub_starts[i]) < 0) {
 					builder->Add(key, value);
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
 				} else {
@@ -909,7 +909,7 @@ Status BuildsubTable(
     TableFileCreationReason reason, EventLogger* event_logger, int job_id,
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
-    Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, 
+    Env::WriteLifeTimeHint write_hint, Slice& sub_flush_start, Slice& sub_flush_end, 
 	int sub_flush_id) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
@@ -923,7 +923,7 @@ Status BuildsubTable(
 
   // WOW
   IterKey start_iter;
-  start_iter.SetInternalKey(Slice(sub_flush_start), kMaxSequenceNumber, kValueTypeForSeek);
+  start_iter.SetInternalKey(sub_flush_start, kMaxSequenceNumber, kValueTypeForSeek);
   iter->Seek(start_iter.GetInternalKey());
 
 
@@ -1013,7 +1013,7 @@ Status BuildsubTable(
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
 
-      std::string user_key = c_iter.user_key().ToString();
+      Slice user_key = c_iter.user_key();
 
 			/*
 			if (first) {

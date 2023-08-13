@@ -862,7 +862,6 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
           value.ToString().c_str());
     LogFlush(db_options_.info_log);*/
 
-    std::string user_key_str = user_key.ToString();
     bool is_child = false; // determine whether we should add items to child cfd or not
 
     // If an end key (exclusive) is specified, check if the current key is
@@ -901,8 +900,8 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
     // find where to put
     while (sub_split->child_idx < children_cnt_) {
       ColumnFamilyData* child_cfd = sub_split->children_nodes[sub_split->child_idx]->cfd_;
-      std::string child_smallest = child_cfd->GetSmallestKey();
-      std::string child_largest = child_cfd->GetLargestKey();
+      Slice child_smallest = child_cfd->GetSmallestKey();
+      Slice child_largest = child_cfd->GetLargestKey();
       /*fprintf(stdout, "ProcessKeyValueSplit: user_key -> %s child -> [%s, %s]\n",
             user_key_str.c_str(),
             child_smallest.c_str(),
@@ -913,7 +912,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
           user_key_str.c_str(),
           child_smallest.c_str(),
           child_largest.c_str());*/
-      if (user_key_str.compare(child_smallest) < 0) {
+      if (user_key.compare(child_smallest) < 0) {
         // user key is within parent's key range, not children nodes
         /*fprintf(stdout, "ProcessKeyValueSplit - is_parent\n");
         ROCKS_LOG_INFO(
@@ -923,8 +922,8 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
         is_child = false;
         break;
       }
-      else if (user_key_str.compare(child_smallest) >= 0 &&
-               user_key_str.compare(child_largest) <= 0) {
+      else if (user_key.compare(child_smallest) >= 0 &&
+               user_key.compare(child_largest) <= 0) {
         // user key is within child's key range
         /*fprintf(stdout, "ProcessKeyValueSplit - is_child\n");
         ROCKS_LOG_INFO(

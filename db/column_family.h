@@ -289,8 +289,8 @@ class ColumnFamilyData {
                    LogBuffer* log_buffer);
 
   // thread-safe
-  std::string GetSmallestKey();
-  std::string GetLargestKey();
+  Slice GetSmallestKey();
+  Slice GetLargestKey();
 
   // for partition tree node
   void SetPartitionTreeNode(PartitionTreeNode* node);
@@ -428,7 +428,7 @@ class ColumnFamilyData {
                    ColumnFamilySet* column_family_set);
 
   ColumnFamilyData(uint32_t id, const std::string& name,
-                   std::string smallest_user_key, std::string largest_user_key,
+                   Slice smallest_user_key, Slice largest_user_key,
                    Version* dummy_versions, Cache* table_cache,
                    WriteBufferManager* write_buffer_manager,
                    const ColumnFamilyOptions& options,
@@ -438,8 +438,8 @@ class ColumnFamilyData {
 
   uint32_t id_;
   const std::string name_;
-  std::string smallest_user_key_; // active if split is enabled
-  std::string largest_user_key_;  // active if split is enabled
+  Slice smallest_user_key_; // active if split is enabled
+  Slice largest_user_key_;  // active if split is enabled
   PartitionTreeNode* partition_tree_node_;  // active if split is enabled
   Version* dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;         // == dummy_versions->prev_
@@ -666,11 +666,11 @@ class ColumnFamilySet {
   WriteBufferManager* write_buffer_manager_;
   WriteController* write_controller_;
 
-  void AddKeyRangeIfNecessary(std::string r1, std::string r2,
+  void AddKeyRangeIfNecessary(Slice r1, Slice r2,
                               bool include_left,
                               bool include_right,
-                              std::vector<std::string>& smallests,
-                              std::vector<std::string>& largests,
+                              std::vector<Slice>& smallests,
+                              std::vector<Slice>& largests,
                               size_t* split_cnt,
                               std::string prefix_key
                               );

@@ -4351,7 +4351,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
   auto ApplyCFManipulationToLog = [](log::Writer* wlog, ColumnFamilyData* cfd,
                                      bool split, bool add, bool comp,
                                      bool atomic, uint32_t remaining_entries,
-                                     std::string lower, std::string upper) -> Status {
+                                     Slice lower, Slice upper) -> Status {
     VersionEdit edit;
     std::string record;
     

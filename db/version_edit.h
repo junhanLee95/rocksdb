@@ -293,7 +293,7 @@ class VersionEdit {
     column_family_ = column_family_id;
   }
 
-  void SetColumnFamilyKeyRange(std::string lower, std::string upper) {
+  void SetColumnFamilyKeyRange(Slice lower, Slice upper) {
     smallest_user_key_ = lower;
     largest_user_key_ = upper;
   }
@@ -386,8 +386,8 @@ class VersionEdit {
   // it also includes column family name.
   bool is_column_family_split_;
   bool is_split_move_;
-  std::string smallest_user_key_;
-  std::string largest_user_key_;
+  Slice smallest_user_key_;
+  Slice largest_user_key_;
 
   std::string column_family_name_;
 
