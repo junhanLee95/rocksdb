@@ -211,6 +211,7 @@ Status DBImpl::FlushMemTableToOutputFile(
   if (s.ok()) {
     // JH: install superversion for children nodes after the flush job completion.
     if (immutable_db_options_.allow_column_family_split) {
+			ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", cfd->GetChildrenNodes().size(), job_context->superversion_contexts.size());
       // Parent
       int idx=0;
       InstallSuperVersionAndScheduleWork(cfd, &job_context->superversion_contexts[idx++],
@@ -2376,9 +2377,8 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
     // This cfd is already referenced
     const FlushRequest& flush_req = PopFirstFromFlushQueue();
     superversion_contexts.clear();
-    superversion_contexts.reserve(flush_req.size());
-
-    for (const auto& iter : flush_req) {
+		superversion_contexts.reserve(flush_req.size());
+		for (const auto& iter : flush_req) {
       ColumnFamilyData* cfd = iter.first;
       if (cfd->IsDropped() || !cfd->imm()->IsFlushPending()) {
         // can't flush this CF, try next one
@@ -2596,8 +2596,15 @@ void DBImpl::BackgroundCallFlush(Env::Priority thread_pri) {
       // It also applies to access other states that DB owns.
       log_buffer.FlushBufferToLog();
       if (job_context.HaveSomethingToDelete()) {
+				ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+						"Flush Job has something to delete");
+
         PurgeObsoleteFiles(job_context);
-      }
+      } else {
+					ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+						"Flush Job has no something to delete");
+		
+			}
       job_context.Clean();
       mutex_.Lock();
     }

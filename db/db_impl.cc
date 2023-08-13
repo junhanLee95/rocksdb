@@ -1444,17 +1444,6 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   auto cfd = cfh->cfd();
   ColumnFamilySet* cfs = cfd->GetColumnFamilySet();
 
-  // Dohyun Kim: Partition Tree Search (NO Mutex)
-  // JH: GetLogicalColumnFamily is replaced with GetAllLogicalColumnFamilies;
-  // to implement inter-cfd point lookup
-  if (immutable_db_options_.allow_column_family_split) {
-    cfd = cfs->GetLogicalColumnFamily(key);
-
-    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "GetImpl key : %s (ID %d)",
-                   key.ToString().c_str(),
-                   cfd->GetID());  */
-  }
   
 
   if (tracer_) {
@@ -1551,6 +1540,22 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
     }
   }
   if (!done) {
+
+    ReturnAndCleanupSuperVersion(cfd, sv);
+		// Dohyun Kim: Partition Tree Search (NO Mutex)
+		// JH: GetLogicalColumnFamily is replaced with GetAllLogicalColumnFamilies;
+		// to implement inter-cfd point lookup
+		if (immutable_db_options_.allow_column_family_split) {
+			cfd = cfs->GetLogicalColumnFamily(key);
+
+			/*ROCKS_LOG_INFO(immutable_db_options_.info_log,
+				"GetImpl key : %s (ID %d)",
+				key.ToString().c_str(),
+				cfd->GetID());  */
+		}
+    // Acquire SuperVersion
+    sv = GetAndRefSuperVersion(cfd);
+
     PERF_TIMER_GUARD(get_from_output_files_time);
     sv->current->Get(read_options, lkey, pinnable_val, &s, &merge_context,
                      &max_covering_tombstone_seq, value_found, nullptr, nullptr,

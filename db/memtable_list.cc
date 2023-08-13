@@ -515,6 +515,7 @@ Status MemTableList::TryInstallMemtableFlushResults(
 // Note that this is allowed only for the situation that allow_column_family_split=true
 Status MemTableList::InstallMemtableSplitThenFlushResults(
   const autovector<autovector<VersionEdit*>>& edit_lists,
+	ColumnFamilyData* parent_cfd,
   const autovector<ColumnFamilyData*>& cfds, 
   const autovector<const MutableCFOptions*>& mutable_cf_options_list,
   const autovector<MemTable*> &m, VersionSet* vset,
@@ -559,6 +560,14 @@ Status MemTableList::InstallMemtableSplitThenFlushResults(
                     cfds[i]->GetName().c_str(),
                     edit_lists[i][0]->DebugString().c_str());
   }
+
+	//JH : set log number of parent node
+	ROCKS_LOG_BUFFER(log_buffer,
+			"[%s]subflush next log number : %" PRIu64"",
+			parent_cfd->GetName().c_str(),
+			m.back()->GetNextLogNumber());
+
+	parent_cfd->SetLogNumber(m.back()->GetNextLogNumber());
 
   // this can release and reacquire the mutex
   s = vset->LogAndApply(cfds, mutable_cf_options_list, edit_lists, mu,

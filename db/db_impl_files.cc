@@ -362,7 +362,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
 void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
                                bool no_full_scan) {
   mutex_.AssertHeld();
-
+	ROCKS_LOG_INFO(immutable_db_options_.info_log,
+			"findobsoletefiles");
   // if deletion is disabled, do nothing
   if (disable_delete_obsolete_files_ > 0) {
     return;
@@ -509,6 +510,11 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
       } else {
         job_context->log_delete_files.push_back(earliest.number);
       }
+			ROCKS_LOG_INFO(immutable_db_options_.info_log,
+					"size_log_to_delete %" PRIu64 ", prev_total_log_size %" PRIu64 "\n",
+					job_context->size_log_to_delete ,
+					total_log_size_.load());
+
       if (job_context->size_log_to_delete == 0) {
         job_context->prev_total_log_size = total_log_size_;
         job_context->num_alive_log_files = num_alive_log_files;

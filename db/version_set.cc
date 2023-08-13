@@ -1259,8 +1259,8 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
     switch (get_context.State()) {
       case GetContext::kNotFound:
         // Keep searching in other files
-        ROCKS_LOG_INFO(info_log_,
-                     "VersionGetImpl: notfound");
+        /*ROCKS_LOG_INFO(info_log_,
+                     "VersionGetImpl: notfound");*/
         break;
       case GetContext::kMerge:
         // TODO: update per-level perfcontext user_key_return_count for kMerge

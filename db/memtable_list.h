@@ -243,6 +243,7 @@ class MemTableList {
   // commit a successful split-then-flush in the manifest file.
   Status InstallMemtableSplitThenFlushResults(
       const autovector<autovector<VersionEdit*>>& edit_lists,
+			ColumnFamilyData* cfd,
       const autovector<ColumnFamilyData*>& cfds,
       const autovector<const MutableCFOptions*>& mutable_cf_options_list,
       const autovector<MemTable*>& m, VersionSet* vset,

@@ -350,6 +350,11 @@ void FlushJob::Prepare() {
   for (int child_idx = 0; child_idx < num_boundaries; child_idx++) {
     FileMetaData sub_meta;
     VersionEdit* sub_edit = new VersionEdit();
+		sub_edit = m->GetEdits();
+		sub_edit->SetPrevLogNumber(0);
+		// SetLogNumber(log_num) indicates logs with number smaller than log_num
+		// will no longer be picked up for recovery.
+		sub_edit->SetLogNumber(mems_.back()->GetNextLogNumber());
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     std::string start_key = get_lmost_key(children_nodes_[child_idx]);
@@ -357,10 +362,9 @@ void FlushJob::Prepare() {
     sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
     flush_->sub_flush_states.emplace_back(flush_, start_key, end_key, sub_meta,
         sub_edit, child_idx+1);
-    // JH: prepare superversion_contexts for child nodes
-    superversion_contexts.emplace_back(SuperVersionContext(true));
+		// JH: prepare superversion_contexts for child nodes
+		superversion_contexts.emplace_back(SuperVersionContext(true));  
   }
-   
   /*
   for (int i = 1; i < (int)flush_->sub_flush_states.size(); i++) {
 	SubflushState* sub_flush = &flush_->sub_flush_states[i];
@@ -562,7 +566,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 	  */
 
       status = cfd_->imm()->InstallMemtableSplitThenFlushResults(
-        edit_lists, tmp_cfds, mutable_cf_options_list, mems_, versions_,
+        edit_lists, cfd_, tmp_cfds, mutable_cf_options_list, mems_, versions_,
         db_mutex_, tmp_file_meta, &job_context_->memtables_to_free,
         db_directory_, log_buffer_);
     } else {
