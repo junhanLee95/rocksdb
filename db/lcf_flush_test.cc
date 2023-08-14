@@ -72,6 +72,26 @@ class LCFFlushTest : public testing::Test {
 		std::cout << "[END]Prepare\n";
 	}
 
+	static void PrepareMemtableNonRandom(DB* db, ColumnFamilyHandle* cfh, int kv_base, int kv_size ) {
+		std::cout << "[START]Prepare\n";
+    const std::string CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
+		std::random_device random_device;
+		std::mt19937 generator(random_device());
+		std::uniform_int_distribution<> distribution(0, CHARACTERS.size() -1);
+
+	  std::cout << "kv_base  : " << kv_base << std::endl;
+	  std::cout << "kv_end  : " << kv_base+kv_size-1 << std::endl;
+		for(int i = kv_base; i < kv_base + kv_size; i++) {
+			// 23-byte key 
+			std::string key = "user00000000000000" + std::to_string(i); 
+			//std::string value = "abcde" + std::to_string(i) + "fghijklmno"+ "pqr";
+			// 1000-byte value
+			std::string value = key;
+			db->Put(WriteOptions(), cfh, key, value);
+		} 
+		std::cout << "[END]Prepare\n";
+	}
+
 	static void PrepareColumnFamily(DBImpl* db_impl, ColumnFamilyData* cfd,
                   int kv_base, int cf_size, int i) {
     std::vector<SplitFileInfo> infos;
@@ -307,6 +327,92 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   db = nullptr;
 }*/
 
+TEST_F(LCFFlushTest, SimpleGet) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =2;
+  options.atomic_flush = false;
+  //options.allow_column_family_split = false;
+  options.allow_column_family_split = true;
+  int kv_size = 65536*16;
+	int kv_base = 1000000;
+
+	static class std::shared_ptr<rocksdb::Statistics> dbstats;
+	dbstats = rocksdb::CreateDBStatistics();
+	dbstats->set_stats_level(static_cast<StatsLevel>
+			(rocksdb::StatsLevel::kExceptDetailedTimers));
+	options.statistics = dbstats;
+
+
+  std::string db_name = "/mnt/rocksdb_test";
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+  // Prepare column family - level 1
+	int num_thread = 8;
+  int cf_size = kv_size / num_thread;
+
+	std::vector<port::Thread> thread_pool;
+	thread_pool.reserve(num_thread);
+	for(int i=0; i<num_thread; i++) {
+	  thread_pool.emplace_back(&PrepareColumnFamily, dbfull(db), cfd,
+                             kv_base, cf_size, i);
+  }
+	for (auto& thread : thread_pool) {
+		thread.join();
+	}
+
+  thread_pool.clear();
+
+  // Prepare Memtable
+	num_thread = 8;
+	thread_pool.reserve(num_thread);
+	for(int i=0; i<num_thread; i++) {
+	  thread_pool.emplace_back(&PrepareMemtableNonRandom, db, cfh, kv_base + i * kv_size/num_thread, kv_size/num_thread);
+  }
+	for (auto& thread : thread_pool) {
+		thread.join();
+	}
+
+
+  ReadOptions roptions;
+  roptions.verify_checksums = true;
+  // positive lookup
+  for (int i=kv_base; i<kv_base+kv_size; i++){
+	  std::string key = "user00000000000000" + std::to_string(i); 
+    std::string result;
+    Status s = db->Get(roptions, Slice(key), &result);
+    if (s.IsNotFound()) {
+      result = "NOT_FOUND"; 
+    } else if(!s.ok()) {
+      result = s.ToString(); 
+    }
+    ASSERT_EQ(result, key);
+  }
+  // negative lookup
+  for (int i=kv_base+kv_size; i<kv_base+2*kv_base; i++) {
+  	std::string key = "user00000000000000" + std::to_string(i); 
+    std::string result;
+    Status s = db->Get(roptions, Slice(key), &result);
+    if (s.IsNotFound()) {
+      result = "NOT_FOUND"; 
+    } else if(!s.ok()) {
+      result = s.ToString(); 
+    }
+    ASSERT_EQ(result, "NOT_FOUND");
+  
+  }
+
+	fprintf(stdout,"STATISTICS:\n%s\n", dbstats->ToString().c_str());
+  delete db;
+  db = nullptr;
+}
+/*
 TEST_F(LCFFlushTest, PrepareMultipleCFs) {
   Options options;
   options.create_if_missing = true;
@@ -362,7 +468,7 @@ TEST_F(LCFFlushTest, PrepareMultipleCFs) {
 	fprintf(stdout,"STATISTICS:\n%s\n", dbstats->ToString().c_str());
   delete db;
   db = nullptr;
-}
+}*/
 /*
 TEST_F(LCFFlushTest, Prepare) {
   Options options;
