@@ -553,13 +553,13 @@ Status MemTableList::InstallMemtableSplitThenFlushResults(
   }
 
   Status s;
-
+  /*
   for (size_t i = 0; i < cfds.size(); i++) {
    ROCKS_LOG_BUFFER(log_buffer,
                     "[%s] Install Memtables Split-then-flush results : %s",
                     cfds[i]->GetName().c_str(),
                     edit_lists[i][0]->DebugString().c_str());
-  }
+  }*/
 
 	//JH : set log number of parent node
 	ROCKS_LOG_BUFFER(log_buffer,
