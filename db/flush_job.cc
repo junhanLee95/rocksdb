@@ -429,40 +429,43 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
         cfd_->GetName().c_str());
 
 		const uint64_t start_micros = db_options_.env->NowMicros();
-    const size_t num_threads = flush_->sub_flush_states.size();
-    assert(num_threads > 0);
-    // Launch a thread for each of subcompactions 1...num_threads-1
-    std::vector<port::Thread> thread_pool;
-    thread_pool.reserve(num_threads - 1);
-    for (size_t i = 1; i < num_threads; i++) {
-      thread_pool.emplace_back(&FlushJob::ProcessKeyValueFlush, this,
-                        &flush_->sub_flush_states[i]);
-    }
-    
+		if (db_options_.allow_subflush) {
+			const size_t num_threads = flush_->sub_flush_states.size();
+			assert(num_threads > 0);
+			// Launch a thread for each of subcompactions 1...num_threads-1
+			std::vector<port::Thread> thread_pool;
+			thread_pool.reserve(num_threads - 1);
+			for (size_t i = 1; i < num_threads; i++) {
+				thread_pool.emplace_back(&FlushJob::ProcessKeyValueFlush, this,
+						&flush_->sub_flush_states[i]);
+			}
 
-    // Always schedule the first subflush (whether or not there are also
-    // others) in the current thread to be efficient with resources
-    ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
 
-    
-    for (auto& thread : thread_pool) {
-      thread.join();
-    }
+			// Always schedule the first subflush (whether or not there are also
+			// others) in the current thread to be efficient with resources
+			ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
 
-    // Check if any thread encountered an error during execution
-    for (const auto& state : flush_->sub_flush_states) {
-      if (!state.status.ok()) {
-        status = state.status;
-        break;
-      }
-    }
-	 
+
+			for (auto& thread : thread_pool) {
+				thread.join();
+			}
+
+			// Check if any thread encountered an error during execution
+			for (const auto& state : flush_->sub_flush_states) {
+				if (!state.status.ok()) {
+					status = state.status;
+					break;
+				}
+			}
+		} else {
+      status = WriteLevel0Tables();  
+		}
+
     if (status.ok() && output_file_directory_) {
       status = output_file_directory_->Fsync();
     }
     base_->Unref();
 	//std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
-    //s = WriteLevel0Tables();  
 		InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
 		stats.micros = db_options_.env->NowMicros() - start_micros;
 		RecordTimeToHistogram(stats_, FLUSH_TIME, stats.micros);

@@ -1352,7 +1352,7 @@ Status CompactionJob::FinishCompactionOutputFile(
 
     // JH: If db allows column family split,
     // Generate split request if necessary
-		/*
+		
     if (db_options_.allow_column_family_split) {
       float threshold = 0.6 - 0.1 * cfd->GetPartitionTreeNode()->GetDepth();
       if (efficiency < threshold && compact_->compaction->output_level() == 1) {
@@ -1370,7 +1370,7 @@ Status CompactionJob::FinishCompactionOutputFile(
       //auto vstorage = cfd->current()->storage_info();
       //vstorage->AddToFilesMarkedForSplit(meta);
       }
-    }*/
+    }
   }
   std::string fname;
   FileDescriptor output_fd;
