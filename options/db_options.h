@@ -81,6 +81,7 @@ struct ImmutableDBOptions {
   bool atomic_flush;
   bool avoid_unnecessary_blocking_io;
   bool allow_column_family_split;
+  bool allow_subflush;
 };
 
 struct MutableDBOptions {

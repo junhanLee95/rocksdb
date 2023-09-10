@@ -136,6 +136,8 @@ DBOptions BuildDBOptions(const ImmutableDBOptions& immutable_db_options,
       immutable_db_options.avoid_unnecessary_blocking_io;
   options.allow_column_family_split =
       immutable_db_options.allow_column_family_split;
+  options.allow_subflush =
+      immutable_db_options.allow_subflush;
 
   return options;
 }
@@ -1627,6 +1629,9 @@ std::unordered_map<std::string, OptionTypeInfo>
           offsetof(struct ImmutableDBOptions, avoid_unnecessary_blocking_io)}},
         {"allow_column_family_split",
          {offsetof(struct DBOptions, allow_column_family_split),
+          OptionType::kBoolean, OptionVerificationType::kNormal, false, 0}},
+        {"allow_subflush",
+         {offsetof(struct DBOptions, allow_subflush),
           OptionType::kBoolean, OptionVerificationType::kNormal, false, 0}}
       };
 

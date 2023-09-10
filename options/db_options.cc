@@ -88,7 +88,8 @@ ImmutableDBOptions::ImmutableDBOptions(const DBOptions& options)
       manual_wal_flush(options.manual_wal_flush),
       atomic_flush(options.atomic_flush),
       avoid_unnecessary_blocking_io(options.avoid_unnecessary_blocking_io),
-      allow_column_family_split(options.allow_column_family_split) {
+      allow_column_family_split(options.allow_column_family_split)
+      allow_subflush(options.allow_subflush) {
 }
 
 void ImmutableDBOptions::Dump(Logger* log) const {

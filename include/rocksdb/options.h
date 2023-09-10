@@ -515,6 +515,9 @@ struct DBOptions {
   // Allow the column family to be splitted to configure logical column family. Default: false
   bool allow_column_family_split = false;
 
+  // Allow subflush in FlushJob. Note that this option is valid only if allow_column_family_split is true. Default: false
+  bool allow_subflush = false;
+
   // Maximum number of concurrent background jobs (compactions and flushes).
   //
   // Default: 2
