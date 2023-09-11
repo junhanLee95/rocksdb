@@ -280,19 +280,30 @@ void FlushJob::PickMemTable() {
   // path 0 for level 0 file.
   meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
   // path 0 for level 0 file of children nodes
+  /*
   if (db_options_.allow_column_family_split) {
     ROCKS_LOG_BUFFER(log_buffer_, "Prepare children_metas_ for split-then-flush and its capacity is %d",
                      children_metas_.capacity());
+    std::vector<SuperVersionContext>& superversion_contexts = 
+      job_context_->superversion_contexts;
     for (size_t i = 0; i < children_nodes_.size(); i++) {
+      // 1. FileMetaData
       FileMetaData meta;
       TableProperties tp;
       meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
       children_metas_.push_back(meta);
+      // 2. TableProperties
       children_table_properties_.push_back(tp);
+      // 3. VersionEdit
+      VersionEdit* sub_edit = new VersionEdit();
+      sub_edit->SetPrevLogNumber(0);
+      sub_edit->SetLogNumber(mems_.back()->GetNextLogNumber());
       children_edits_.push_back(VersionEdit());
+      // 4. SuperversionContext
+      superversion_contexts.emplace_back(SuperVersionContext(true));
     }
   }
-  assert(children_metas_.size() == children_nodes_.size());
+  assert(children_metas_.size() == children_nodes_.size());*/
   //fprintf(stdout, "children node size : %ld\n", children_nodes_.size() );
   //fprintf(stdout, "children meta size : %ld\n", children_metas_.size() );
 
@@ -429,9 +440,11 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
         cfd_->GetName().c_str());
 
 		const uint64_t start_micros = db_options_.env->NowMicros();
+
 		if (db_options_.allow_subflush) {
 			const size_t num_threads = flush_->sub_flush_states.size();
 			assert(num_threads > 0);
+
 			// Launch a thread for each of subcompactions 1...num_threads-1
 			std::vector<port::Thread> thread_pool;
 			thread_pool.reserve(num_threads - 1);
@@ -445,30 +458,35 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 			// others) in the current thread to be efficient with resources
 			ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
 
-
 			for (auto& thread : thread_pool) {
 				thread.join();
 			}
+    } else {
+      // single-thread 
+      for (size_t i = 0; i < flush_->sub_flush_states.size(); i++) {
+        ProcessKeyValueFlush(&flush_->sub_flush_states[i]);
+      }
+    }
 
-			// Check if any thread encountered an error during execution
-			for (const auto& state : flush_->sub_flush_states) {
-				if (!state.status.ok()) {
-					status = state.status;
-					break;
-				}
-			}
-		} else {
-      status = WriteLevel0Tables();  
-		}
+    // Check if any thread encountered an error during execution
+    for (const auto& state : flush_->sub_flush_states) {
+      if (!state.status.ok()) {
+        status = state.status;
+        break;
+      }
+    }
 
     if (status.ok() && output_file_directory_) {
       status = output_file_directory_->Fsync();
     }
     base_->Unref();
+    InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
+    stats.micros = db_options_.env->NowMicros() - start_micros;
+    RecordTimeToHistogram(stats_, FLUSH_TIME, stats.micros);
+    //status = WriteLevel0Tables();  
+
 	//std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
-		InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
-		stats.micros = db_options_.env->NowMicros() - start_micros;
-		RecordTimeToHistogram(stats_, FLUSH_TIME, stats.micros);
+
   } else {
     status = WriteLevel0Table();  
   }
