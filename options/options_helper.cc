@@ -136,6 +136,8 @@ DBOptions BuildDBOptions(const ImmutableDBOptions& immutable_db_options,
       immutable_db_options.avoid_unnecessary_blocking_io;
   options.allow_column_family_split =
       immutable_db_options.allow_column_family_split;
+  options.column_family_split_threshold =
+      immutable_db_options.column_family_split_threshold;
 
   return options;
 }
@@ -1627,8 +1629,11 @@ std::unordered_map<std::string, OptionTypeInfo>
           offsetof(struct ImmutableDBOptions, avoid_unnecessary_blocking_io)}},
         {"allow_column_family_split",
          {offsetof(struct DBOptions, allow_column_family_split),
-          OptionType::kBoolean, OptionVerificationType::kNormal, false, 0}}
-      };
+          OptionType::kBoolean, OptionVerificationType::kNormal, false, 0}},
+        {"column_family_split_threshold",
+         {offsetof(struct DBOptions, column_family_split_threshold),
+          OptionType::kDouble, OptionVerificationType::kNormal, false, 0}}
+		};
 
 std::unordered_map<std::string, BlockBasedTableOptions::IndexType>
     OptionsHelper::block_base_table_index_type_string_map = {

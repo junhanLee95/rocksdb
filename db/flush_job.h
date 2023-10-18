@@ -88,6 +88,7 @@ class FlushJob {
   void Cancel();
   TableProperties GetTableProperties() const { return table_properties_; }
   const autovector<MemTable*>& GetMemTables() const { return mems_; }
+  const std::vector<PartitionTreeNode*>& GetChildrenNodes() const { return children_nodes_; }
 
  private:
   struct SubflushState;

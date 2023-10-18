@@ -1616,7 +1616,8 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
           std::string c_smallest = child_cfd->GetSmallestKey();
           std::string c_largest = child_cfd->GetLargestKey();
           ROCKS_LOG_INFO(db_options_->info_log.get(),
-                   "PrepareVersionEditsToSplit: look up child [%s, %s]", 
+                   "PrepareVersionEditsToSplit: look up child(%s) [%s, %s]", 
+									 child_cfd->GetName().c_str(),
                    c_smallest.c_str(),
                    c_largest.c_str());
 

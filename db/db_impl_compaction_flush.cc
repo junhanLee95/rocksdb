@@ -211,14 +211,15 @@ Status DBImpl::FlushMemTableToOutputFile(
   if (s.ok()) {
     // JH: install superversion for children nodes after the flush job completion.
     if (immutable_db_options_.allow_column_family_split) {
-			ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", cfd->GetChildrenNodes().size(), job_context->superversion_contexts.size());
+			
+			ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", flush_job.GetChildrenNodes().size(), job_context->superversion_contexts.size());
       // Parent
       int idx=0;
       InstallSuperVersionAndScheduleWork(cfd, &job_context->superversion_contexts[idx++],
           mutable_cf_options);
       assert(job_context->superversion_contexts.size() == cfd->GetChildrenNodes().size() +1);
       // Children
-      auto children_nodes = cfd->GetChildrenNodes();
+      auto children_nodes = flush_job.GetChildrenNodes();
       for (auto node: children_nodes) {
         // TODO(JH): now we assume mutable_cf_options for every column families are the same.
         InstallSuperVersionAndScheduleWork(node->cfd_, &job_context->superversion_contexts[idx++],

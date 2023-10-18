@@ -515,6 +515,9 @@ struct DBOptions {
   // Allow the column family to be splitted to configure logical column family. Default: false
   bool allow_column_family_split = false;
 
+  // Allow the column family to be splitted to configure logical column family. Default: false
+  double column_family_split_threshold = 0.6;
+
   // Maximum number of concurrent background jobs (compactions and flushes).
   //
   // Default: 2

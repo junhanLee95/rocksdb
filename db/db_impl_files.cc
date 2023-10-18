@@ -51,7 +51,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
   assert(!sst_split_files.empty());
   Status s;
   Status persistent_options_status;
-  ColumnFamilyData* cfd = sst_split_files[0].cfd;
+  //ColumnFamilyData* cfd = sst_split_files[0].cfd;
+  ColumnFamilyData* cfd = versions_->GetColumnFamilySet()->GetDefault();
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
   size_t split_cnt = sst_split_files.size();
 
