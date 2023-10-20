@@ -1552,7 +1552,7 @@ ColumnFamilyData* ColumnFamilySet::GetParentColumnFamily(ColumnFamilyData* cfd) 
 size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
                      uint64_t logfile_number,
                      ColumnFamilyData* cfd,
-                     std::vector<SplitFileInfo>& sst_split_files,
+                     std::vector<FileMetaData*>& sst_split_files,
                      autovector<autovector<VersionEdit*>>& edit_lists,
                      std::vector<VersionEdit>& edit_out,
                      autovector<std::string>& cf_name_list,
@@ -1579,8 +1579,8 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
     ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: cnodes are empty");
     for (size_t i = 0; i < sst_split_files.size(); i++) {
-      smallests.push_back(sst_split_files[i].metadata->smallest.user_key().ToString(false));
-      largests.push_back(sst_split_files[i].metadata->largest.user_key().ToString(false));
+      smallests.push_back(sst_split_files[i]->smallest.user_key().ToString(false));
+      largests.push_back(sst_split_files[i]->largest.user_key().ToString(false));
     }
     split_cnt = sst_split_files.size();
   } else { // measure overlapping key ranges before putting sst_split_files to children
@@ -1589,8 +1589,8 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
     std::string s_largest; // sst_split_files' largest key
 
     for (size_t s_i = 0; s_i < sst_split_files.size(); s_i ++) {
-      s_smallest = sst_split_files[s_i].metadata->smallest.user_key().ToString(false);
-      s_largest = sst_split_files[s_i].metadata->largest.user_key().ToString(false);    
+      s_smallest = sst_split_files[s_i]->smallest.user_key().ToString(false);
+      s_largest = sst_split_files[s_i]->largest.user_key().ToString(false);    
       ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: sst_split_file [%s, %s]", 
                    s_smallest.c_str(),

@@ -150,7 +150,9 @@ struct JobContext {
   std::vector<ObsoleteFileInfo> sst_delete_files;
 
   // a list of sst files that we need to split
-  std::vector<SplitFileInfo> sst_split_files;
+  std::vector<FileMetaData*> sst_split_files;
+  // cfd to be splitted
+  ColumnFamilyData* cfd_to_split;
 
   // a list of log files that we need to delete
   std::vector<uint64_t> log_delete_files;
@@ -210,10 +212,6 @@ struct JobContext {
     }
     for (auto l : logs_to_free) {
       delete l;
-    }
-
-    for (size_t i=0; i<sst_split_files.size(); i++) {
-      sst_split_files[i].DeleteInfo(); 
     }
 
     memtables_to_free.clear();

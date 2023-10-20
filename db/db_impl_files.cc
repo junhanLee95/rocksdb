@@ -37,31 +37,19 @@ uint64_t DBImpl::MinObsoleteSstNumberToKeep() {
   return std::numeric_limits<uint64_t>::max();
 }
 
-void DBImpl::FindSplitFiles(JobContext* job_context, bool valid) {
-  mutex_.AssertHeld();
-	assert(immutable_db_options_.allow_column_family_split);
-  if(!valid) {
-    return;  
-  }
-  versions_->GetSplitFiles(&job_context->sst_split_files);
-}
-
-Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_split_files) {
-
+Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
+                                             std::vector<FileMetaData*>& sst_split_files) {
   assert(!sst_split_files.empty());
   Status s;
   Status persistent_options_status;
-  //ColumnFamilyData* cfd = sst_split_files[0].cfd;
-  ColumnFamilyData* cfd = versions_->GetColumnFamilySet()->GetDefault();
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
   size_t split_cnt = sst_split_files.size();
 
-
   std::string meta_str = "";
   for(size_t i=0; i< split_cnt; i++) {
-    meta_str += "#"+std::to_string(sst_split_files[i].metadata->fd.GetNumber())+
-               "R[" + sst_split_files[i].metadata->smallest.user_key().ToString(false) + ", " +
-                      sst_split_files[i].metadata->largest.user_key().ToString(false) + "] , ";
+    meta_str += "#"+std::to_string(sst_split_files[i]->fd.GetNumber())+
+               "R[" + sst_split_files[i]->smallest.user_key().ToString(false) + ", " +
+                      sst_split_files[i]->largest.user_key().ToString(false) + "] , ";
   }
   ROCKS_LOG_INFO(immutable_db_options_.info_log, 
       "SplitColumnFamilyFromSstFiles: start cf [%s], meta : %s",
@@ -326,7 +314,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
                  s.ToString().c_str());
     }*/
     // now we prepare sst split
-    auto vstorage = cfd->current()->storage_info();
+    //auto vstorage = cfd->current()->storage_info();
     /*for (auto& sst_split_file: sst_split_files) {
       FileMetaData* meta = sst_split_file.metadata;
       Slice smallest = meta->smallest.user_key();
@@ -335,7 +323,6 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_spl
     }*/
 
     //fprintf(stdout, "Split sst(2)\n");
-    vstorage->ComputeFilesMarkedForSplit(sst_split_files);
     GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(),
                          &split_req);
     SchedulePendingSplit(cfd, split_req);

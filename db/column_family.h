@@ -627,7 +627,7 @@ class ColumnFamilySet {
   size_t PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
                                  uint64_t logfile_number,
                                  ColumnFamilyData* cfd,
-                                 std::vector<SplitFileInfo>& sst_split_files,
+                                 std::vector<FileMetaData*>& sst_split_files,
                                  autovector<autovector<VersionEdit*>>& edit_lists,
                                  std::vector<VersionEdit>& edit_out,
                                  autovector<std::string>& cf_name_list,

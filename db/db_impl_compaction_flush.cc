@@ -1026,7 +1026,9 @@ Status DBImpl::CompactFilesImpl(
       snapshot_checker, table_cache_, &event_logger_,
       c->mutable_cf_options()->paranoid_file_checks,
       c->mutable_cf_options()->report_bg_io_stats, dbname_,
-      &compaction_job_stats, Env::Priority::USER);
+      &compaction_job_stats, Env::Priority::USER,
+      job_context->sst_split_files,
+      &job_context->cfd_to_split);
 
   // Creating a compaction influences the compaction score because the score
   // takes running compactions into account (by skipping files that are already
@@ -2649,6 +2651,10 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
            (bg_thread_pri == Env::Priority::LOW && bg_compaction_scheduled_));
     Status s = BackgroundCompaction(&made_progress, &job_context, &log_buffer,
                                     prepicked_compaction, bg_thread_pri);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[JH] sst_split_files size(1) : %ld",
+        job_context.sst_split_files.size());
+
     TEST_SYNC_POINT("BackgroundCallCompaction:1");
     if (s.IsBusy()) {
       bg_cv_.SignalAll();  // In case a waiter can proceed despite the error
@@ -2678,14 +2684,24 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
 
     // split column family if necessary, this is done outside the mutex
     if (immutable_db_options_.allow_column_family_split) {
-      FindSplitFiles(&job_context, s.ok());
       TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+          "[JH] sst_split_files size(2) : %ld",
+          job_context.sst_split_files.size());
 
       if (job_context.HaveSomethingToSplit()) {
+        fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
+        for (size_t i = 0; i < job_context.sst_split_files.size(); i++) {
+          fprintf(stdout, "[JH] file s : %s\n", job_context.sst_split_files[i]->smallest.user_key().ToString(false).c_str());
+          fprintf(stdout, "[JH] file l : %s\n", job_context.sst_split_files[i]->largest.user_key().ToString(false).c_str());
+        }
         mutex_.Unlock();
+        assert(job_context.cfd_to_split != nullptr);
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
-            "[JH]Have Something to Split");
-        SplitColumnFamilyFromSstFiles(job_context.sst_split_files);
+            "[JH]Have Something to Split [%s]",
+            job_context.cfd_to_split->GetName().c_str());
+        SplitColumnFamilyFromSstFiles(job_context.cfd_to_split,
+                                      job_context.sst_split_files);
         mutex_.Lock();
       }
     }
@@ -3265,6 +3281,15 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
     GetSnapshotContext(job_context, &snapshot_seqs,
                        &earliest_write_conflict_snapshot, &snapshot_checker);
     assert(is_snapshot_supported_ || snapshots_.empty());
+
+    /* [JH]
+     * if allow_column_family_split is true,
+     * put job_context files to split as input argument of compaction job.
+    */
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[JH] BG sst_split_files size(1) : %ld",
+        job_context->sst_split_files.size());
+
     CompactionJob compaction_job(
         job_context->job_id, c.get(), immutable_db_options_,
         env_options_for_compaction_, versions_.get(), &shutting_down_,
@@ -3274,7 +3299,9 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
         earliest_write_conflict_snapshot, snapshot_checker, table_cache_,
         &event_logger_, c->mutable_cf_options()->paranoid_file_checks,
         c->mutable_cf_options()->report_bg_io_stats, dbname_,
-        &compaction_job_stats, thread_pri);
+        &compaction_job_stats, thread_pri,
+        job_context->sst_split_files,
+        &job_context->cfd_to_split);
     compaction_job.Prepare();
 
     NotifyOnCompactionBegin(c->column_family_data(), c.get(), status,
@@ -3284,6 +3311,10 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
     compaction_job.Run();
     TEST_SYNC_POINT("DBImpl::BackgroundCompaction:NonTrivial:AfterRun");
     mutex_.Lock();
+
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[JH] BG sst_split_files size(2) : %ld",
+        job_context->sst_split_files.size());
 
     status = compaction_job.Install(*c->mutable_cf_options());
     if (status.ok()) {

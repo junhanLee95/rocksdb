@@ -57,6 +57,7 @@ class VersionSet;
 
 class CompactionJob {
  public:
+  /*
   CompactionJob(int job_id, Compaction* compaction,
                 const ImmutableDBOptions& db_options,
                 const EnvOptions env_options, VersionSet* versions,
@@ -73,6 +74,25 @@ class CompactionJob {
                 const std::string& dbname,
                 CompactionJobStats* compaction_job_stats,
                 Env::Priority thread_pri);
+  */
+  CompactionJob(int job_id, Compaction* compaction,
+                const ImmutableDBOptions& db_options,
+                const EnvOptions env_options, VersionSet* versions,
+                const std::atomic<bool>* shutting_down,
+                const SequenceNumber preserve_deletes_seqnum,
+                LogBuffer* log_buffer, Directory* db_directory,
+                Directory* output_directory, Statistics* stats,
+                InstrumentedMutex* db_mutex, ErrorHandler* db_error_handler,
+                std::vector<SequenceNumber> existing_snapshots,
+                SequenceNumber earliest_write_conflict_snapshot,
+                const SnapshotChecker* snapshot_checker,
+                std::shared_ptr<Cache> table_cache, EventLogger* event_logger,
+                bool paranoid_file_checks, bool measure_io_stats,
+                const std::string& dbname,
+                CompactionJobStats* compaction_job_stats,
+                Env::Priority thread_pri,
+                std::vector<FileMetaData*>& sst_split_files,
+                ColumnFamilyData** cfd_to_split);
 
   ~CompactionJob();
 
@@ -173,6 +193,9 @@ class CompactionJob {
   std::vector<uint64_t> sizes_;
   Env::WriteLifeTimeHint write_hint_;
   Env::Priority thread_pri_;
+  // JH: [LCF] for passing key ranges to split
+  std::vector<FileMetaData*>& sst_split_files_;
+  ColumnFamilyData** cfd_to_split_;
 };
 
 }  // namespace rocksdb

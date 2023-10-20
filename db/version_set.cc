@@ -1745,23 +1745,6 @@ void VersionStorageInfo::ComputeFilesMarkedForCompaction() {
   }
 }
 
-void VersionStorageInfo::ComputeFilesMarkedForSplit(std::vector<SplitFileInfo>& sst_split_files) {
-  files_marked_for_split_.clear();
-  for (size_t i=0; i<sst_split_files.size(); i++) {
-    files_marked_for_split_.emplace_back(sst_split_files[i].metadata);
-  }
-  /*int last_qualify_level = 0;
-
-  for (int level = 0; level <= last_qualify_level; level++) {
-    for (auto* f : files_[level]) {
-      if (!f->being_compacted && f->marked_for_split) {
-        files_marked_for_split_.emplace_back(f);
-      }
-    }
-  }*/
-}
-
-
 void VersionStorageInfo::ComputeExpiredTtlFiles(
     const ImmutableCFOptions& ioptions, const uint64_t ttl) {
   assert(ttl > 0);

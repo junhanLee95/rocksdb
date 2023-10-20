@@ -523,12 +523,10 @@ class DBImpl : public DB {
   // being deleted.
   uint64_t MinObsoleteSstNumberToKeep();
 
-  // Returns the list of to-split files in the version set
-  void FindSplitFiles(JobContext* job_context, bool valid);
-
   // Split Column Family From sst split files
   // This is called from BackgroundCallCompaction()
-  Status SplitColumnFamilyFromSstFiles(std::vector<SplitFileInfo>& sst_split_files);
+  Status SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
+                                       std::vector<FileMetaData*>& sst_split_files);
 
   // Returns the list of live files in 'live' and the list
   // of all files in the filesystem in 'candidate_files'.

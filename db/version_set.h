@@ -135,10 +135,6 @@ class VersionStorageInfo {
   // ComputeCompactionScore()
   void ComputeFilesMarkedForCompaction();
 
-  // This computes files_marked_for_split_ and is called by
-  // SplitColumnFamilyFromSstFiles()
-  void ComputeFilesMarkedForSplit(std::vector<SplitFileInfo>& sst_split_files);
-
   // This computes ttl_expired_files_ and is called by
   // ComputeCompactionScore()
   void ComputeExpiredTtlFiles(const ImmutableCFOptions& ioptions,

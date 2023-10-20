@@ -425,16 +425,9 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   if (db_options_.allow_column_family_split) {
     ROCKS_LOG_INFO(
         db_options_.info_log,
-        "Flushing [%s]",
-        cfd_->GetName().c_str());
-    event_logger_->Log() << "job" << job_context_->job_id << "event"
-                         << "flush_started"
-                         << "num_memtables" << mems_.size() << "num_entries"
-                         << total_num_entries << "num_deletes"
-                         << total_num_deletes << "total_data_size"
-                         << total_data_size << "memory_usage"
-                         << total_memory_usage << "flush_reason"
-                         << GetFlushReasonString(cfd_->GetFlushReason());
+        "Flushing [%s] [JOB %d]",
+        cfd_->GetName().c_str(),
+        job_context_->job_id);
 
 		const uint64_t start_micros = db_options_.env->NowMicros();
     const size_t num_threads = flush_->sub_flush_states.size();

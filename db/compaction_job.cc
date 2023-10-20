@@ -302,7 +302,7 @@ void CompactionJob::AggregateStatistics() {
     }
   }
 }
-
+/*
 CompactionJob::CompactionJob(
     int job_id, Compaction* compaction, const ImmutableDBOptions& db_options,
     const EnvOptions env_options, VersionSet* versions,
@@ -315,7 +315,8 @@ CompactionJob::CompactionJob(
     const SnapshotChecker* snapshot_checker, std::shared_ptr<Cache> table_cache,
     EventLogger* event_logger, bool paranoid_file_checks, bool measure_io_stats,
     const std::string& dbname, CompactionJobStats* compaction_job_stats,
-    Env::Priority thread_pri)
+    Env::Priority thread_pri
+    )
     : job_id_(job_id),
       compact_(new CompactionState(compaction)),
       compaction_job_stats_(compaction_job_stats),
@@ -345,6 +346,62 @@ CompactionJob::CompactionJob(
       measure_io_stats_(measure_io_stats),
       write_hint_(Env::WLTH_NOT_SET),
       thread_pri_(thread_pri) {
+  assert(log_buffer_ != nullptr);
+  const auto* cfd = compact_->compaction->column_family_data();
+  ThreadStatusUtil::SetColumnFamily(cfd, cfd->ioptions()->env,
+                                    db_options_.enable_thread_tracking);
+  ThreadStatusUtil::SetThreadOperation(ThreadStatus::OP_COMPACTION);
+  ReportStartedCompaction(compaction);
+}*/
+
+CompactionJob::CompactionJob(
+    int job_id, Compaction* compaction, const ImmutableDBOptions& db_options,
+    const EnvOptions env_options, VersionSet* versions,
+    const std::atomic<bool>* shutting_down,
+    const SequenceNumber preserve_deletes_seqnum, LogBuffer* log_buffer,
+    Directory* db_directory, Directory* output_directory, Statistics* stats,
+    InstrumentedMutex* db_mutex, ErrorHandler* db_error_handler,
+    std::vector<SequenceNumber> existing_snapshots,
+    SequenceNumber earliest_write_conflict_snapshot,
+    const SnapshotChecker* snapshot_checker, std::shared_ptr<Cache> table_cache,
+    EventLogger* event_logger, bool paranoid_file_checks, bool measure_io_stats,
+    const std::string& dbname, CompactionJobStats* compaction_job_stats,
+    Env::Priority thread_pri,
+    std::vector<FileMetaData*>& sst_split_files,
+    ColumnFamilyData** cfd_to_split
+    )
+    : job_id_(job_id),
+      compact_(new CompactionState(compaction)),
+      compaction_job_stats_(compaction_job_stats),
+      compaction_stats_(compaction->compaction_reason(), 1),
+      dbname_(dbname),
+      db_options_(db_options),
+      env_options_(env_options),
+      env_(db_options.env),
+      env_optiosn_for_read_(
+          env_->OptimizeForCompactionTableRead(env_options, db_options_)),
+      versions_(versions),
+      shutting_down_(shutting_down),
+      preserve_deletes_seqnum_(preserve_deletes_seqnum),
+      log_buffer_(log_buffer),
+      db_directory_(db_directory),
+      output_directory_(output_directory),
+      stats_(stats),
+      db_mutex_(db_mutex),
+      db_error_handler_(db_error_handler),
+      existing_snapshots_(std::move(existing_snapshots)),
+      earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
+      snapshot_checker_(snapshot_checker),
+      table_cache_(std::move(table_cache)),
+      event_logger_(event_logger),
+      bottommost_level_(false),
+      paranoid_file_checks_(paranoid_file_checks),
+      measure_io_stats_(measure_io_stats),
+      write_hint_(Env::WLTH_NOT_SET),
+      thread_pri_(thread_pri),
+      sst_split_files_(sst_split_files),
+      cfd_to_split_(cfd_to_split)
+       {
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->compaction->column_family_data();
   ThreadStatusUtil::SetColumnFamily(cfd, cfd->ioptions()->env,
@@ -1364,7 +1421,13 @@ Status CompactionJob::FinishCompactionOutputFile(
         ROCKS_LOG_INFO(db_options_.info_log, "cfd(%s) efficiency : %f, threshold : %f", cfd->GetName().c_str(),
                     efficiency, threshold);
         LogFlush(db_options_.info_log);
-        versions_->AddSplitFile(meta, cfd);
+        FileMetaData* f = new FileMetaData;
+        f->fd = meta->fd;
+        f->smallest = InternalKey(meta->smallest.user_key(), meta->fd.smallest_seqno, kTypeValue);
+        f->largest = InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
+        sst_split_files_.push_back(f);
+        *cfd_to_split_ = cfd;
+      //versions_->AddSplitFile(meta, cfd);
       //fprintf(stdout, "meta smallest : %s\n", meta->smallest.DebugString(false).c_str());
       //fprintf(stdout, "meta largest : %s\n", meta->largest.DebugString(false).c_str());
       //auto vstorage = cfd->current()->storage_info();
