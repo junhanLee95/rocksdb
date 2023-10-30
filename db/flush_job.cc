@@ -106,15 +106,19 @@ struct FlushJob::SubflushState {
   TableProperties sub_table_properties;
 
   int sub_flush_id;
-
-
+  std::vector<std::string> skip_starts;
+  std::vector<std::string> skip_ends;
 
   SubflushState(FlushState *_flush, std::string _start, 
-		  std::string _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id)
+		  std::string _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id,
+      std::vector<std::string> _skip_starts,
+      std::vector<std::string> _skip_ends
+      )
       : flush_state(_flush),
-		start(_start),
+	    	start(_start),
         end(_end),
-		sub_meta(_sub_meta), sub_edit(_sub_edit) { 
+	    	sub_meta(_sub_meta), sub_edit(_sub_edit),
+        skip_starts(_skip_starts), skip_ends(_skip_ends) { 
 		sub_flush_id = _sub_flush_id;
 	}
 
@@ -144,6 +148,8 @@ struct FlushJob::FlushState {
   // REQUIRED: subflush states are stored in order of increasing
   // key-range
   std::vector<FlushJob::SubflushState> sub_flush_states;
+  std::vector<std::string> skip_starts; // add keys skipping [skip_starts, skip_ends]
+  std::vector<std::string> skip_ends;
   Status status;
 
   uint64_t total_bytes;
@@ -281,18 +287,18 @@ void FlushJob::PickMemTable() {
   meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
   // path 0 for level 0 file of children nodes
   if (db_options_.allow_column_family_split) {
-    ROCKS_LOG_BUFFER(log_buffer_, "Prepare children_metas_ for split-then-flush and its capacity is %d",
-                     children_metas_.capacity());
-    for (size_t i = 0; i < children_nodes_.size(); i++) {
+    ROCKS_LOG_BUFFER(log_buffer_, "Prepare target_metas_ for split-then-flush and its capacity is %d",
+                     target_metas_.capacity());
+    for (size_t i = 0; i < target_nodes_.size(); i++) {
       FileMetaData meta;
       TableProperties tp;
       meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
-      children_metas_.push_back(meta);
-      children_table_properties_.push_back(tp);
-      children_edits_.push_back(VersionEdit());
+      target_metas_.push_back(meta);
+      target_table_properties_.push_back(tp);
+      target_edits_.push_back(VersionEdit());
     }
   }
-  assert(children_metas_.size() == children_nodes_.size());
+  assert(target_metas_.size() == target_nodes_.size());
   //fprintf(stdout, "children node size : %ld\n", children_nodes_.size() );
   //fprintf(stdout, "children meta size : %ld\n", children_metas_.size() );
 
@@ -304,6 +310,8 @@ void FlushJob::PickMemTable() {
 /*
  *  Made by Kyoungho Koo
  *  for multi-threaded split-then-flush
+ *  Modified by JH
+ *  for prepare threads for every partition tree node, not only for root and its children.
  */
 void FlushJob::Prepare() {
   AutoThreadOperationStageUpdater stage_updater(
@@ -324,45 +332,66 @@ void FlushJob::Prepare() {
   // entries mems are (implicitly) sorted in ascending order by their created
   // time. We will use the first memtable's `edit` to keep the meta info for
   // this flush.
-  MemTable* m = mems_[0];
+  /*MemTable* m = mems_[0];
   edit_ = m->GetEdits();
-  edit_->SetPrevLogNumber(0);
-  // SetLogNumber(log_num) indicates logs with number smaller than log_num
-  // will no longer be picked up for recovery.
-  edit_->SetLogNumber(mems_.back()->GetNextLogNumber());
-  edit_->SetColumnFamily(cfd_->GetID());
+  edit_->SetPrevLogNumber(0);*/
 
-  int num_boundaries = children_nodes_.size();
+  int target_num = target_nodes_.size();
   // JH: resize subflush key boundary vectors
-  flush_->sub_flush_states.reserve(num_boundaries+1);
+  flush_->sub_flush_states.reserve(target_num);
 
   // path 0 for level 0 file.
-  meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
+  //meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
 
   //flush_->sub_flush_states.emplace_back(nullptr, nullptr, meta_, nullptr, edit_);
-  // path 0 for level 0 file of children nodes
-  ROCKS_LOG_BUFFER(log_buffer_, "Prepare children_metas_ for split-then-flush and its capacity is %d",
-                     children_metas_.capacity());
-  flush_->sub_flush_states.emplace_back(flush_, "", "", meta_, nullptr, 0);
+  // path 0 for level 0 file of target nodes
+  ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare target_metas_ for split-then-flush and its capacity is %d", job_context_->job_id,
+             target_metas_.capacity());
+  //flush_->sub_flush_states.emplace_back(flush_, "", "", meta_, nullptr, 0);
 
   std::vector<SuperVersionContext>& superversion_contexts = 
       job_context_->superversion_contexts;
-  for (int child_idx = 0; child_idx < num_boundaries; child_idx++) {
+  for (int idx = 0; idx < target_num; idx++) {
     FileMetaData sub_meta;
     VersionEdit* sub_edit = new VersionEdit();
 		sub_edit->SetPrevLogNumber(0);
 		// SetLogNumber(log_num) indicates logs with number smaller than log_num
 		// will no longer be picked up for recovery.
 		sub_edit->SetLogNumber(mems_.back()->GetNextLogNumber());
+    sub_edit->SetColumnFamily(target_nodes_[idx]->cfd_->GetID());
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
-    std::string start_key = get_lmost_key(children_nodes_[child_idx]);
-    std::string end_key = get_rmost_key(children_nodes_[child_idx]);
-    sub_edit->SetColumnFamily(children_nodes_[child_idx]->cfd_->GetID());
+    std::string start_key = get_lmost_key(target_nodes_[idx]);
+    std::string end_key = get_rmost_key(target_nodes_[idx]);
+    // prepare skipping key ranges
+    std::vector<std::string> skip_starts;
+    std::vector<std::string> skip_ends;
+    std::string skip_starts_str = "{";
+    std::string skip_ends_str = "{";
+    for (PartitionTreeNode* c: target_nodes_[idx]->cfd_->GetChildrenNodes()) {
+      std::string skip_start = get_lmost_key(c);
+      std::string skip_end = get_rmost_key(c);
+      skip_starts.push_back(skip_start);
+      skip_ends.push_back(skip_end);
+      skip_starts_str += (skip_start + ", ");
+      skip_ends_str += (skip_end + ", ");
+    }
+    skip_starts_str += "}";
+    skip_ends_str += "}";
+    
     flush_->sub_flush_states.emplace_back(flush_, start_key, end_key, sub_meta,
-        sub_edit, child_idx+1);
-		// JH: prepare superversion_contexts for child nodes
-		superversion_contexts.emplace_back(SuperVersionContext(true));  
+        sub_edit, idx,
+        skip_starts, skip_ends);
+
+    ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare sub_flush_state for %s(ID : %d) with range [%s, %s], skip_starts : %s, skip_ends : %s",
+        job_context_->job_id,
+        target_nodes_[idx]->cfd_->GetName().c_str(),
+        target_nodes_[idx]->cfd_->GetID(),
+        start_key.c_str(), end_key.c_str(),
+        skip_starts_str.c_str(),
+        skip_ends_str.c_str());
+    // JH: prepare superversion_contexts for child nodes
+    superversion_contexts.emplace_back(SuperVersionContext(true));  
   }
   /*
   for (int i = 1; i < (int)flush_->sub_flush_states.size(); i++) {
@@ -373,16 +402,30 @@ void FlushJob::Prepare() {
   }
   */
 
-
   base_ = cfd_->current();
   //std::cout << "FlushJob::Prepare() base_->Ref()" << std::endl;
   base_->Ref();  // it is likely that we do not need this reference
 }
 
-void FlushJob::SetChildrenNodes() {
+void FlushJob::SetTargetNodes() {
   db_mutex_->AssertHeld();
-  children_nodes_ = cfd_->GetChildrenNodes();
-  children_metas_.reserve(children_nodes_.size());
+  std::vector<PartitionTreeNode*> cur;
+  cur.push_back(cfd_->GetPartitionTreeNode());
+  // BFS
+  size_t target_size = 0;
+  while(!cur.empty()) {
+    std::vector<PartitionTreeNode*> next;
+    for (PartitionTreeNode* cn: cur) {
+      target_nodes_.push_back(cn);
+      for(PartitionTreeNode* nn: cn->cfd_->GetChildrenNodes()) {
+        next.push_back(nn);
+      }
+    }
+
+    target_size += cur.size();
+    cur = next;
+  }
+  target_metas_.reserve(target_size);
 }
 
 
@@ -425,16 +468,18 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   if (db_options_.allow_column_family_split) {
     ROCKS_LOG_INFO(
         db_options_.info_log,
-        "Flushing [%s] [JOB %d]",
+        "Flushing [%s] [JOB %d] thread cnt : %ld",
         cfd_->GetName().c_str(),
-        job_context_->job_id);
+        job_context_->job_id,
+        flush_->sub_flush_states.size()
+        );
 
 		const uint64_t start_micros = db_options_.env->NowMicros();
     const size_t num_threads = flush_->sub_flush_states.size();
     assert(num_threads > 0);
     // Launch a thread for each of subcompactions 1...num_threads-1
     std::vector<port::Thread> thread_pool;
-    thread_pool.reserve(num_threads - 1);
+    thread_pool.reserve(num_threads-1);
     for (size_t i = 1; i < num_threads; i++) {
       thread_pool.emplace_back(&FlushJob::ProcessKeyValueFlush, this,
                         &flush_->sub_flush_states[i]);
@@ -499,10 +544,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 
       // First, estimate num_entries to apply.
       uint32_t num_entries = 0;
-      if (table_properties_.num_entries != 0) {
-        num_entries ++;
-      }
-      for (size_t i = 1; i < flush_->sub_flush_states.size(); i++) {
+      for (size_t i = 0; i < flush_->sub_flush_states.size(); i++) {
         SubflushState* sub_flush = &flush_->sub_flush_states[i];
         if (sub_flush->sub_table_properties.num_entries != 0) {
           num_entries ++;
@@ -516,23 +558,10 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
       autovector<autovector<VersionEdit*>> edit_lists;
       autovector<VersionEdit*> edit_list[num_entries];
       size_t edit_idx = 0;
-
-      //std::cout << "FlushJob::Run() table_properties" << std::endl;
-      // JH: Scanning table properties and push the infos.
-      if (table_properties_.num_entries != 0) {
-        tmp_cfds.emplace_back(cfd_);
-        mutable_cf_options_list.emplace_back(&mutable_cf_options_);
-        tmp_file_meta.emplace_back(&meta_); 
-
-        edit_list[edit_idx].emplace_back(mems_[0]->GetEdits());
-        edit_lists.emplace_back(edit_list[edit_idx]);
-        edit_idx ++;
-      }
-
       //std::cout << "FlushJob::Run() sub table_properties" << std::endl;
-      for (size_t i = 1; i < flush_->sub_flush_states.size(); i++) {
+      for (size_t i = 0; i < flush_->sub_flush_states.size(); i++) {
         SubflushState* sub_flush = &flush_->sub_flush_states[i];
-        ColumnFamilyData *sub_cfd = children_nodes_[i-1]->cfd_;
+        ColumnFamilyData *sub_cfd = target_nodes_[i]->cfd_;
 
         if (sub_flush->sub_table_properties.num_entries != 0) {
           //std::cout << "FlushJob::Run() loop 2" << std::endl;
@@ -597,7 +626,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
       stream << vstorage->NumLevelFiles(level);
     }
     // also, include children cfds
-    for (auto child: children_nodes_) {
+    for (auto child: target_nodes_) {
       ColumnFamilyData* child_cfd = child->cfd_;
       stream << child_cfd->GetName();
       auto child_vstorage = child_cfd->current()->storage_info();
@@ -609,7 +638,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     stream << "cfd" << cfd_->GetName();  
     stream << "immutable_memtables" << cfd_->imm()->NumNotFlushed();  
     // also, include children cfds
-    for (auto child: children_nodes_) {
+    for (auto child: target_nodes_) {
       ColumnFamilyData* child_cfd = child->cfd_;
       stream << "cfd" << child_cfd->GetName();  
       stream << "immutable_memtables" << child_cfd->imm()->NumNotFlushed();  
@@ -873,7 +902,7 @@ Status FlushJob::WriteLevel0Tables() {
       // JH: We need to build multiple tables from single iter
       // which is involved from cfd and its children nodes
       // Therefore, we call other function, BuildTables() to achive this.
-      if (children_nodes_.empty()) {
+      if (target_nodes_.empty()) {
         s = BuildTable(
             dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
             env_options_, cfd_->table_cache(), iter.get(),
@@ -901,9 +930,9 @@ Status FlushJob::WriteLevel0Tables() {
             cfd_->ioptions()->compression_opts,
             mutable_cf_options_.paranoid_file_checks, cfd_->internal_stats(),
             TableFileCreationReason::kFlush,
-            children_metas_,
-            children_nodes_,
-            children_table_properties_,
+            target_metas_,
+            target_nodes_,
+            target_table_properties_,
             event_logger_, job_context_->job_id,
             Env::IO_HIGH, &table_properties_,
             0 /* level */, current_time,
@@ -922,15 +951,15 @@ Status FlushJob::WriteLevel0Tables() {
         s.ToString().c_str(),
         meta_.marked_for_compaction ? " (needs compaction)" : "");
     if (db_options_.allow_column_family_split) {
-      for (size_t i = 0; i < children_nodes_.size(); i++) {
+      for (size_t i = 0; i < target_nodes_.size(); i++) {
         ROCKS_LOG_INFO(db_options_.info_log,
           "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
           " bytes %s"
           "%s",
-          children_nodes_[i]->cfd_->GetName().c_str(), job_context_->job_id,
-          children_metas_[i].fd.GetNumber(), children_metas_[i].fd.GetFileSize(),
+          target_nodes_[i]->cfd_->GetName().c_str(), job_context_->job_id,
+          target_metas_[i].fd.GetNumber(), target_metas_[i].fd.GetFileSize(),
           s.ToString().c_str(),
-          children_metas_[i].marked_for_compaction ? " (needs compaction)" : "");
+          target_metas_[i].marked_for_compaction ? " (needs compaction)" : "");
       }
     }
 
@@ -956,21 +985,21 @@ Status FlushJob::WriteLevel0Tables() {
                    meta_.marked_for_compaction);
   }
   // we also add files to version edits for children nodes
-  for (size_t i = 0; i < children_metas_.size(); i++) {
-    if (s.ok() && children_metas_[i].fd.GetFileSize() > 0) {
+  for (size_t i = 0; i < target_metas_.size(); i++) {
+    if (s.ok() && target_metas_[i].fd.GetFileSize() > 0) {
       // if we have more than 1 background thread, then we cannot
       // insert files directly into higher levels because some other
       // threads could be concurrently producing compacted files for
       // that key range.
       // Add file to L0
-      children_edits_[i].AddFile(0 /* level */, children_metas_[i].fd.GetNumber(),
-                                  children_metas_[i].fd.GetPathId(),
-                                  children_metas_[i].fd.GetFileSize(),
-                                  children_metas_[i].smallest,
-                                  children_metas_[i].largest,
-                                  children_metas_[i].fd.smallest_seqno,
-                                  children_metas_[i].fd.largest_seqno,
-                                  children_metas_[i].marked_for_compaction);
+      target_edits_[i].AddFile(0 /* level */, target_metas_[i].fd.GetNumber(),
+                                  target_metas_[i].fd.GetPathId(),
+                                  target_metas_[i].fd.GetFileSize(),
+                                  target_metas_[i].smallest,
+                                  target_metas_[i].largest,
+                                  target_metas_[i].fd.smallest_seqno,
+                                  target_metas_[i].fd.largest_seqno,
+                                  target_metas_[i].marked_for_compaction);
       //fprintf(stdout, "[c]%s\n", children_edits_[i].DebugString().c_str());
     }
   }
@@ -992,6 +1021,8 @@ Status FlushJob::WriteLevel0Tables() {
 /*
  * Made by Kyoungho Koo
  * : for multi-threaded split-then-flush
+ * Modified by JH
+ * : partition tree node(except for root) did not consider its children nodes. 
 */
 void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   assert(sub_flush != nullptr);
@@ -1022,11 +1053,11 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   status = db_options_.env->GetCurrentTime(&_current_time);
   // Safe to proceed even if GetCurrentTime fails. So, log and proceed.
   if (!status.ok()) {
-	ROCKS_LOG_WARN(
-		db_options_.info_log,
-		"Failed to get current time to populate creation_time property. "
-		"Status: %s",
-		status.ToString().c_str());
+    ROCKS_LOG_WARN(
+        db_options_.info_log,
+        "Failed to get current time to populate creation_time property. "
+        "Status: %s",
+        status.ToString().c_str());
   }
 
   const uint64_t current_time = static_cast<uint64_t>(_current_time);
@@ -1034,20 +1065,26 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   uint64_t oldest_key_time =
 	  mems_.front()->ApproximateOldestKeyTime();
 
-  if (sub_flush->sub_flush_id == 0) {
-		size_t children_size = children_nodes_.size();
+  PartitionTreeNode* node = target_nodes_[sub_flush->sub_flush_id];
+  ColumnFamilyData* cfd = node->cfd_;
+  std::vector<PartitionTreeNode*> children_nodes = cfd->GetChildrenNodes();
+  size_t children_size = children_nodes.size();
 
+  if (children_size > 0) { // {root OR internal} nodes
 		std::vector<std::vector<InternalIterator*>> memtabless(children_size +1);
-
 		std::vector<Arena> arenas(children_size + 1);
 		std::vector<ScopedArenaIterator *> iters;
 		std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
 					range_del_iters;
 
-
 		for (size_t i = 0; i < children_size + 1; i++) {
 			for (MemTable* m : mems_) {
 				InternalIterator * iiter = m->NewIterator(ro, &arenas[i]);
+        ROCKS_LOG_INFO(
+            db_options_.info_log,
+            "[%s] [JOB %d] Flushing memtable to internal node with next log file: %" PRIu64 ", child idx : %ld\n",
+            cfd->GetName().c_str(), job_context_->job_id, m->GetNextLogNumber(), i);
+
 				memtabless[i].push_back(iiter);
 				auto* range_del_iter =
 				m->NewRangeTombstoneIterator(ro, kMaxSequenceNumber);
@@ -1055,68 +1092,68 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 					range_del_iters.emplace_back(range_del_iter);
 				}
 			}
-			ScopedArenaIterator* iter = new ScopedArenaIterator(NewMergingIterator(&cfd_->internal_comparator(), &memtabless[i][0],
+			ScopedArenaIterator* iter = new ScopedArenaIterator(NewMergingIterator(&cfd->internal_comparator(), &memtabless[i][0],
 															 static_cast<int>(memtabless[i].size()), &arenas[i]));
 			iters.push_back(iter);
 		}
 
     status = BuildParentTable(
-            dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
-            env_options_, cfd_->table_cache(), iters,
-            std::move(range_del_iters), &meta_,
-            cfd_->internal_comparator(),
-            cfd_->int_tbl_prop_collector_factories(), cfd_->GetID(),
-            cfd_->GetName(), existing_snapshots_,
+            dbname_, db_options_.env, *cfd->ioptions(), mutable_cf_options_,
+            env_options_, cfd->table_cache(), iters,
+            std::move(range_del_iters), &sub_flush->sub_meta,
+            cfd->internal_comparator(),
+            cfd->int_tbl_prop_collector_factories(), cfd->GetID(),
+            cfd->GetName(), existing_snapshots_,
             earliest_write_conflict_snapshot_, snapshot_checker_,
             output_compression_, mutable_cf_options_.sample_for_compression,
-            cfd_->ioptions()->compression_opts,
-            mutable_cf_options_.paranoid_file_checks, cfd_->internal_stats(),
+            cfd->ioptions()->compression_opts,
+            mutable_cf_options_.paranoid_file_checks, cfd->internal_stats(),
             TableFileCreationReason::kFlush,
-            children_nodes_,
+            children_nodes,
             event_logger_, job_context_->job_id,
-            Env::IO_HIGH, &table_properties_,
+            Env::IO_HIGH, &sub_flush->sub_table_properties,
             0 /* level */, current_time,
             oldest_key_time, write_hint,
-						sub_flush->flush_state->GetSubflushStarts(),
-						sub_flush->flush_state->GetSubflushEnds());  
-  } else {
-		std::vector<InternalIterator*> memtables;
-		std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
-					range_del_iters;
-		Arena arena;
+            sub_flush->start,
+            sub_flush->end,
+						sub_flush->skip_starts,
+						sub_flush->skip_ends);  
+  } else { // leaf nodes
+    std::vector<InternalIterator*> memtables;
+    std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
+        range_del_iters;
+    
+    Arena arena;
+    for (MemTable* m : mems_) {
+      ROCKS_LOG_INFO(
+          db_options_.info_log,
+          "[%s] [JOB %d] Flushing memtable to leaf node with next log file: %" PRIu64 "\n",
+          cfd->GetName().c_str(), job_context_->job_id, m->GetNextLogNumber());
+      memtables.push_back(m->NewIterator(ro, &arena));
+      auto* range_del_iter =
+          m->NewRangeTombstoneIterator(ro, kMaxSequenceNumber);
+      if (range_del_iter != nullptr) {
+        range_del_iters.emplace_back(range_del_iter);
+      }
+    }
 
-		for (MemTable* m : mems_) {
-			memtables.push_back(m->NewIterator(ro, &arena));
-			auto* range_del_iter =
-			m->NewRangeTombstoneIterator(ro, kMaxSequenceNumber);
-			if (range_del_iter != nullptr) {
-				range_del_iters.emplace_back(range_del_iter);
-			}
-		}
-    ColumnFamilyData* sub_cfd =  children_nodes_[sub_flush->sub_flush_id - 1]->cfd_;
     ScopedArenaIterator sub_iter(
-          NewMergingIterator(&sub_cfd->internal_comparator(), &memtables[0],
-                             static_cast<int>(memtables.size()), &arena));
+        NewMergingIterator(&cfd->internal_comparator(), &memtables[0],
+          static_cast<int>(memtables.size()), &arena));
 
-//    std::cout << "FlushJob::ProcessKeyValueFlush() ->BuildsubTable() " << sub_flush->sub_flush_id<< std::endl;
-    //std::cout << "FlushJob::ProcessKeyValueFlush " << sub_flush->sub_flush_id 
-//		<< " sub_iter valid " << sub_iter.get()->Valid()<< std::endl;
-		status = BuildsubTable(
-					dbname_, db_options_.env, *sub_cfd->ioptions(), mutable_cf_options_,
-					env_options_, sub_cfd->table_cache(), sub_iter.get(),
-					std::move(range_del_iters), &sub_flush->sub_meta, sub_cfd->internal_comparator(),
-					sub_cfd->int_tbl_prop_collector_factories(), sub_cfd->GetID(),
-					sub_cfd->GetName(), existing_snapshots_,
+    status = BuildsubTable(
+					dbname_, db_options_.env, *cfd->ioptions(), mutable_cf_options_,
+					env_options_, cfd->table_cache(), sub_iter.get(),
+					std::move(range_del_iters), &sub_flush->sub_meta, cfd->internal_comparator(),
+					cfd->int_tbl_prop_collector_factories(), cfd->GetID(),
+					cfd->GetName(), existing_snapshots_,
 					earliest_write_conflict_snapshot_, snapshot_checker_,
 					output_compression_, mutable_cf_options_.sample_for_compression,
-					sub_cfd->ioptions()->compression_opts,
-					mutable_cf_options_.paranoid_file_checks, sub_cfd->internal_stats(),
+					cfd->ioptions()->compression_opts,
+					mutable_cf_options_.paranoid_file_checks, cfd->internal_stats(),
 					TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
 					Env::IO_HIGH, &sub_flush->sub_table_properties, 0 , current_time, oldest_key_time, write_hint,
 					sub_flush->start, sub_flush->end, sub_flush->sub_flush_id);
-    //std::cout << "FlushJob::ProcessKeyValueFlush() " << sub_flush->sub_flush_id  << " <-BuildsubTable()"<< std::endl;
-	
-//    std::cout << "FlushJob::ProcessKeyValueFlush() <-BuildsubTable() "<< sub_flush->sub_flush_id << std::endl;
   }
   LogFlush(db_options_.info_log);
 //    std::cout << "FlushJob::ProcessKeyValueFlush() <- LogFlush()"<< std::endl;
@@ -1130,8 +1167,10 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 
   // Note that if file_size is zero, the file has been deleted and
   // should not be added to the manifest.
-  VersionEdit* edit = sub_flush->sub_flush_id ? sub_flush->sub_edit: edit_;
-  FileMetaData* meta = sub_flush->sub_flush_id ? &sub_flush->sub_meta: &meta_;
+  //VersionEdit* edit = sub_flush->sub_flush_id ? sub_flush->sub_edit: edit_;
+  VersionEdit* edit = sub_flush->sub_edit;
+  //FileMetaData* meta = sub_flush->sub_flush_id ? &sub_flush->sub_meta: &meta_;
+  FileMetaData* meta = &sub_flush->sub_meta;
  // std::cout << "FlushJob::ProcessKeyValueFlush() <- Fsync() " << sub_flush->sub_flush_id << std::endl;
 
 

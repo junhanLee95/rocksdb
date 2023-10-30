@@ -82,13 +82,13 @@ class FlushJob {
    */
   void Prepare();
 
-  void SetChildrenNodes();
+  void SetTargetNodes();
   Status Run(LogsWithPrepTracker* prep_tracker = nullptr,
              FileMetaData* file_meta = nullptr);
   void Cancel();
   TableProperties GetTableProperties() const { return table_properties_; }
   const autovector<MemTable*>& GetMemTables() const { return mems_; }
-  const std::vector<PartitionTreeNode*>& GetChildrenNodes() const { return children_nodes_; }
+  const std::vector<PartitionTreeNode*>& GetTargetNodes() const { return target_nodes_; }
 
  private:
   struct SubflushState;
@@ -102,7 +102,7 @@ class FlushJob {
 
   const std::string& dbname_;
   ColumnFamilyData* cfd_;
-  std::vector<PartitionTreeNode*> children_nodes_;
+  std::vector<PartitionTreeNode*> target_nodes_; // JH: target nodes for subflush
   const ImmutableDBOptions& db_options_;
   const MutableCFOptions& mutable_cf_options_;
   // Pointer to a variable storing the largest memtable id to flush in this
@@ -126,9 +126,9 @@ class FlushJob {
   Statistics* stats_;
   EventLogger* event_logger_;
   TableProperties table_properties_;
-  // table properties of L0 for children nodes
-  // Not that the size of children_table_properties is equal to the size of children nodes
-  std::vector<TableProperties> children_table_properties_;
+  // table properties of L0 for target nodes
+  // Not that the size of target_table_properties is equal to the size of target nodes
+  std::vector<TableProperties> target_table_properties_;
   bool measure_io_stats_;
   // True if this flush job should call fsync on the output directory. False
   // otherwise.
@@ -155,16 +155,16 @@ class FlushJob {
 
   // Variables below are set by PickMemTable():
   FileMetaData meta_;
-  std::vector<FileMetaData> children_metas_; // file metadata of L0 for children nodes
-                                             // Note that the size of children_metas_ is equal
-                                             // to the size of children_nodes_
+  std::vector<FileMetaData> target_metas_; // file metadata of L0 for target nodes
+                                             // Note that the size of target_metas_ is equal
+                                             // to the size of target_nodes_
 
   //mutable InstrumentedMutex sub_mutex_;
   autovector<MemTable*> mems_;
   VersionEdit* edit_;
-  std::vector<VersionEdit> children_edits_; // version edit of L0 for children nodes
-                                             // Note that the size of children_edits_ is equal
-                                             // to the size of children_nodes_
+  std::vector<VersionEdit> target_edits_; // version edit of L0 for target nodes
+                                             // Note that the size of target_edits_ is equal
+                                             // to the size of target_nodes_
   Version* base_;
   bool pick_memtable_called;
   Env::Priority thread_pri_;

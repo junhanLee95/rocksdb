@@ -94,7 +94,7 @@ class LCFFlushTest : public testing::Test {
 
 	static void PrepareColumnFamily(DBImpl* db_impl, ColumnFamilyData* cfd,
                   int kv_base, int cf_size, int i) {
-    std::vector<SplitFileInfo> infos;
+    std::vector<FileMetaData*> infos;
     FileMetaData* f1 = new FileMetaData;
 
     size_t start_num = kv_base + i*cf_size;
@@ -107,9 +107,9 @@ class LCFFlushTest : public testing::Test {
     f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
     f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
 
-    infos.push_back(SplitFileInfo(f1, cfd));
+    infos.push_back(f1);
 
-    db_impl->SplitColumnFamilyFromSstFiles(infos);
+    db_impl->SplitColumnFamilyFromSstFiles(cfd, infos);
 
     delete f1;
     infos.clear();
@@ -122,14 +122,14 @@ class LCFFlushTest : public testing::Test {
     ColumnFamilyData* cfd =
       static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
     ColumnFamilyData* cfd_from = cfd->GetColumnFamilySet()->GetColumnFamily(from);
-    std::vector<SplitFileInfo> infos;
+    std::vector<FileMetaData*> infos;
     FileMetaData* f = new FileMetaData;
     std::string s = ranges[to].first;
     std::string l = ranges[to].second;
     f->smallest = InternalKey(Slice(s), 0, kTypeValue);
     f->largest = InternalKey(Slice(l), 0, kTypeValue);
-    infos.push_back(SplitFileInfo(f, cfd_from));
-    dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+    infos.push_back(f);
+    dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_from, infos);
     infos.clear();  
     delete f;
   }
@@ -335,7 +335,8 @@ TEST_F(LCFFlushTest, SimpleGet) {
   options.atomic_flush = false;
   //options.allow_column_family_split = false;
   options.allow_column_family_split = true;
-  int kv_size = 65536*16;
+  //int kv_size = 65536*16;
+  int kv_size = 65536;
 	int kv_base = 1000000;
 
 	static class std::shared_ptr<rocksdb::Statistics> dbstats;
@@ -378,6 +379,8 @@ TEST_F(LCFFlushTest, SimpleGet) {
 	for (auto& thread : thread_pool) {
 		thread.join();
 	}
+
+  db->Flush(FlushOptions(), cfh);
 
 
   ReadOptions roptions;

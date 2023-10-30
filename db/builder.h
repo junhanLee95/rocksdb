@@ -135,6 +135,7 @@ Status BuildParentTable(
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
     Env::WriteLifeTimeHint write_hint, 
+    std::string start, std::string end,
 		std::vector<std::string> sub_starts, std::vector<std::string> sub_ends);
 
 

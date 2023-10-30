@@ -625,6 +625,7 @@ Status BuildParentTable(
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
     Env::WriteLifeTimeHint write_hint, 
+    std::string start, std::string end,
 		std::vector<std::string> sub_starts, std::vector<std::string> sub_ends) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
@@ -638,26 +639,31 @@ Status BuildParentTable(
   meta->fd.file_size = 0;
 
 
-	std::vector <IterKey> start_iter(children_size);
-	for (size_t i = 0; i < children_size + 1; i++) {
-		InternalIterator* iter = iters[i]->get();
-		if (i == 0) {
-			iter->SeekToFirst();
-			continue;
-		}
-		start_iter[i-1].SetInternalKey(Slice(sub_ends[i-1]), kMaxSequenceNumber, kValueTypeForSeek);
-		iter->Seek(start_iter[i-1].GetInternalKey());
-	}
-
+  std::vector <IterKey> start_iter(children_size+1);
+  for (size_t i = 0; i < children_size + 1; i++) {
+    InternalIterator* iter = iters[i]->get();
+    if (i == 0) {
+      if (column_family_id == 0) { // root node
+        iter->SeekToFirst();
+      } else { // internal node
+        start_iter[i].SetInternalKey(Slice(start), kMaxSequenceNumber, kValueTypeForSeek);
+        iter->Seek(start_iter[i].GetInternalKey());
+      }
+      continue;
+    }
+    start_iter[i].SetInternalKey(Slice(sub_ends[i-1]), kMaxSequenceNumber, kValueTypeForSeek);
+    iter->Seek(start_iter[i].GetInternalKey());
+  }
+  /*
 	bool iter_valid = true;
 	for (size_t i = 0; i < children_size + 1; i++) {
 		InternalIterator* iter = iters[i]->get();
 		if (!iter->Valid()) {
-      ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] BuildParentTable() iter is not valid", job_id);
+      ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] BuildParentTable() iters(%ld) is not valid", job_id, i);
 			iter_valid = false;
 			break;
 		}
-	}
+	}*/
 
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
       new CompactionRangeDelAggregator(&internal_comparator, snapshots));
@@ -675,7 +681,7 @@ Status BuildParentTable(
 #endif  // !ROCKSDB_LITE
   TableProperties tp;
 
-  if (iter_valid || !range_del_agg->IsEmpty()) {
+  if (/*iter_valid ||*/ !range_del_agg->IsEmpty()) {
     TableBuilder* builder;
     std::unique_ptr<WritableFileWriter> file_writer;
     // Currently we only enable dictionary compression during compaction to the
@@ -720,8 +726,6 @@ Status BuildParentTable(
     // JH: choose builder to add by corresponding keys
     //size_t child_idx = 0; // -1 if parent, child_idx if child
 
-
-
 		std::vector<CompactionIterator*> c_iters;
 
 
@@ -734,11 +738,9 @@ Status BuildParentTable(
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
 			c_iter->SeekToFirst();
-      // JH : exclude sub_ends[i-1]
-      if (c_iter->Valid()) {
+      // JH : c_iters[i] needs to exclude sub_ends, except for i != 0
+      if (i != 0 && c_iter->Valid()) {
         c_iter->Next(); 
-      } else {
-        ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable() c_iter next", job_id);
       }
 
 		  c_iters.push_back(c_iter);
@@ -747,13 +749,20 @@ Status BuildParentTable(
 		for (size_t i = 0; i < children_size + 1; i++) {
 			for (;;) {
 				if (!c_iters[i]->Valid()) {
-          ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable() c_iter valid", job_id);
+          ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable c_iter[%ld] is no longer valid",
+                         job_id, i);
 					break;
 				}
 				const Slice& key = c_iters[i]->key();
 				const Slice& value = c_iters[i]->value();
 				std::string user_key_str = c_iters[i]->user_key().ToString();
-				if(i == children_size || 
+
+        // boundary check
+        if (i == children_size && user_key_str.compare(end) > 0) {
+          break;
+        }
+
+				if (i == children_size || 
 						user_key_str.compare(sub_starts[i]) < 0) {
 					builder->Add(key, value);
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
@@ -786,8 +795,6 @@ Status BuildParentTable(
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
     ROCKS_LOG_INFO(ioptions.info_log, "[%s] FlushJob: parent's num_entries : %ld",
                    column_family_name.c_str(), builder->NumEntries());
-
-
 
 		bool finish_builder = true;
 		bool refresh_builder = true;

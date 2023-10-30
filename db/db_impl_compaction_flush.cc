@@ -155,7 +155,7 @@ Status DBImpl::FlushMemTableToOutputFile(
   if (immutable_db_options_.allow_column_family_split) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "FlushJob w/ column family split");
-    flush_job.SetChildrenNodes();
+    flush_job.SetTargetNodes();
     LogFlush(immutable_db_options_.info_log);
   } else {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -164,7 +164,6 @@ Status DBImpl::FlushMemTableToOutputFile(
   }
 
   FileMetaData file_meta;
-
 
   if (immutable_db_options_.allow_column_family_split) {
 	  TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:BeforePrepare");
@@ -209,21 +208,13 @@ Status DBImpl::FlushMemTableToOutputFile(
   }
 
   if (s.ok()) {
-    // JH: install superversion for children nodes after the flush job completion.
+    // JH: install superversion for every target nodes after the flush job completion.
     if (immutable_db_options_.allow_column_family_split) {
-			
-			ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", flush_job.GetChildrenNodes().size(), job_context->superversion_contexts.size());
-      // Parent
+			ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", flush_job.GetTargetNodes().size(), job_context->superversion_contexts.size());
       int idx=0;
-      InstallSuperVersionAndScheduleWork(cfd, &job_context->superversion_contexts[idx++],
-          mutable_cf_options);
-      assert(job_context->superversion_contexts.size() == cfd->GetChildrenNodes().size() +1);
-      // Children
-      auto children_nodes = flush_job.GetChildrenNodes();
-      for (auto node: children_nodes) {
-        // TODO(JH): now we assume mutable_cf_options for every column families are the same.
+      for (PartitionTreeNode* node: flush_job.GetTargetNodes()) {
         InstallSuperVersionAndScheduleWork(node->cfd_, &job_context->superversion_contexts[idx++],
-            mutable_cf_options);
+                                           mutable_cf_options);
       }
     } else {
       InstallSuperVersionAndScheduleWork(cfd, superversion_context,
