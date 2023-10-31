@@ -351,21 +351,21 @@ TEST_F(LCFFlushTest, ThreeLevelTreeGetEmptyRoot) {
   ASSERT_OK(DB::Open(options, db_name, &db));
 
   ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
-
+  
   // Prepare column family - level 1
   std::pair<std::string, std::string> ranges[split_cnt];
   // default
   ranges[0].first =  "";
   ranges[0].second = "";
   // default1
-  ranges[1].first =  "user00000000000000100000";
-  ranges[1].second = "user00000000000000120000";
+  ranges[1].first =  "user10000000000000100000";
+  ranges[1].second = "user10000000000000120000";
   // default2
-  ranges[2].first =  "user00000000000000120001";
-  ranges[2].second = "user00000000000000165535";
+  ranges[2].first =  "user10000000000000120001";
+  ranges[2].second = "user10000000000000165535";
   // default3
-  ranges[3].first =  "user00000000000000110001";
-  ranges[3].second = "user00000000000000120000";
+  ranges[3].first =  "user10000000000000110001";
+  ranges[3].second = "user10000000000000120000";
   
 
   // [SPLIT] default -> default1

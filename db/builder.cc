@@ -928,21 +928,24 @@ Status BuildsubTable(
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
     Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, 
-	int sub_flush_id) {
+    int sub_flush_id) {
   assert((column_family_id ==
-          TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
-         column_family_name.empty());
-	(void)sub_flush_id; /* unused */
-  assert(sub_flush_id);
+        TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
+      column_family_name.empty());
+  (void)sub_flush_id; /* unused */
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
   meta->fd.file_size = 0;
 
   // WOW
-  IterKey start_iter;
-  start_iter.SetInternalKey(Slice(sub_flush_start), kMaxSequenceNumber, kValueTypeForSeek);
-  iter->Seek(start_iter.GetInternalKey());
+  if (sub_flush_start == "") {
+    iter->SeekToFirst();
+  } else {
+    IterKey start_iter;
+    start_iter.SetInternalKey(Slice(sub_flush_start), kMaxSequenceNumber, kValueTypeForSeek);
+    iter->Seek(start_iter.GetInternalKey());
+  }
 
 
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
@@ -956,7 +959,7 @@ Status BuildsubTable(
 
 
   std::string fname = TableFileName(ioptions.cf_paths, meta->fd.GetNumber(),
-                                    meta->fd.GetPathId());
+      meta->fd.GetPathId());
 #ifndef ROCKSDB_LITE
   EventHelpers::NotifyTableFileCreationStarted(
       ioptions.listeners, dbname, column_family_name, fname, job_id, reason);
@@ -965,7 +968,7 @@ Status BuildsubTable(
 
 
   //std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " iter->Valid() "
-//	  << iter->Valid() << " range_del_agg->IsEmpty() " << range_del_agg->IsEmpty() << std::endl;
+  //	  << iter->Valid() << " range_del_agg->IsEmpty() " << range_del_agg->IsEmpty() << std::endl;
 
   if (iter->Valid() || !range_del_agg->IsEmpty()) {
     TableBuilder* builder;
@@ -993,7 +996,7 @@ Status BuildsubTable(
 
       file_writer.reset(
           new WritableFileWriter(std::move(file), fname, env_options, env,
-                                 ioptions.statistics, ioptions.listeners));
+            ioptions.statistics, ioptions.listeners));
       builder = NewTableBuilder(
           ioptions, mutable_cf_options, internal_comparator,
           int_tbl_prop_collector_factories, column_family_id,
@@ -1003,10 +1006,10 @@ Status BuildsubTable(
     }
 
     MergeHelper merge(env, internal_comparator.user_comparator(),
-                      ioptions.merge_operator, nullptr, ioptions.info_log,
-                      true /* internal key corruption is not ok */,
-                      snapshots.empty() ? 0 : snapshots.back(),
-                      snapshot_checker);
+        ioptions.merge_operator, nullptr, ioptions.info_log,
+        true /* internal key corruption is not ok */,
+        snapshots.empty() ? 0 : snapshots.back(),
+        snapshot_checker);
 
     CompactionIterator c_iter(
         iter, internal_comparator.user_comparator(), &merge, kMaxSequenceNumber,
@@ -1019,7 +1022,7 @@ Status BuildsubTable(
      */
     c_iter.SeekToFirst();
 
-		//bool first = true;
+    //bool first = true;
     for (;;) {
 
 
@@ -1033,20 +1036,20 @@ Status BuildsubTable(
 
       std::string user_key = c_iter.user_key().ToString();
 
-			/*
-			if (first) {
-				std::cout << "BuildsubTable() "<< user_key << std::endl;
-				first = false;
-			}
-			*/
+      /*
+         if (first) {
+         std::cout << "BuildsubTable() "<< user_key << std::endl;
+         first = false;
+         }
+       */
 
 
-      if (user_key.compare(sub_flush_start) < 0) {
+      if (sub_flush_start != "" && user_key.compare(sub_flush_start) < 0) {
         c_iter.Next();
         continue;
       }
 
-      if (user_key.compare(sub_flush_end) > 0) {
+      if (sub_flush_end != "" && user_key.compare(sub_flush_end) > 0) {
         /*
            fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
            user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());
@@ -1070,12 +1073,12 @@ Status BuildsubTable(
 
     auto range_del_it = range_del_agg->NewIterator();
     for (range_del_it->SeekToFirst(); range_del_it->Valid();
-         range_del_it->Next()) {
+        range_del_it->Next()) {
       auto tombstone = range_del_it->Tombstone();
       auto kv = tombstone.Serialize();
       builder->Add(kv.first.Encode(), kv.second);
       meta->UpdateBoundariesForRange(kv.first, tombstone.SerializeEndKey(),
-                                     tombstone.seq_, internal_comparator);
+          tombstone.seq_, internal_comparator);
     }
 
 
@@ -1120,13 +1123,13 @@ Status BuildsubTable(
       // we will regrad this verification as user reads since the goal is
       // to cache it here for further user reads
       std::unique_ptr<InternalIterator> it(table_cache->NewIterator(
-          ReadOptions(), env_options, internal_comparator, *meta,
-          nullptr /* range_del_agg */,
-          mutable_cf_options.prefix_extractor.get(), nullptr,
-          (internal_stats == nullptr) ? nullptr
-                                      : internal_stats->GetFileReadHist(0),
-          false /* for_compaction */, nullptr /* arena */,
-          false /* skip_filter */, level));
+            ReadOptions(), env_options, internal_comparator, *meta,
+            nullptr /* range_del_agg */,
+            mutable_cf_options.prefix_extractor.get(), nullptr,
+            (internal_stats == nullptr) ? nullptr
+            : internal_stats->GetFileReadHist(0),
+            false /* for_compaction */, nullptr /* arena */,
+            false /* skip_filter */, level));
       s = it->status();
       if (s.ok() && paranoid_file_checks) {
         for (it->SeekToFirst(); it->Valid(); it->Next()) {
@@ -1136,7 +1139,7 @@ Status BuildsubTable(
     }
   }
 
-//  std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 4"<< std::endl;
+  //  std::cout << "BuildsubTable() " << job_id << " " << sub_flush_id  << " line 4"<< std::endl;
   // Check for input iterator errors
   if (!iter->status().ok()) {
     s = iter->status();
