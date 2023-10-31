@@ -633,6 +633,11 @@ Status BuildParentTable(
 
   size_t children_size = children_nodes.size();
 
+  ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] [%s] BuildParentTable start [%s, %s]",
+      job_id,
+      column_family_name.c_str(),
+      start.c_str(),
+      end.c_str());
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
@@ -654,8 +659,8 @@ Status BuildParentTable(
     start_iter[i].SetInternalKey(Slice(sub_ends[i-1]), kMaxSequenceNumber, kValueTypeForSeek);
     iter->Seek(start_iter[i].GetInternalKey());
   }
-  /*
 	bool iter_valid = true;
+  /*
 	for (size_t i = 0; i < children_size + 1; i++) {
 		InternalIterator* iter = iters[i]->get();
 		if (!iter->Valid()) {
@@ -681,7 +686,7 @@ Status BuildParentTable(
 #endif  // !ROCKSDB_LITE
   TableProperties tp;
 
-  if (/*iter_valid ||*/ !range_del_agg->IsEmpty()) {
+  if (iter_valid || !range_del_agg->IsEmpty()) {
     TableBuilder* builder;
     std::unique_ptr<WritableFileWriter> file_writer;
     // Currently we only enable dictionary compression during compaction to the
@@ -747,6 +752,11 @@ Status BuildParentTable(
 		}
 
 		for (size_t i = 0; i < children_size + 1; i++) {
+      ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] [%s] BuildParentTable %ld-th over %ld staggered scan",
+          job_id,
+          column_family_name.c_str(),
+          i, children_size+1);
+
 			for (;;) {
 				if (!c_iters[i]->Valid()) {
           ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable c_iter[%ld] is no longer valid",
@@ -758,13 +768,14 @@ Status BuildParentTable(
 				std::string user_key_str = c_iters[i]->user_key().ToString();
 
         // boundary check
-        if (i == children_size && user_key_str.compare(end) > 0) {
+        if (i == children_size && end != "" && user_key_str.compare(end) > 0) {
           break;
         }
 
 				if (i == children_size || 
 						user_key_str.compare(sub_starts[i]) < 0) {
 					builder->Add(key, value);
+          //std::cout <<  "[" << column_family_name << "] int add : " << user_key_str << std::endl;
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
 				} else {
 					break;
@@ -1043,7 +1054,7 @@ Status BuildsubTable(
         break;
       }
 
-
+      //std::cout <<  "[" << column_family_name << "] sub add : " << user_key << std::endl;
       builder->Add(key, value);
       meta->UpdateBoundaries(key, c_iter.ikey().sequence);
 

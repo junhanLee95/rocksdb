@@ -566,7 +566,8 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
         if (sub_flush->sub_table_properties.num_entries != 0) {
           //std::cout << "FlushJob::Run() loop 2" << std::endl;
           tmp_cfds.emplace_back(sub_cfd);
-          //std::cout << "FlushJob::Run() children_nodes_[i-1]-> cfd_ " << children_nodes_[i-1]->cfd_->GetName() << std::endl;
+          //std::cout << "FlushJob::Run() target_nodes_[i]-> cfd_ " << target_nodes_[i]->cfd_->GetName() << std::endl;
+          //std::cout << "FlushJob::Run() version edit  " << sub_flush->sub_edit->DebugString() << std::endl;
           mutable_cf_options_list.emplace_back(&mutable_cf_options_);
           //std::cout << "FlushJob::Run() loop 4" << std::endl;
           tmp_file_meta.emplace_back(&sub_flush->sub_meta);
