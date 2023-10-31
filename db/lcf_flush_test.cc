@@ -327,6 +327,105 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   db = nullptr;
 }*/
 
+TEST_F(LCFFlushTest, ThreeLevelTreeGetEmptyRoot) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =2;
+  options.atomic_flush = false;
+  //options.allow_column_family_split = false;
+  options.allow_column_family_split = true;
+  //int kv_size = 65536*16;
+  int kv_size = 65536;
+	int kv_base = 100000;
+
+	static class std::shared_ptr<rocksdb::Statistics> dbstats;
+	dbstats = rocksdb::CreateDBStatistics();
+	dbstats->set_stats_level(static_cast<StatsLevel>
+			(rocksdb::StatsLevel::kExceptDetailedTimers));
+	options.statistics = dbstats;
+
+
+  std::string db_name = "/mnt/rocksdb_test";
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+
+  // Prepare column family - level 1
+  std::pair<std::string, std::string> ranges[split_cnt];
+  // default
+  ranges[0].first =  "";
+  ranges[0].second = "";
+  // default1
+  ranges[1].first =  "user00000000000000100000";
+  ranges[1].second = "user00000000000000120000";
+  // default2
+  ranges[2].first =  "user00000000000000120001";
+  ranges[2].second = "user00000000000000165535";
+  // default3
+  ranges[3].first =  "user00000000000000110001";
+  ranges[3].second = "user00000000000000120000";
+  
+
+  // [SPLIT] default -> default1
+  TEST_Split(db, 0, 1, ranges);
+  // [SPLIT] default -> default2
+  TEST_Split(db, 0, 2, ranges);
+  // [SPLIT] default1 -> default3
+  TEST_Split(db, 1, 3, ranges);
+
+  // Prepare Memtable
+	std::vector<port::Thread> thread_pool;
+	int num_thread = 8;
+	thread_pool.reserve(num_thread);
+	for(int i=0; i<num_thread; i++) {
+	  thread_pool.emplace_back(&PrepareMemtableNonRandom, db, cfh, kv_base + i * kv_size/num_thread, kv_size/num_thread);
+  }
+	for (auto& thread : thread_pool) {
+		thread.join();
+	}
+
+  db->Flush(FlushOptions(), cfh);
+
+
+  ReadOptions roptions;
+  roptions.verify_checksums = true;
+  // positive lookup
+  for (int i=kv_base; i<kv_base+kv_size; i++){
+	  std::string key = "user00000000000000" + std::to_string(i); 
+    std::string result;
+    Status s = db->Get(roptions, Slice(key), &result);
+    if (s.IsNotFound()) {
+      result = "NOT_FOUND"; 
+    } else if(!s.ok()) {
+      result = s.ToString(); 
+    }
+    ASSERT_EQ(result, key);
+  }
+  // negative lookup
+  for (int i=kv_base+kv_size; i<kv_base+2*kv_base; i++) {
+  	std::string key = "user00000000000000" + std::to_string(i); 
+    std::string result;
+    Status s = db->Get(roptions, Slice(key), &result);
+    if (s.IsNotFound()) {
+      result = "NOT_FOUND"; 
+    } else if(!s.ok()) {
+      result = s.ToString(); 
+    }
+    ASSERT_EQ(result, "NOT_FOUND");
+  
+  }
+
+	fprintf(stdout,"STATISTICS:\n%s\n", dbstats->ToString().c_str());
+
+  // clear
+
+  delete db;
+  db = nullptr;
+}
+
+/*
 TEST_F(LCFFlushTest, ThreeLevelTreeGet) {
   Options options;
   options.create_if_missing = true;
@@ -420,7 +519,7 @@ TEST_F(LCFFlushTest, ThreeLevelTreeGet) {
 	fprintf(stdout,"STATISTICS:\n%s\n", dbstats->ToString().c_str());
   delete db;
   db = nullptr;
-}
+}*/
 
 /*
 TEST_F(LCFFlushTest, SimpleGet) {

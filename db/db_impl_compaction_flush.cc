@@ -228,14 +228,22 @@ Status DBImpl::FlushMemTableToOutputFile(
                      cfd->GetName().c_str(),
                      cfd->current()->storage_info()->LevelSummary(&tmp));
     if (immutable_db_options_.allow_column_family_split) {
-      auto children_nodes = cfd->GetChildrenNodes();
-      for(auto node: children_nodes) {
-        VersionStorageInfo::LevelSummaryStorage tmp_c;
-        ROCKS_LOG_BUFFER(log_buffer, "[%s] children Level summary: %s\n",
-                         node->cfd_->GetName().c_str(),
-                         node->cfd_->current()->storage_info()->LevelSummary(&tmp_c));  
+      std::vector<PartitionTreeNode*> children_nodes = cfd->GetChildrenNodes();
+      std::vector<PartitionTreeNode*> next_nodes;
+      while (!children_nodes.empty()) {
+        for (auto node: children_nodes) {
+          VersionStorageInfo::LevelSummaryStorage tmp_c;
+          ROCKS_LOG_BUFFER(log_buffer, "[%s] children Level summary: %s\n",
+              node->cfd_->GetName().c_str(),
+              node->cfd_->current()->storage_info()->LevelSummary(&tmp_c));  
+          auto tmp_nodes = node->cfd_->GetChildrenNodes();
+          for (auto tmp_node: tmp_nodes) {
+            next_nodes.push_back(tmp_node);
+          }
+        }  
+        children_nodes = next_nodes;
+        next_nodes.clear();
       }
-      
     }
   }
 
