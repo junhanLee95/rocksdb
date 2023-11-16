@@ -28,7 +28,7 @@ namespace rocksdb {
 
 class LCFFlushTest : public testing::Test {
  public:
-  static const int split_cnt = 4;
+  static const int split_cnt = 5;
   LCFFlushTest() {
   }
 
@@ -326,7 +326,7 @@ TEST_F(LCFFlushTest, ThreeLevelSplitAndFlush) {
   delete db;
   db = nullptr;
 }*/
-
+/*
 TEST_F(LCFFlushTest, ThreeLevelTreeGetEmptyRoot) {
   Options options;
   options.create_if_missing = true;
@@ -423,9 +423,9 @@ TEST_F(LCFFlushTest, ThreeLevelTreeGetEmptyRoot) {
 
   delete db;
   db = nullptr;
-}
+}*/
 
-/*
+
 TEST_F(LCFFlushTest, ThreeLevelTreeGet) {
   Options options;
   options.create_if_missing = true;
@@ -445,7 +445,7 @@ TEST_F(LCFFlushTest, ThreeLevelTreeGet) {
 	options.statistics = dbstats;
 
 
-  std::string db_name = "/mnt/rocksdb_test";
+  std::string db_name = "/mnt/rocksdb_test_lcf";
   DB* db;
   ASSERT_OK(DB::Open(options, db_name, &db));
 
@@ -460,19 +460,24 @@ TEST_F(LCFFlushTest, ThreeLevelTreeGet) {
   ranges[1].first =  "user00000000000000110000";
   ranges[1].second = "user00000000000000120000";
   // default2
-  ranges[2].first =  "user00000000000000130000";
+  ranges[2].first =  "user00000000000000125000";
   ranges[2].second = "user00000000000000140000";
   // default3
-  ranges[3].first =  "user00000000000000113000";
-  ranges[3].second = "user00000000000000115000";
+  ranges[3].first =  "user00000000000000145000";
+  ranges[3].second = "user00000000000000154000";
+   // default4
+  ranges[4].first =  "user00000000000000108000";
+  ranges[4].second = "user00000000000000158000";
   
 
   // [SPLIT] default -> default1
   TEST_Split(db, 0, 1, ranges);
   // [SPLIT] default -> default2
   TEST_Split(db, 0, 2, ranges);
-  // [SPLIT] default1 -> default3
-  TEST_Split(db, 1, 3, ranges);
+  // [SPLIT] default0 -> default3
+  TEST_Split(db, 0, 3, ranges);
+  // [SPLIT] default -> default4
+  TEST_Split(db, 0, 4, ranges);
 
   // Prepare Memtable
 	std::vector<port::Thread> thread_pool;
@@ -519,7 +524,7 @@ TEST_F(LCFFlushTest, ThreeLevelTreeGet) {
 	fprintf(stdout,"STATISTICS:\n%s\n", dbstats->ToString().c_str());
   delete db;
   db = nullptr;
-}*/
+}
 
 /*
 TEST_F(LCFFlushTest, SimpleGet) {

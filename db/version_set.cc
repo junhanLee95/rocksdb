@@ -3205,6 +3205,18 @@ Status VersionSet::ProcessManifestWrites(
           create_cf = true;
           continue;
         }
+        else if (writer.edit_list.front()->is_column_family_keyrange_update_) {
+          // JH : update key range to the corresponding column family
+          std::string smallest = writer.edit_list.front()->smallest_user_key_;
+          std::string largest = writer.edit_list.front()->largest_user_key_;
+          ColumnFamilyData* w_cfd = writer.cfd;
+          if (smallest != "") {
+            w_cfd->UpdateSmallestKey(smallest);
+          }
+          if (largest != "") {
+            w_cfd->UpdateLargestKey(largest);
+          }
+        }
         else {
           auto cfd_out = CreateColumnFamily(*new_cf_options, writer.edit_list.front());
           cfd_outs.push_back(cfd_out);
@@ -3212,7 +3224,9 @@ Status VersionSet::ProcessManifestWrites(
       }
 
       // update logical column family data
-      column_family_set_->SplitLogicalColumnFamily(cfd, cfd_outs);
+      if(!cfd_outs.empty()) {
+        column_family_set_->SplitLogicalColumnFamily(cfd, cfd_outs);
+      }
     } else {
       // Each version in versions corresponds to a column family.
       // For each column family, update its log number indicating that logs
@@ -3342,6 +3356,7 @@ Status VersionSet::LogAndApply(
 #endif /* ! NDEBUG */
   }
   
+  //fprintf(stdout, "split_column_family : %d\n", is_split_column_family);
   /*for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
       fprintf(stdout, "%s\n", edit->DebugString().c_str());
@@ -3354,7 +3369,7 @@ Status VersionSet::LogAndApply(
     assert(edit_lists[0][0]->is_column_family_add_);
     assert(new_cf_options != nullptr);
   }
-  if (num_cfds == 1 && column_family_datas[0] != nullptr && is_split_column_family) {
+  if (column_family_datas[0] != nullptr && is_split_column_family) {
     // SplitColumnFamily
     //fprintf(stdout,"split column family\n");
     bool first_edit = true;
@@ -3369,10 +3384,7 @@ Status VersionSet::LogAndApply(
           first_edit = false;
         }
         else{
-          assert(edit->is_column_family_add_);
-          if(edit->is_column_family_add_ == false) {
-            return Status::ShutdownInProgress();
-          }
+          assert(edit->is_column_family_add_ || edit->is_column_family_keyrange_update_);
         }
       }
     }
@@ -3394,10 +3406,17 @@ Status VersionSet::LogAndApply(
   else{ // SplitColumnFamily
     writers.emplace_back(mu, column_family_datas[0],
                          *mutable_cf_options_list[0], edit_lists[0]);
+    size_t cfd_idx = 1;
     manifest_writers_.push_back(&writers[0]);
     for (size_t i = 1 ; i < edit_lists.size(); i++) {
-      writers.emplace_back(mu, nullptr,
+      // JH: for update key ranges, put column family datas to writers
+      if (edit_lists[i][0]->is_column_family_add_) {
+        writers.emplace_back(mu, nullptr,
                            *mutable_cf_options_list[i], edit_lists[i]);
+      } else { // keyrange update
+        writers.emplace_back(mu, column_family_datas[cfd_idx++],
+                           *mutable_cf_options_list[i], edit_lists[i]);
+      }
     }
   }
   assert(!writers.empty());

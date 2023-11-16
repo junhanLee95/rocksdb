@@ -1412,7 +1412,8 @@ Status CompactionJob::FinishCompactionOutputFile(
 		
     if (db_options_.allow_column_family_split) {
       float threshold =  db_options_.column_family_split_threshold - 0.1 * cfd->GetPartitionTreeNode()->GetDepth();
-      if (efficiency < threshold && compact_->compaction->output_level() == 1) {
+      if (efficiency < threshold && compact_->compaction->output_level() == 1
+        /*  && current_entries >= 4096*/) {
         ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Split table #%" PRIu64 " with range [%s,%s]",
                     cfd->GetName().c_str(), job_id_, output_number,

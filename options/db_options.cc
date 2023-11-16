@@ -89,7 +89,8 @@ ImmutableDBOptions::ImmutableDBOptions(const DBOptions& options)
       atomic_flush(options.atomic_flush),
       avoid_unnecessary_blocking_io(options.avoid_unnecessary_blocking_io),
       allow_column_family_split(options.allow_column_family_split),
-      column_family_split_threshold(options.column_family_split_threshold) {
+      column_family_split_threshold(options.column_family_split_threshold),
+      column_family_min_key_range(options.column_family_min_key_range) {
 }
 
 void ImmutableDBOptions::Dump(Logger* log) const {

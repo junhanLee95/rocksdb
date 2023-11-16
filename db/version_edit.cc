@@ -91,6 +91,7 @@ void VersionEdit::Clear() {
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
   is_column_family_split_ = 0;
+  is_column_family_keyrange_update_ = 0;
   is_split_move_ = false;
   column_family_name_.clear();
   is_in_atomic_group_ = false;
@@ -665,6 +666,10 @@ std::string VersionEdit::DebugString(bool hex_key) const {
   }
   if (is_column_family_split_) {
     r.append("\n  ColumnFamilySplit: ");
+    r.append(column_family_name_);
+  }
+  if (is_column_family_keyrange_update_) {
+    r.append("\n  ColumnFamilyKeyRangeUpdate: ");
     r.append(column_family_name_);
   }
   if (is_column_family_drop_) {

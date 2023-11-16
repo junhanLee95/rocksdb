@@ -292,6 +292,14 @@ class ColumnFamilyData {
   std::string GetSmallestKey();
   std::string GetLargestKey();
 
+  void UpdateSmallestKey(std::string smallest) {
+    smallest_user_key_ = smallest;
+  }
+
+  void UpdateLargestKey(std::string largest) {
+    largest_user_key_ = largest;
+  }
+
   // for partition tree node
   void SetPartitionTreeNode(PartitionTreeNode* node);
   PartitionTreeNode* GetPartitionTreeNode(void);
@@ -624,14 +632,25 @@ class ColumnFamilySet {
   ColumnFamilyData* GetLogicalColumnFamily(const Slice &key);
   std::vector<ColumnFamilyData*> GetAllLogicalColumnFamilies(const Slice &key);
   ColumnFamilyData* GetParentColumnFamily(ColumnFamilyData* cfd);
-  size_t PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
+  void PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& column_family_datas,
+                                 InstrumentedMutex* db_mutex,
                                  uint64_t logfile_number,
                                  ColumnFamilyData* cfd,
                                  std::vector<FileMetaData*>& sst_split_files,
                                  autovector<autovector<VersionEdit*>>& edit_lists,
                                  std::vector<VersionEdit>& edit_out,
                                  autovector<std::string>& cf_name_list,
-                                 autovector<const MutableCFOptions*>& cf_options);
+                                 autovector<const MutableCFOptions*>& cf_options,
+                                 size_t* create_cf_cnt,
+                                 size_t* keyrange_upd_cf_cnt);
+  bool is_key_range_narrow(std::string s1, std::string s2, int limit) {
+    long n1 = stol(s1.substr(4, s1.size() - 4));
+    long n2 = stol(s2.substr(4, s2.size() - 4));
+    if (n1 < n2 && n2 - n1 >= limit) {
+      return false;
+    }
+    return true;
+  }
  private:
   friend class ColumnFamilyData;
   // helper function that gets called from cfd destructor
@@ -669,10 +688,16 @@ class ColumnFamilySet {
   void AddKeyRangeIfNecessary(std::string r1, std::string r2,
                               bool include_left,
                               bool include_right,
-                              std::vector<std::string>& smallests,
-                              std::vector<std::string>& largests,
-                              size_t* split_cnt,
-                              std::string prefix_key
+                              std::vector<std::string>& new_smallests,
+                              std::vector<std::string>& new_largests,
+                              std::vector<std::string>& upd_smallests,
+                              std::vector<std::string>& upd_largests,
+                              size_t* new_cf_cnt,
+                              size_t* keyrange_upd_cf_cnt,
+                              std::string prefix_key,
+                              autovector<ColumnFamilyData*>& column_family_datas,
+                              ColumnFamilyData* child_cfd,
+                              bool upd_smallest
                               );
 };
 

@@ -1549,14 +1549,17 @@ ColumnFamilyData* ColumnFamilySet::GetParentColumnFamily(ColumnFamilyData* cfd) 
   return pnode == nullptr ? nullptr : pnode->cfd_;
 }
 
-size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
+void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& column_family_datas,
+                     InstrumentedMutex* db_mutex,
                      uint64_t logfile_number,
                      ColumnFamilyData* cfd,
                      std::vector<FileMetaData*>& sst_split_files,
                      autovector<autovector<VersionEdit*>>& edit_lists,
                      std::vector<VersionEdit>& edit_out,
                      autovector<std::string>& cf_name_list,
-                     autovector<const MutableCFOptions*>& cf_options) {
+                     autovector<const MutableCFOptions*>& cf_options,
+                     size_t* new_cf_cnt /* number of partitions to create from the split job*/,
+                     size_t* keyrange_upd_cf_cnt /* number of partitions to create from the split job*/) {
   db_mutex->AssertHeld();
   assert(cfd != nullptr);
   assert(!sst_split_files.empty());
@@ -1565,9 +1568,11 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
 
   // Predict split_cnt
   // Prepare smallest and largest key of each target column family.
-  size_t split_cnt = 0; // number of partitions to create from the split job
-  std::vector<std::string> smallests; // key ranges(smallest) to split
-  std::vector<std::string> largests; // key ranges(largest) to split
+  std::vector<std::string> new_smallests; // new key ranges(smallest) to split
+  std::vector<std::string> new_largests; //  new key ranges(largest) to split
+  std::vector<std::string> upd_smallests; // new key ranges(smallest) to update
+  std::vector<std::string> upd_largests; //  new key ranges(largest) to update
+
   PartitionTreeNode* nnode; // parent node
   std::vector<PartitionTreeNode*> cnodes; // children nodes
 
@@ -1579,10 +1584,19 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
     ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: cnodes are empty");
     for (size_t i = 0; i < sst_split_files.size(); i++) {
-      smallests.push_back(sst_split_files[i]->smallest.user_key().ToString(false));
-      largests.push_back(sst_split_files[i]->largest.user_key().ToString(false));
+      if (!is_key_range_narrow(sst_split_files[i]->smallest.user_key().ToString(false),
+                               sst_split_files[i]->largest.user_key().ToString(false),
+                               db_options_->column_family_min_key_range)) {
+        new_smallests.push_back(sst_split_files[i]->smallest.user_key().ToString(false));
+        new_largests.push_back(sst_split_files[i]->largest.user_key().ToString(false));
+        *new_cf_cnt = *new_cf_cnt+1;  
+      } else {
+        ROCKS_LOG_INFO(db_options_->info_log.get(),
+                       "Key Range [%s,%s] is narrow and we skip",
+                       sst_split_files[i]->smallest.user_key().ToString(false).c_str(),
+                       sst_split_files[i]->largest.user_key().ToString(false).c_str());
+      }
     }
-    split_cnt = sst_split_files.size();
   } else { // measure overlapping key ranges before putting sst_split_files to children
     size_t c_i = 0; // index for cnodes
     std::string s_smallest; // sst_split_files' smallest key
@@ -1597,15 +1611,21 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
                    s_largest.c_str());
 
       if (c_i == cnodes.size()) { // we already looked up all children
-        smallests.push_back(s_smallest);
-        largests.push_back(s_largest);
-        split_cnt ++;
-        ROCKS_LOG_INFO(db_options_->info_log.get(),
-                       "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
-                       s_smallest.c_str(),
-                       s_largest.c_str(),
-                       split_cnt);
-
+        if (!is_key_range_narrow(s_smallest, s_largest,
+              db_options_->column_family_min_key_range)) {
+          new_smallests.push_back(s_smallest);
+          new_largests.push_back(s_largest);
+          *new_cf_cnt = *new_cf_cnt + 1;
+          ROCKS_LOG_INFO(db_options_->info_log.get(),
+              "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
+              s_smallest.c_str(),
+              s_largest.c_str(),
+              *new_cf_cnt);
+        } else {
+          ROCKS_LOG_INFO(db_options_->info_log.get(),
+              "Key Range [%s,%s] is narrow and we skip",
+              s_smallest.c_str(), s_largest.c_str());
+        }
       } else { // we need to find cnodes with overlapping key ranges
         bool found_overlap = false;
         size_t from = c_i; // overlap from id
@@ -1644,18 +1664,27 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
             assert(child_cfd != nullptr);
             std::string c_smallest = child_cfd->GetSmallestKey();
             std::string c_largest = child_cfd->GetLargestKey();
+
             AddKeyRangeIfNecessary(s_smallest, c_smallest,
                                      true /* include_left */,
                                      false /* include_right */,
-                                     smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     new_smallests, new_largests,
+                                     upd_smallests, upd_largests,
+                                     new_cf_cnt,
+                                     keyrange_upd_cf_cnt,
+                                     prefix_key,
+                                     column_family_datas,
+                                     child_cfd, true);
             AddKeyRangeIfNecessary(c_largest, s_largest,
                                      false /* include_left */,
                                      true /* include_right */,
-                                     smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     new_smallests, new_largests,
+                                     upd_smallests, upd_largests,
+                                     new_cf_cnt,
+                                     keyrange_upd_cf_cnt,
+                                     prefix_key,
+                                     column_family_datas,
+                                     child_cfd, false);
           } else {
             // check from 
             ColumnFamilyData* from_cfd =  cnodes[from]->cfd_;
@@ -1664,9 +1693,13 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
             AddKeyRangeIfNecessary(s_smallest, f_smallest,
                                      true /* include_left */,
                                      false /* include_right */,
-                                     smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     new_smallests, new_largests,
+                                     upd_smallests, upd_largests,
+                                     new_cf_cnt,
+                                     keyrange_upd_cf_cnt,
+                                     prefix_key,
+                                     column_family_datas,
+                                     from_cfd, true);
             // check from - to
             for (size_t i = from; i < to; i++) {
               ColumnFamilyData* cfd_1 =  cnodes[i]->cfd_;
@@ -1677,11 +1710,15 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
               std::string smallest_2 = cfd_2->GetSmallestKey();
               assert(largest_1.compare(smallest_2) <= 0); // children's key range must be not ovelapped
               AddKeyRangeIfNecessary(largest_1, smallest_2,
-                                       false /* include_left */,
-                                       false /* include_right */,
-                                       smallests, largests,
-                                       &split_cnt,
-                                       prefix_key);
+                                     false /* include_left */,
+                                     false /* include_right */,
+                                     new_smallests, new_largests,
+                                     upd_smallests, upd_largests,
+                                     new_cf_cnt,
+                                     keyrange_upd_cf_cnt,
+                                     prefix_key,
+                                     column_family_datas,
+                                     cfd_1, false);
             }
             // check to
             ColumnFamilyData* to_cfd =  cnodes[to]->cfd_;
@@ -1690,28 +1727,36 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
             AddKeyRangeIfNecessary(t_largest, s_largest,
                                      false /* include_left */,
                                      true /* include_right */,
-                                     smallests, largests,
-                                     &split_cnt,
-                                     prefix_key);
+                                     new_smallests, new_largests,
+                                     upd_smallests, upd_largests,
+                                     new_cf_cnt,
+                                     keyrange_upd_cf_cnt,
+                                     prefix_key,
+                                     column_family_datas,
+                                     to_cfd, false);
           }
         } else {
-          smallests.push_back(s_smallest);
-          largests.push_back(s_largest);
-          split_cnt ++;
-          ROCKS_LOG_INFO(db_options_->info_log.get(),
-                         "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
-                         s_smallest.c_str(),
-                         s_largest.c_str(),
-                         split_cnt);
+          if (!is_key_range_narrow(s_smallest, s_largest,
+                db_options_->column_family_min_key_range)) {
+            new_smallests.push_back(s_smallest);
+            new_largests.push_back(s_largest);
+            *new_cf_cnt  = *new_cf_cnt + 1;
+            ROCKS_LOG_INFO(db_options_->info_log.get(),
+                "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
+                s_smallest.c_str(),
+                s_largest.c_str(),
+                *new_cf_cnt);
+          } else {
+            ROCKS_LOG_INFO(db_options_->info_log.get(),
+                "Key Range [%s,%s] is narrow and we skip",
+                s_smallest.c_str(), s_largest.c_str());
+          }
         }
 
         // update c_i
         c_i = to;
       }
-
-
     }
-
   }
 
   /*assert(smallests.size() == split_cnt);
@@ -1721,11 +1766,11 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
   // Prepare edit_lists and cf_options
   autovector<VersionEdit*> edits_out;
   //std::vector<VersionEdit> edit_out(split_cnt);
-  for (size_t i = 0; i < split_cnt; i++) {
+  for (size_t i = 0; i < *new_cf_cnt; i++) {
     ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: create new child [%s, %s]", 
-                   smallests[i].c_str(),
-                   largests[i].c_str());
+                   new_smallests[i].c_str(),
+                   new_largests[i].c_str());
     /*fprintf(stdout, "PrepareVersionEditsToSplit: create new child [%s, %s]", 
                    smallests[i].c_str(),
                    largests[i].c_str());*/
@@ -1734,16 +1779,32 @@ size_t ColumnFamilySet::PrepareVersionEditsToSplit(InstrumentedMutex* db_mutex,
     std::string cf_name = "default" + std::to_string(next_cf_id);
     edit_out[i].AddColumnFamily(cf_name/* cf name */);
     edit_out[i].SetLogNumber(logfile_number);
-    edit_out[i].SetColumnFamilyKeyRange(smallests[i].c_str() /*smallest*/,
-                                        largests[i].c_str()  /*largest*/);
+    edit_out[i].SetColumnFamilyKeyRange(new_smallests[i].c_str() /*smallest*/,
+                                        new_largests[i].c_str()  /*largest*/);
     edits_out.push_back(&edit_out[i]);
     edit_lists.push_back(edits_out);
     edits_out.clear();
     cf_options.push_back(cfd->GetLatestMutableCFOptions());
     cf_name_list.push_back(cf_name);
   }
-
-  return split_cnt;
+  for (size_t i = 0; i < *keyrange_upd_cf_cnt; i++) {
+     ROCKS_LOG_INFO(db_options_->info_log.get(),
+                   "PrepareVersionEditsToSplit: update key range to [%s, %s]", 
+                   upd_smallests[i].c_str(),
+                   upd_largests[i].c_str());
+    /*fprintf(stdout, "PrepareVersionEditsToSplit: create new child [%s, %s]", 
+                   smallests[i].c_str(),
+                   largests[i].c_str());*/
+    edit_out[*new_cf_cnt + i].UpdateKeyRangeColumnFamily(column_family_datas[i+1]->GetName()/* cf name to update */);
+    edit_out[*new_cf_cnt + i].SetLogNumber(logfile_number);
+    edit_out[*new_cf_cnt + i].SetColumnFamilyKeyRange(upd_smallests[i].c_str() /*smallest*/,
+                                        upd_largests[i].c_str()  /*largest*/);
+    edits_out.push_back(&edit_out[*new_cf_cnt + i]);
+    edit_lists.push_back(edits_out);
+    edits_out.clear();
+    cf_options.push_back(cfd->GetLatestMutableCFOptions());
+  }
+  return;
 }
 
 
@@ -1833,10 +1894,16 @@ void ColumnFamilySet::RemoveColumnFamily(ColumnFamilyData* cfd) {
 void ColumnFamilySet::AddKeyRangeIfNecessary(std::string r1, std::string r2,
                                              bool include_left,
                                              bool include_right,
-                                             std::vector<std::string>& smallests,
-                                             std::vector<std::string>& largests,
-                                             size_t* split_cnt,
-                                             std::string prefix_key
+                                             std::vector<std::string>& new_smallests,
+                                             std::vector<std::string>& new_largests,
+                                             std::vector<std::string>& upd_smallests,
+                                             std::vector<std::string>& upd_largests,
+                                             size_t* new_cf_cnt,
+                                             size_t* keyrange_upd_cf_cnt,
+                                             std::string prefix_key,
+                                             autovector<ColumnFamilyData*>& column_family_datas,
+                                             ColumnFamilyData* child_cfd,
+                                             bool upd_smallest
                                              ) {
   //fprintf(stdout, "prefix_key : %s\n", prefix_key.c_str());
   //fprintf(stdout, "r1 : %s\n", r1.c_str());
@@ -1852,7 +1919,46 @@ void ColumnFamilySet::AddKeyRangeIfNecessary(std::string r1, std::string r2,
     n2 -= 1;
   }
 
-  if (n1 < n2) {
+  if (n1 >= n2) {
+    // do nothing
+    ROCKS_LOG_INFO(db_options_->info_log,
+        "AddKeyRangeIfNecessary - do nothing"
+        );
+  }
+  else if (n2 - n1 < db_options_->column_family_min_key_range) {
+    // JH: check n2 - n1 is smaller than column_family_min_key_range
+    // update key range of existing column family range
+    column_family_datas.push_back(child_cfd);
+    std::string s1 = "";
+    std::string s2 = "";
+    if (upd_smallest) {
+      s1 = std::to_string(n1);
+      s1.insert(0, r1.size() - s1.size() - psize, '0');
+      s1 = prefix_key + s1;
+
+      upd_smallests.push_back(s1);
+      upd_largests.push_back(""); // empty string
+    }
+    else { // update largest
+      s2 = std::to_string(n2);
+      s2.insert(0, r2.size() - s2.size() - psize, '0');
+      s2 = prefix_key + s2;
+
+      upd_smallests.push_back("");
+      upd_largests.push_back(s2); // empty string
+    }
+    *keyrange_upd_cf_cnt = *keyrange_upd_cf_cnt + 1;
+    ROCKS_LOG_INFO(db_options_->info_log,
+        "AddKeyRangeIfNecessary - upd %s(%d) [%s,%s], cnt :%ld\n",
+        child_cfd->GetName().c_str(),
+        child_cfd->GetID(),
+        s1.c_str(),
+        s2.c_str(),
+        *keyrange_upd_cf_cnt);
+
+  }
+  else {
+    // create new column family
     std::string s1 = std::to_string(n1);
     s1.insert(0, r1.size() - s1.size() - psize, '0');
     s1 = prefix_key + s1;
@@ -1861,17 +1967,16 @@ void ColumnFamilySet::AddKeyRangeIfNecessary(std::string r1, std::string r2,
     s2.insert(0, r2.size() - s2.size() - psize, '0');
     s2 = prefix_key + s2;
 
-    smallests.push_back(s1); 
-    largests.push_back(s2);        
+    new_smallests.push_back(s1); 
+    new_largests.push_back(s2);        
 
-    *split_cnt = *split_cnt + 1;
+    *new_cf_cnt = *new_cf_cnt + 1;
     ROCKS_LOG_INFO(db_options_->info_log,
-                  "AddKeyRangeIfNecessary [%s,%s], cnt :%ld\n",
+                  "AddKeyRangeIfNecessary - new [%s,%s], cnt :%ld\n",
                   s1.c_str(),
                   s2.c_str(),
-                  *split_cnt);
+                  *new_cf_cnt);
   } 
-
 }
 
 // under a DB mutex OR from a write thread

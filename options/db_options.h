@@ -82,6 +82,7 @@ struct ImmutableDBOptions {
   bool avoid_unnecessary_blocking_io;
   bool allow_column_family_split;
   double column_family_split_threshold;
+  int column_family_min_key_range;
 };
 
 struct MutableDBOptions {

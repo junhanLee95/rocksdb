@@ -138,6 +138,8 @@ DBOptions BuildDBOptions(const ImmutableDBOptions& immutable_db_options,
       immutable_db_options.allow_column_family_split;
   options.column_family_split_threshold =
       immutable_db_options.column_family_split_threshold;
+  options.column_family_min_key_range =
+      immutable_db_options.column_family_min_key_range;
 
   return options;
 }
@@ -1632,7 +1634,10 @@ std::unordered_map<std::string, OptionTypeInfo>
           OptionType::kBoolean, OptionVerificationType::kNormal, false, 0}},
         {"column_family_split_threshold",
          {offsetof(struct DBOptions, column_family_split_threshold),
-          OptionType::kDouble, OptionVerificationType::kNormal, false, 0}}
+          OptionType::kDouble, OptionVerificationType::kNormal, false, 0}},
+        {"column_family_min_key_range",
+         {offsetof(struct DBOptions, column_family_min_key_range),
+          OptionType::kInt, OptionVerificationType::kNormal, false, 0}}
 		};
 
 std::unordered_map<std::string, BlockBasedTableOptions::IndexType>

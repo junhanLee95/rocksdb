@@ -93,6 +93,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   edit_lists.push_back(edits_in);
   mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
 
+  size_t new_cf_cnt = 0;
+  size_t keyrange_upd_cf_cnt = 0;
 
   {
 	  InstrumentedMutexLock l(&mutex_);
@@ -106,30 +108,40 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
     // and key ranges of existing children nodes = {[1, 15], [20, 100]}
     // then new intervals must be = {[15, 18], [19, 20], [100, 200]}
     std::vector<VersionEdit> dummy_edit(1024);
-    size_t new_children_cnt = versions_->GetColumnFamilySet()->PrepareVersionEditsToSplit(
-                                      &mutex_, logfile_number_, cfd, sst_split_files, edit_lists, dummy_edit,
+
+    versions_->GetColumnFamilySet()->PrepareVersionEditsToSplit(
+                                      column_family_datas,
+                                      &mutex_, logfile_number_, cfd, sst_split_files,
+                                      edit_lists, dummy_edit,
                                       cf_name_list,
-                                      mutable_cf_options_list);
+                                      mutable_cf_options_list,
+                                      &new_cf_cnt,
+                                      &keyrange_upd_cf_cnt);
     // prepare superversion_contexts 
     // the first one is for parent
     superversion_contexts.emplace_back(SuperVersionContext(true));
     // now prepare for children nodes
-    for (size_t i = 0; i < new_children_cnt; i++) {
+    for (size_t i = 0; i < new_cf_cnt; i++) {
       superversion_contexts.emplace_back(SuperVersionContext(true));
     }
-    
-    assert(new_children_cnt == edit_lists.size() - 1);
+    assert(new_cf_cnt + keyrange_upd_cf_cnt == edit_lists.size() - 1);
+    assert(new_cf_cnt + keyrange_upd_cf_cnt == mutable_cf_options_list.size() - 1);
+    assert(new_cf_cnt == cf_name_list.size());
+    assert(new_cf_cnt == superversion_contexts.size()-1);
+    /*
     assert(new_children_cnt == mutable_cf_options_list.size() - 1);
     assert(new_children_cnt == cf_name_list.size());
     assert(new_children_cnt + 1 == superversion_contexts.size());
+    */
 
 	  //fprintf(stdout, "edit list size : %ld\n", edit_lists.size());
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-			  "SplitColumnFamilyFromSstFiles[%s]: Split File Cnt %lu, edit size %lu",
+			  "SplitColumnFamilyFromSstFiles[%s]: Create CF Cnt %lu, \
+        KeyRange Upd CF Cnt %lu, edit size %lu",
         cfd->GetName().c_str(),
-			  split_cnt, edit_lists.size());
+			  new_cf_cnt, keyrange_upd_cf_cnt, edit_lists.size());
 
-	  uint32_t num_entries = new_children_cnt + 1;
+	  uint32_t num_entries = new_cf_cnt + keyrange_upd_cf_cnt + 1;
 	  for (auto& edits: edit_lists) {
 		  assert(edits.size() == 1);
 		  edits[0]->MarkAtomicGroup(--num_entries);
@@ -139,9 +151,15 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 	  // LogAndApply will both write the creation in MANIFEST and create
 	  // ColumnFamilyData object
     // Apply to Manifest file only if new children is necessary
-    if (new_children_cnt > 0) {
+    if (new_cf_cnt + keyrange_upd_cf_cnt > 0) {
 		  WriteThread::Writer w;
 		  write_thread_.EnterUnbatched(&w, &mutex_);
+
+      for (const auto& edit_list: edit_lists) {
+        for(const auto& edit : edit_list) {
+          fprintf(stdout, "%s\n", edit->DebugString().c_str());
+        }
+      }
 
 		  s = versions_->LogAndApply(column_family_datas, mutable_cf_options_list,
 				  edit_lists, &mutex_, directories_.GetDbDir(), false,
@@ -154,7 +172,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
     }
 
 	  // Add Directories if the CF creation is successful
-	  for (size_t i = 0; i < new_children_cnt; i++) {
+	  for (size_t i = 0; i < new_cf_cnt; i++) {
 		  if (s.ok()) {
 			  auto* cfd_out_i = versions_->GetColumnFamilySet()
 				  ->GetColumnFamily(cf_name_list[i]);
@@ -176,7 +194,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
       // 2. Install Superversion to children CFs
 		  single_column_family_mode_ = false;
 
-		  for (size_t i = 0; i < new_children_cnt; i++) {
+		  for (size_t i = 0; i < new_cf_cnt; i++) {
 			  auto* cfd_out_i = versions_->GetColumnFamilySet()
 				  ->GetColumnFamily(cf_name_list[i]);
 			  assert(cfd_out_i != nullptr);
@@ -213,7 +231,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 
   // This is outside the mutex
   if (s.ok()) {
-    for (size_t i = 0; i < split_cnt; i ++) {
+    for (size_t i = 0; i < new_cf_cnt + keyrange_upd_cf_cnt; i ++) {
       NewThreadStatusCfInfo(column_family_datas[i]);
     }
   }

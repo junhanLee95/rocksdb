@@ -278,7 +278,8 @@ class VersionEdit {
   size_t NumEntries() { return new_files_.size() + deleted_files_.size(); }
 
   bool IsColumnFamilyManipulation() {
-    return is_column_family_add_ || is_column_family_drop_ || is_column_family_split_;
+    return is_column_family_add_ || is_column_family_drop_ || is_column_family_split_ ||
+           is_column_family_keyrange_update_;
   }
 
   bool IsColumnFamilyAdd() {
@@ -314,6 +315,15 @@ class VersionEdit {
     assert(!is_column_family_add_);
     assert(!is_column_family_split_);
     is_column_family_split_ = true;
+    column_family_name_ = name;
+  }
+
+  // set is_column_family_keyrange_update_ by calling UpdateKeyRangeColumnFamily()
+  void UpdateKeyRangeColumnFamily(const std::string& name) {
+    assert(!is_column_family_drop_);
+    assert(!is_column_family_add_);
+    assert(!is_column_family_split_);
+    is_column_family_keyrange_update_ = true;
     column_family_name_ = name;
   }
 
@@ -385,6 +395,7 @@ class VersionEdit {
   // If it's column family split,
   // it also includes column family name.
   bool is_column_family_split_;
+  bool is_column_family_keyrange_update_;
   bool is_split_move_;
   std::string smallest_user_key_;
   std::string largest_user_key_;

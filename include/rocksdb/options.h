@@ -518,6 +518,9 @@ struct DBOptions {
   // Allow the column family to be splitted to configure logical column family. Default: false
   double column_family_split_threshold = 0.6;
 
+  // Minimum key range which single logical column family contains. Default: 16k
+  int column_family_min_key_range = 1024 * 4;
+
   // Maximum number of concurrent background jobs (compactions and flushes).
   //
   // Default: 2
