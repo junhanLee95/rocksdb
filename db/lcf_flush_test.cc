@@ -458,16 +458,16 @@ TEST_F(LCFFlushTest, ThreeLevelTreeGet) {
   ranges[0].second = "";
   // default1
   ranges[1].first =  "user00000000000000110000";
-  ranges[1].second = "user00000000000000120000";
+  ranges[1].second = "user00000000000000130000";
   // default2
-  ranges[2].first =  "user00000000000000125000";
-  ranges[2].second = "user00000000000000140000";
+  ranges[2].first =  "user00000000000000140000";
+  ranges[2].second = "user00000000000000160000";
   // default3
-  ranges[3].first =  "user00000000000000145000";
-  ranges[3].second = "user00000000000000154000";
+  ranges[3].first =  "user00000000000000170000";
+  ranges[3].second = "user00000000000000190000";
    // default4
-  ranges[4].first =  "user00000000000000108000";
-  ranges[4].second = "user00000000000000158000";
+  ranges[4].first =  "user00000000000000100000";
+  ranges[4].second = "user00000000000000200000";
   
 
   // [SPLIT] default -> default1

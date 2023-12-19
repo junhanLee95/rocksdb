@@ -3183,6 +3183,10 @@ Status VersionSet::ProcessManifestWrites(
     if (first_writer.edit_list.front()->is_column_family_add_) {
       assert(batch_edits.size() == 1);
       assert(new_cf_options != nullptr);
+      ROCKS_LOG_INFO(db_options_->info_log,
+                     "Column family create target_file_size_base: %ld",
+                     new_cf_options->target_file_size_base );
+
       auto cfd = CreateColumnFamily(*new_cf_options, first_writer.edit_list.front());
       column_family_set_->AddLogicalColumnFamily(cfd);
     } else if (first_writer.edit_list.front()->is_column_family_drop_) {
@@ -3218,7 +3222,16 @@ Status VersionSet::ProcessManifestWrites(
           }
         }
         else {
-          auto cfd_out = CreateColumnFamily(*new_cf_options, writer.edit_list.front());
+          ROCKS_LOG_INFO(db_options_->info_log,
+              "Column family(2) create target_file_size_base: %ld",
+              new_cf_options->target_file_size_base );
+          ROCKS_LOG_INFO(db_options_->info_log,
+              "Column family(3) create target_file_size_base: %ld",
+              writer.mutable_cf_options.target_file_size_base );
+
+          const ColumnFamilyOptions cf_options = BuildColumnFamilyOptions(*new_cf_options,
+                                                     writer.mutable_cf_options);
+          auto cfd_out = CreateColumnFamily(cf_options, writer.edit_list.front());
           cfd_outs.push_back(cfd_out);
         }
       }
@@ -3456,7 +3469,11 @@ Status VersionSet::LogAndApply(
     }
     return Status::ShutdownInProgress();
   }
-
+  if(new_cf_options != nullptr) {
+    ROCKS_LOG_INFO(db_options_->info_log, "LogAndApply: target_file_size_base - %ld",
+        new_cf_options->target_file_size_base);
+  }
+  
   return ProcessManifestWrites(writers, mu, db_directory, new_descriptor_log,
                                new_cf_options);
 }

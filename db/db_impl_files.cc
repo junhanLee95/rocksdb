@@ -133,8 +133,9 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
     assert(new_children_cnt == cf_name_list.size());
     assert(new_children_cnt + 1 == superversion_contexts.size());
     */
-
-	  //fprintf(stdout, "edit list size : %ld\n", edit_lists.size());
+    fprintf(stdout, "[JH] mutable cf options size : %ld\n", mutable_cf_options_list.size());
+    fprintf(stdout, "[JH] new cf  size : %ld\n", new_cf_cnt);
+	  fprintf(stdout, "[JH] edit list size : %ld\n", edit_lists.size());
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
 			  "SplitColumnFamilyFromSstFiles[%s]: Create CF Cnt %lu, \
         KeyRange Upd CF Cnt %lu, edit size %lu",

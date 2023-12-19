@@ -1784,7 +1784,23 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     edits_out.push_back(&edit_out[i]);
     edit_lists.push_back(edits_out);
     edits_out.clear();
-    cf_options.push_back(cfd->GetLatestMutableCFOptions());
+    // JH: set target_file_size_base as split file info
+    const MutableCFOptions* old_options = cfd->GetLatestMutableCFOptions();
+    uint64_t old_target_file_size_base = old_options->target_file_size_base;
+    Options options;
+    // JH: for now, we assume that new column family has one-fourth size of L1
+    // compared to the old one.
+    options.target_file_size_base = old_target_file_size_base * 0.25;
+    ROCKS_LOG_INFO(db_options_->info_log.get(),
+        "PrepareVersionEditsToSplit: new target file size base : %ld", 
+        options.target_file_size_base);
+
+    cf_options.push_back(new MutableCFOptions(options));
+    ROCKS_LOG_INFO(db_options_->info_log.get(),
+        "PrepareVersionEditsToSplit: new target file size base(2) : %ld", 
+        cf_options.back()->target_file_size_base);
+
+    //cf_options.push_back(cfd->GetLatestMutableCFOptions());
     cf_name_list.push_back(cf_name);
   }
   for (size_t i = 0; i < *keyrange_upd_cf_cnt; i++) {
