@@ -1524,9 +1524,11 @@ bool LevelCompactionBuilder::PickFileToCompact() {
 }
 
 bool LevelCompactionBuilder::PickIntraL0Compaction() {
+	//return false;
   start_level_inputs_.clear();
   const std::vector<FileMetaData*>& level_files =
       vstorage_->LevelFiles(0 /* level */);
+
   if (level_files.size() <
           static_cast<size_t>(
               mutable_cf_options_.level0_file_num_compaction_trigger + 2) ||

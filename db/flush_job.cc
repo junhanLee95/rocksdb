@@ -324,6 +324,7 @@ void FlushJob::Prepare() {
   // Save the contents of the earliest memtable as a new Table
   cfd_->imm()->PickMemtablesToFlush(max_memtable_id_, &mems_);
   if (mems_.empty()) {
+		ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare mem_ is empty", job_context_->job_id);
     return;
   }
 
@@ -393,14 +394,13 @@ void FlushJob::Prepare() {
     // JH: prepare superversion_contexts for child nodes
     superversion_contexts.emplace_back(SuperVersionContext(true));  
   }
-  /*
+  
   for (int i = 1; i < (int)flush_->sub_flush_states.size(); i++) {
 	SubflushState* sub_flush = &flush_->sub_flush_states[i];
     std::cout << "FlushJob::Prepare() check2 sub_flush_start " << i << " " << sub_flush->start << " " << sub_flush->sub_flush_id <<std::endl;
     std::cout << "FlushJob::Prepare() check2 sub_flush_end " << i << " "<< sub_flush->end <<std::endl;
-    //std::cout << "FlushJob::Prepare() check child " << flush_->sub_flush_states[i].sub_flush_id <<std::endl;
+    std::cout << "FlushJob::Prepare() check child " << flush_->sub_flush_states[i].sub_flush_id <<std::endl;
   }
-  */
 
   base_ = cfd_->current();
   //std::cout << "FlushJob::Prepare() base_->Ref()" << std::endl;
@@ -466,48 +466,47 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   // This will release and re-acquire the mutex.
   Status status;
   if (db_options_.allow_column_family_split) {
-    ROCKS_LOG_INFO(
-        db_options_.info_log,
-        "Flushing [%s] [JOB %d] thread cnt : %ld",
-        cfd_->GetName().c_str(),
-        job_context_->job_id,
-        flush_->sub_flush_states.size()
-        );
+
+		ROCKS_LOG_INFO(
+				db_options_.info_log,
+				"Flushing [%s] [JOB %d] thread cnt : %ld",
+				cfd_->GetName().c_str(),
+				job_context_->job_id,
+				flush_->sub_flush_states.size()
+				);
 
 		const uint64_t start_micros = db_options_.env->NowMicros();
-    const size_t num_threads = flush_->sub_flush_states.size();
-    assert(num_threads > 0);
-    // Launch a thread for each of subcompactions 1...num_threads-1
-    std::vector<port::Thread> thread_pool;
-    thread_pool.reserve(num_threads-1);
-    for (size_t i = 1; i < num_threads; i++) {
-      thread_pool.emplace_back(&FlushJob::ProcessKeyValueFlush, this,
-                        &flush_->sub_flush_states[i]);
-    }
-    
-
-    // Always schedule the first subflush (whether or not there are also
-    // others) in the current thread to be efficient with resources
-    ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
-
-    
-    for (auto& thread : thread_pool) {
-      thread.join();
-    }
-
-    // Check if any thread encountered an error during execution
-    for (const auto& state : flush_->sub_flush_states) {
-      if (!state.status.ok()) {
-        status = state.status;
-        break;
-      }
-    }
-	 
-    if (status.ok() && output_file_directory_) {
-      status = output_file_directory_->Fsync();
-    }
+		{
+			db_mutex_->Unlock();
+			const size_t num_threads = flush_->sub_flush_states.size();
+			assert(num_threads > 0);
+			// Launch a thread for each of subcompactions 1...num_threads-1
+			std::vector<port::Thread> thread_pool;
+			thread_pool.reserve(num_threads-1);
+			for (size_t i = 1; i < num_threads; i++) {
+				thread_pool.emplace_back(&FlushJob::ProcessKeyValueFlush, this,
+						&flush_->sub_flush_states[i]);
+			}
+			// Always schedule the first subflush (whether or not there are also
+			// others) in the current thread to be efficient with resources
+			ProcessKeyValueFlush(&flush_->sub_flush_states[0]);
+			for (auto& thread : thread_pool) {
+				thread.join();
+			}
+			// Check if any thread encountered an error during execution
+			for (const auto& state : flush_->sub_flush_states) {
+				if (!state.status.ok()) {
+					status = state.status;
+					break;
+				}
+			}
+			if (status.ok() && output_file_directory_) {
+				status = output_file_directory_->Fsync();
+			}
+			db_mutex_->Lock();
+		}
     base_->Unref();
-	//std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
+	  //std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
     //s = WriteLevel0Tables();  
 		InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
 		stats.micros = db_options_.env->NowMicros() - start_micros;

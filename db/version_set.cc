@@ -1674,6 +1674,8 @@ void VersionStorageInfo::ComputeCompactionScore(
         }
 
       } else {
+				//score = static_cast<double>(total_size) /
+				//	      268435456; // 256MB
         score = static_cast<double>(num_sorted_runs) /
                 mutable_cf_options.level0_file_num_compaction_trigger;
         if (compaction_style_ == kCompactionStyleLevel && num_levels() > 1) {

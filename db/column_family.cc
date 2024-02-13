@@ -1791,6 +1791,7 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     // JH: for now, we assume that new column family has one-fourth size of L1
     // compared to the old one.
     options.target_file_size_base = old_target_file_size_base * 0.25;
+    options.max_bytes_for_level_base = options.target_file_size_base * 4;
     ROCKS_LOG_INFO(db_options_->info_log.get(),
         "PrepareVersionEditsToSplit: new target file size base : %ld", 
         options.target_file_size_base);
