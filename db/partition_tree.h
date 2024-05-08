@@ -26,6 +26,7 @@ class PartitionTreeNode {
   
   ColumnFamilyData *cfd_ = nullptr;
   int depth_=0;
+  int hdepth_=0;
 
   std::vector<PartitionTreeNode*> lower_level_nodes_;
   PartitionTreeNode *parent_node_ = nullptr;
@@ -43,11 +44,12 @@ class PartitionTreeNode {
 
   void Print(std::string TreeID, bool recursive);
   int GetDepth(void);
+  int GetHDepth(void);
 };
 
 class PartitionTree {
  public:
-
+  int height_ = 0;
   PartitionTreeNode* root_ = nullptr;
   const ImmutableCFOptions* ioptions_;
   

@@ -90,11 +90,15 @@ int PartitionTreeNode::GetDepth(void) {
   return depth_; 
 }
 
+int PartitionTreeNode::GetHDepth(void) {
+  return hdepth_; 
+}
+
 // PartitionTree function.
 
 PartitionTree::PartitionTree( 
     ColumnFamilyData* column_family_data) :
-	ioptions_(column_family_data->ioptions()) {
+	height_(1), ioptions_(column_family_data->ioptions()) {
   StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_C);
   root_ = new PartitionTreeNode(column_family_data);
   if (column_family_data != nullptr) {
@@ -147,6 +151,10 @@ Status PartitionTree::InsertSplittedColumnFamily (
     for (auto new_cfd: new_cfds) {
       auto node = new PartitionTreeNode(new_cfd);
       node->depth_ = base_node->depth_+1;
+			if(height_ < node->depth_) {
+				height_ = node->depth_;
+		  }
+			node->hdepth_ = height_ - node->depth_;
       assert (new_cfd != nullptr);
       new_cfd->SetPartitionTreeNode(node);  
 

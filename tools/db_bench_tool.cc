@@ -3955,12 +3955,12 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					uint64_t end_num =  i * unit + unit_m;
 					GenerateKeyFromInt(start_num, FLAGS_num, &start_key);
 					GenerateKeyFromInt(end_num, FLAGS_num, &end_key);
-					std::vector<SplitFileInfo> infos;
+					std::vector<FileMetaData*> infos;
 					FileMetaData* f1 = new FileMetaData;
 					f1->smallest = InternalKey(start_key, 0, kTypeValue);
 					f1->largest = InternalKey(end_key, 0, kTypeValue);
-					infos.push_back(SplitFileInfo(f1, cfd));
-					db_impl->SplitColumnFamilyFromSstFiles(infos);
+					infos.push_back(f1);
+					db_impl->SplitColumnFamilyFromSstFiles(cfd, infos);
 					delete f1;
 					infos.clear();
 				}

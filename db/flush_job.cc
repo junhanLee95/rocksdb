@@ -394,13 +394,13 @@ void FlushJob::Prepare() {
     // JH: prepare superversion_contexts for child nodes
     superversion_contexts.emplace_back(SuperVersionContext(true));  
   }
-  
+   /*
   for (int i = 1; i < (int)flush_->sub_flush_states.size(); i++) {
 	SubflushState* sub_flush = &flush_->sub_flush_states[i];
     std::cout << "FlushJob::Prepare() check2 sub_flush_start " << i << " " << sub_flush->start << " " << sub_flush->sub_flush_id <<std::endl;
     std::cout << "FlushJob::Prepare() check2 sub_flush_end " << i << " "<< sub_flush->end <<std::endl;
     std::cout << "FlushJob::Prepare() check child " << flush_->sub_flush_states[i].sub_flush_id <<std::endl;
-  }
+  } */
 
   base_ = cfd_->current();
   //std::cout << "FlushJob::Prepare() base_->Ref()" << std::endl;
@@ -1071,6 +1071,9 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   size_t children_size = children_nodes.size();
 
   if (children_size > 0) { // {root OR internal} nodes
+		
+
+		
 		std::vector<std::vector<InternalIterator*>> memtabless(children_size +1);
 		std::vector<Arena> arenas(children_size + 1);
 		std::vector<ScopedArenaIterator *> iters;
@@ -1112,12 +1115,12 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
             children_nodes,
             event_logger_, job_context_->job_id,
             Env::IO_HIGH, &sub_flush->sub_table_properties,
-            0 /* level */, current_time,
+            0 , current_time,
             oldest_key_time, write_hint,
             sub_flush->start,
             sub_flush->end,
 						sub_flush->skip_starts,
-						sub_flush->skip_ends);  
+						sub_flush->skip_ends); 
   } else { // leaf nodes
     std::vector<InternalIterator*> memtables;
     std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>

@@ -91,6 +91,21 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   edit_in.SetColumnFamily(cfd->GetID());
   edits_in.push_back(&edit_in);
   edit_lists.push_back(edits_in);
+  //mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+	//JH: update mutable cf option for cold key range
+	/*int cf_depth = cfd->GetPartitionTreeNode()->GetHDepth();
+	ROCKS_LOG_INFO(immutable_db_options_.info_log,
+			"JH cfd %s depth : %d",
+			cfd->GetName().c_str(),
+			cf_depth);
+
+  int mult = 10;
+	Options options;
+	options.max_bytes_for_level_base = 64*1024*1024*mult;
+	options.level0_file_num_compaction_trigger = 4*mult;
+	options.level0_slowdown_writes_trigger = 20*mult;
+	options.level0_stop_writes_trigger = 36*mult;
+  mutable_cf_options_list.push_back(new MutableCFOptions(options));*/
   mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
 
   size_t new_cf_cnt = 0;
