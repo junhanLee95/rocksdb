@@ -10,6 +10,7 @@
 #include "rocksdb/listener.h"
 #include "table/internal_iterator.h"
 #include "util/sync_point.h"
+#include <iostream>
 
 #define DEFINITELY_IN_SNAPSHOT(seq, snapshot)                       \
   ((seq) <= (snapshot) &&                                           \
@@ -121,11 +122,13 @@ void CompactionIterator::ResetRecordCounts() {
 }
 
 void CompactionIterator::SeekToFirst() {
+  std::cout << "c_iter::SeekToFirst()\n";
   NextFromInput();
   PrepareOutput();
 }
 
 void CompactionIterator::Next() {
+  std::cout << "c_iter::Next()\n";
   // If there is a merge output, return it before continuing to process the
   // input.
   if (merge_out_iter_.Valid()) {
@@ -226,6 +229,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
 }
 
 void CompactionIterator::NextFromInput() {
+  std::cout << "NextFromInput()\n";
   at_next_ = false;
   valid_ = false;
 
@@ -272,6 +276,8 @@ void CompactionIterator::NextFromInput() {
     // compaction filter). ikey_.user_key is pointing to the copy.
     if (!has_current_user_key_ ||
         !cmp_->Equal(ikey_.user_key, current_user_key_)) {
+      //JH
+      std::cout << "NextFromInput()\t" << "first key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
       // First occurrence of this user key
       // Copy key for output
       key_ = current_key_.SetInternalKey(key_, &ikey_);
@@ -288,6 +294,8 @@ void CompactionIterator::NextFromInput() {
         InvokeFilterIfNeeded(&need_skip, &skip_until);
       }
     } else {
+      //JH
+      std::cout << "NextFromInput()\t" << "same key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
       // Update the current key to reflect the new sequence number/type without
       // copying the user key.
       // TODO(rven): Compaction filter does not process keys in this path

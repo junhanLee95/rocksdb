@@ -7,7 +7,9 @@
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <iostream>
 
+#include "db/compaction_iterator.h"
 #include "db/db_iter.h"
 #include "db/dbformat.h"
 #include "rocksdb/comparator.h"
@@ -18,9 +20,11 @@
 #include "table/iterator_wrapper.h"
 #include "table/merging_iterator.h"
 #include "util/string_util.h"
+#include "util/testutil.h"
 #include "util/sync_point.h"
 #include "util/testharness.h"
 #include "utilities/merge_operators.h"
+
 
 namespace rocksdb {
 
@@ -3002,6 +3006,135 @@ TEST_F(DBIterWithMergeIterTest, InnerMergeIteratorDataRace8) {
 }
 
 
+/* JH */
+class CompactionIterTest : public testing::Test {
+ public:
+  // A wrapper around Compaction. Has a much smaller interface, only what
+  // CompactionIterator uses. Tests can override it.
+  class CompactionProxy {
+   public:
+    explicit CompactionProxy(const Compaction* compaction)
+        : compaction_(compaction) {}
+
+    virtual ~CompactionProxy() = default;
+    virtual int level(size_t /*compaction_input_level*/ = 0) const {
+      return compaction_->level();
+    }
+    virtual bool KeyNotExistsBeyondOutputLevel(
+        const Slice& user_key, std::vector<size_t>* level_ptrs) const {
+      return compaction_->KeyNotExistsBeyondOutputLevel(user_key, level_ptrs);
+    }
+    virtual bool bottommost_level() const {
+      return compaction_->bottommost_level();
+    }
+    virtual int number_levels() const { return compaction_->number_levels(); }
+    virtual Slice GetLargestUserKey() const {
+      return compaction_->GetLargestUserKey();
+    }
+    virtual bool allow_ingest_behind() const {
+      return compaction_->immutable_cf_options()->allow_ingest_behind;
+    }
+    virtual bool preserve_deletes() const {
+      return compaction_->immutable_cf_options()->preserve_deletes;
+    }
+   protected:
+    CompactionProxy() = default;
+
+   private:
+    const Compaction* compaction_;
+  };
+
+  CompactionIterTest()
+      : env_(Env::Default()), cmp_(BytewiseComparator()),
+        icmp_(cmp_), snapshots_({}) {
+    options_.merge_operator = nullptr;
+
+    internal_iter1_ = new TestIterator(BytewiseComparator());
+    internal_iter1_->Add("a1", kTypeValue, "A2", 2u);
+    internal_iter1_->Add("b1", kTypeValue, "B1", 1u);
+    internal_iter1_->Add("c1", kTypeValue, "C1", 1u);
+    internal_iter1_->Finish();
+
+    internal_iter2_ = new TestIterator(BytewiseComparator());
+    internal_iter2_->Add("a1", kTypeValue, "A3", 3u);
+    internal_iter2_->Add("b1", kTypeValue, "B2", 2u);
+    internal_iter2_->Add("c1", kTypeValue, "C2", 2u);
+    internal_iter2_->Add("a1", kTypeValue, "A1", 1u);
+    internal_iter2_->Finish();
+
+    std::vector<InternalIterator*> child_iters;
+    child_iters.push_back(internal_iter1_);
+    child_iters.push_back(internal_iter2_);
+    InternalKeyComparator icomp(BytewiseComparator());
+    merge_iter_.reset(NewMergingIterator(&icmp_, &child_iters[0], 2u));
+
+    std::unique_ptr<InternalIterator> unfragmented_range_del_iter(
+        new test::VectorIterator({}, {}));
+    auto tombstone_list = std::make_shared<FragmentedRangeTombstoneList>(
+        std::move(unfragmented_range_del_iter), icmp_);
+    std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
+        new FragmentedRangeTombstoneIterator(tombstone_list, icmp_,
+                                             kMaxSequenceNumber));
+    range_del_agg_.reset(new CompactionRangeDelAggregator(&icmp_, snapshots_));
+    range_del_agg_->AddTombstones(std::move(range_del_iter));
+
+    CompactionFilter* filter = nullptr;
+
+    merge_helper_.reset(
+        new MergeHelper(env_, cmp_, nullptr, filter, nullptr, false,
+        0, snapshot_checker_.get(),
+        0, nullptr, &shutting_down_));
+
+    c_iter_.reset(new CompactionIterator(
+        merge_iter_.get(), cmp_, merge_helper_.get(), kMaxSequenceNumber, &snapshots_,
+        kMaxSequenceNumber, snapshot_checker_.get(),
+        env_, false, false,
+        range_del_agg_.get()));
+  }
+
+  Env* env_;
+  ReadOptions ro_;
+  Options options_;
+  TestIterator* internal_iter1_;
+  TestIterator* internal_iter2_;
+  std::unique_ptr<InternalIterator> merge_iter_;
+  const Comparator* cmp_;
+  const InternalKeyComparator icmp_;
+  std::vector<SequenceNumber> snapshots_;
+  // A map of valid snapshot to last visible sequence to the snapshot.
+  std::unordered_map<SequenceNumber, SequenceNumber> snapshot_map_;
+  std::unique_ptr<MergeHelper> merge_helper_;
+  std::unique_ptr<CompactionIterator> c_iter_;
+  std::unique_ptr<CompactionRangeDelAggregator> range_del_agg_;
+  std::unique_ptr<SnapshotChecker> snapshot_checker_;
+  std::atomic<bool> shutting_down_{false};
+
+
+};
+
+TEST_F(CompactionIterTest, JHTest) {
+  std::cout << "[JH] Starting JHTest\n";
+  c_iter_->SeekToFirst();
+  ASSERT_TRUE(c_iter_->Valid());
+  ASSERT_EQ(c_iter_->user_key().ToString(), "a1");
+  ASSERT_EQ(c_iter_->value().ToString(), "A3");
+  c_iter_->Next();
+  ASSERT_TRUE(c_iter_->Valid());
+  ASSERT_EQ(c_iter_->user_key().ToString(), "b1");
+  ASSERT_EQ(c_iter_->value().ToString(), "B2");
+  c_iter_->Next();
+  ASSERT_TRUE(c_iter_->Valid());
+  ASSERT_EQ(c_iter_->user_key().ToString(), "c1");
+  ASSERT_EQ(c_iter_->value().ToString(), "C2");
+  c_iter_->Next();
+  ASSERT_FALSE(c_iter_->Valid());
+
+
+  std::cout << "[JH] Finishing JHTest\n";
+
+}
+
+
 TEST_F(DBIteratorTest, SeekPrefixTombstones) {
   ReadOptions ro;
   Options options;
@@ -3035,6 +3168,7 @@ TEST_F(DBIteratorTest, SeekPrefixTombstones) {
       static_cast<int>(get_perf_context()->internal_key_skipped_count);
   ASSERT_EQ(skipped_keys, 0);
 }
+
 
 TEST_F(DBIteratorTest, SeekToFirstLowerBound) {
   const int kNumKeys = 3;
