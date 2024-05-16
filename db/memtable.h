@@ -108,7 +108,10 @@ class MemTable {
   // Increase reference count.
   // REQUIRES: external synchronization to prevent simultaneous
   // operations on the same MemTable.
-  void Ref() { ++refs_; }
+  void Ref() { 
+    ++refs_;
+    fprintf(stdout, "ref memtable(id:%ld)\n", id_);
+  }
 
   // Drop reference count.
   // If the refcount goes to zero return this memtable, otherwise return null.
@@ -117,6 +120,7 @@ class MemTable {
   MemTable* Unref() {
     --refs_;
     assert(refs_ >= 0);
+    fprintf(stdout, "unref memtable(id:%ld)\n", id_);
     if (refs_ <= 0) {
       return this;
     }

@@ -123,7 +123,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
 }
 
 MemTable::~MemTable() {
-  //fprintf(stdout, "delete memtable(id:%ld)\n", id_);
+  fprintf(stdout, "delete memtable(id:%ld)\n", id_);
   mem_tracker_.FreeMem();
   assert(refs_ == 0);
 }
@@ -475,7 +475,7 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
   //  value bytes  : char[value.size()]
   uint32_t key_size = static_cast<uint32_t>(key.size());
   uint32_t val_size = static_cast<uint32_t>(value.size());
-  uint32_t internal_key_size = key_size + 8;
+  uint32_t internal_key_size = key_size + 8 + 8/* put_cnt */;
   const uint32_t encoded_len = VarintLength(internal_key_size) +
                                internal_key_size + VarintLength(val_size) +
                                val_size;
@@ -490,6 +490,10 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
   p += key_size;
   uint64_t packed = PackSequenceAndType(s, type);
   EncodeFixed64(p, packed);
+  p += 8;
+  // JH
+  uint64_t packed2 = 1; // put_cnt
+  EncodeFixed64(p, packed2);
   p += 8;
   p = EncodeVarint32(p, val_size);
   memcpy(p, value.data(), val_size);

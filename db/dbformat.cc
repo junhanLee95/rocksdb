@@ -77,6 +77,7 @@ void UnPackSequenceAndType(uint64_t packed, uint64_t* seq, ValueType* t) {
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
   result->append(key.user_key.data(), key.user_key.size());
   PutFixed64(result, PackSequenceAndType(key.sequence, key.type));
+  PutFixed64(result, key.put_cnt);
 }
 
 void AppendInternalKeyFooter(std::string* result, SequenceNumber s,

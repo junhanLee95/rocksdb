@@ -10,6 +10,7 @@
 #include "table/merging_iterator.h"
 #include <string>
 #include <vector>
+#include <iostream>
 #include "db/dbformat.h"
 #include "db/pinned_iterators_manager.h"
 #include "monitoring/perf_context_imp.h"
@@ -383,14 +384,21 @@ InternalIterator* NewMergingIterator(const InternalKeyComparator* cmp,
                                      InternalIterator** list, int n,
                                      Arena* arena, bool prefix_seek_mode) {
   assert(n >= 0);
+  std::cout << "NewMergingIterator(1)" << std::endl;
   if (n == 0) {
+    std::cout << "NewMergingIterator(2)" << std::endl;
     return NewEmptyInternalIterator<Slice>(arena);
   } else if (n == 1) {
+    std::cout << "NewMergingIterator(3)" << std::endl;
     return list[0];
   } else {
+
+    std::cout << "NewMergingIterator(4)" << std::endl;
     if (arena == nullptr) {
+      std::cout << "NewMergingIterator(4-1)" << std::endl;
       return new MergingIterator(cmp, list, n, false, prefix_seek_mode);
     } else {
+      std::cout << "NewMergingIterator(4-2)" << std::endl;
       auto mem = arena->AllocateAligned(sizeof(MergingIterator));
       return new (mem) MergingIterator(cmp, list, n, true, prefix_seek_mode);
     }

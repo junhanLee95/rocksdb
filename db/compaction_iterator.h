@@ -8,7 +8,9 @@
 #include <deque>
 #include <string>
 #include <unordered_set>
+#include <unordered_map>
 #include <vector>
+#include <iostream>
 
 #include "db/compaction.h"
 #include "db/compaction_iteration_stats.h"
@@ -112,6 +114,10 @@ class CompactionIterator {
   }
 
  private:
+
+  // JH
+  std::unordered_map<std::string, uint64_t> user_key_put_cnts_;
+
   // Processes the input stream to find the next output
   void NextFromInput();
 
@@ -225,6 +231,7 @@ class CompactionIterator {
   // Used to avoid purging uncommitted values. The application can specify
   // uncommitted values by providing a SnapshotChecker object.
   bool current_key_committed_;
+
 
   bool IsShuttingDown() {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.

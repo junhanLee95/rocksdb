@@ -11,6 +11,7 @@
 #include "table/internal_iterator.h"
 #include "util/sync_point.h"
 #include <iostream>
+#include <unordered_map>
 
 #define DEFINITELY_IN_SNAPSHOT(seq, snapshot)                       \
   ((seq) <= (snapshot) &&                                           \
@@ -77,6 +78,8 @@ CompactionIterator::CompactionIterator(
       current_user_key_snapshot_(0),
       merge_out_iter_(merge_helper_),
       current_key_committed_(false) {
+
+  std::cout << "=======construct c_ter============\n";
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
   assert(snapshots_ != nullptr);
   internaliter_next_micros_ = 0;
@@ -108,6 +111,16 @@ CompactionIterator::CompactionIterator(
 }
 
 CompactionIterator::~CompactionIterator() {
+
+  std::cout << "=======destruct c_ter============\n";
+  std::cout << "==================================\n";
+  for (auto& it: user_key_put_cnts_) {
+    std::string a = it.first;
+    uint64_t b = it.second;
+    std::cout << "CompactionIterator Stats:\n";
+    std::cout << a << ": " << b << std::endl;
+  }
+  std::cout << "==================================\n";
   // input_ Iteartor lifetime is longer than pinned_iters_mgr_ lifetime
   input_->SetPinnedItersMgr(nullptr);
 }
@@ -233,12 +246,19 @@ void CompactionIterator::NextFromInput() {
   at_next_ = false;
   valid_ = false;
 
+  std::cout << "NextFromInput()\t" << "(1)" <<std::endl;
+  std::cout << "NextFromInput()\t" << "valid? : " << valid_ << std::endl;
+  std::cout << "NextFromInput()\t" << "input_->valid? : " << input_->Valid() << std::endl;
+  std::cout << "NextFromInput()\t" << "is shutting down? : " << IsShuttingDown() << std::endl;
   while (!valid_ && input_->Valid() && !IsShuttingDown()) {
+
+    std::cout << "NextFromInput()\t" << "(2)" <<std::endl;
     key_ = input_->key();
     value_ = input_->value();
     iter_stats_.num_input_records++;
 
     if (!ParseInternalKey(key_, &ikey_)) {
+      std::cout << "NextFromInput()\t" << "key is not valid" <<std::endl;
       // If `expect_valid_internal_key_` is false, return the corrupted key
       // and let the caller decide what to do with it.
       // TODO(noetzli): We should have a more elegant solution for this.
@@ -255,6 +275,8 @@ void CompactionIterator::NextFromInput() {
       valid_ = true;
       break;
     }
+
+    std::cout << "NextFromInput()\t" << "parsed key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
     TEST_SYNC_POINT_CALLBACK("CompactionIterator:ProcessKV", &ikey_);
 
     // Update input statistics
@@ -288,6 +310,9 @@ void CompactionIterator::NextFromInput() {
       current_user_key_snapshot_ = 0;
       current_key_committed_ = KeyCommitted(ikey_.sequence);
 
+      uint64_t put_cnt = ikey_.put_cnt;
+      user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
+
       // Apply the compaction filter to the first committed version of the user
       // key.
       if (current_key_committed_) {
@@ -304,6 +329,9 @@ void CompactionIterator::NextFromInput() {
       current_key_.UpdateInternalKey(ikey_.sequence, ikey_.type);
       key_ = current_key_.GetInternalKey();
       ikey_.user_key = current_key_.GetUserKey();
+
+      uint64_t put_cnt = ikey_.put_cnt;
+      user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
 
       // Note that newer version of a key is ordered before older versions. If a
       // newer version of a key is committed, so as the older version. No need
@@ -619,7 +647,11 @@ void CompactionIterator::NextFromInput() {
     }
   }
 
+  std::cout << "NextFromInput()\t" << "(3)" <<std::endl;
+
   if (!valid_ && IsShuttingDown()) {
+
+    std::cout << "NextFromInput()\t" << "(4)" <<std::endl;
     status_ = Status::ShutdownInProgress();
   }
 }
