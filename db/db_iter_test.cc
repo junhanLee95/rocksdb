@@ -3310,7 +3310,7 @@ TEST_F(CompactionIterTest, SimpleMemtableToCiter) {
 }*/
 
 
-TEST_F(SstableCompactionIterTest, SimpleSstableToCiter) {
+TEST_F(SstableCompactionIterTest, SingleMemtableToFlush) {
   std::cout << "[JH]\n";
   // 1. Open
   Options options;
@@ -3322,6 +3322,50 @@ TEST_F(SstableCompactionIterTest, SimpleSstableToCiter) {
 
   // 2. Put queries and prepare sstables
   //db->Put(WriteOptions(), "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k1", "v5");
+  db->Put(WriteOptions(), cfh, "k2", "v6");
+  db->Put(WriteOptions(), cfh, "k3", "v7");
+  db->Put(WriteOptions(), cfh, "k1", "v8");
+  db->Put(WriteOptions(), cfh, "k2", "v9");
+  db->Put(WriteOptions(), cfh, "k1", "v10");
+
+  // 3. Compact SSTables
+  db->Flush(FlushOptions());
+  // 4. Close
+  delete db;
+  db = nullptr;
+}
+
+TEST_F(SstableCompactionIterTest, TwoMemtablesToFlush) {
+  std::cout << "[JH]\n";
+  // 1. Open
+  Options options;
+  options.create_if_missing =true;
+  options.max_write_buffer_number = 3;
+  
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name_, &db));
+  DBImpl* dbimpl = reinterpret_cast<DBImpl*>(db);
+  ColumnFamilyHandle* cfh = reinterpret_cast<DBImpl*>(db)->DefaultColumnFamily();
+
+  // 2. Put queries and prepare sstables
+  //db->Put(WriteOptions(), "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k1", "v5");
+  db->Put(WriteOptions(), cfh, "k2", "v6");
+  db->Put(WriteOptions(), cfh, "k3", "v7");
+  db->Put(WriteOptions(), cfh, "k1", "v8");
+  db->Put(WriteOptions(), cfh, "k2", "v9");
+  db->Put(WriteOptions(), cfh, "k1", "v10");
+  dbimpl->TEST_SwitchMemtable();
+  // create second memtable
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k3", "v3");
