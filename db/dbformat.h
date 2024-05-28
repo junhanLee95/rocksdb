@@ -142,8 +142,11 @@ extern bool ParseInternalKey(const Slice& internal_key,
 
 // Returns the user key portion of an internal key.
 inline Slice ExtractUserKey(const Slice& internal_key) {
+  std::cout << "key size : " << internal_key.size() << std::endl;
+  if (internal_key.size() < 16) {
+    std::cout << "[JH] key size is less than 16\n";
+  }
   assert(internal_key.size() >= 8+8);
-  //std::cout << "key size : " << internal_key.size() << std::endl;
   return Slice(internal_key.data(), internal_key.size() - 8-8);
 }
 

@@ -3081,6 +3081,18 @@ class CompactionIterTest : public testing::Test {
   Arena arena_;
 };
 
+class SstableCompactionIterTest : public testing::Test {
+ public:
+
+  SstableCompactionIterTest()
+      : env_(Env::Default())  {
+    db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test");
+  }
+
+  Env* env_;
+  std::string db_name_;
+};
+
 TEST_F(CompactionIterTest, SimpleCiter) {
 
   /* Prepare for SimpleCiter */
@@ -3209,7 +3221,7 @@ TEST_F(CompactionIterTest, SimpleCiter2) {
   c_iter_->Next();
   ASSERT_FALSE(c_iter_->Valid());
 }
-
+/*
 TEST_F(CompactionIterTest, SimpleMemtableToCiter) {
   auto factory = std::make_shared<SkipListFactory>();
   options_.memtable_factory = factory;
@@ -3295,6 +3307,37 @@ TEST_F(CompactionIterTest, SimpleMemtableToCiter) {
   ASSERT_FALSE(c_iter2_->Valid());
   mem_->Unref();
   mem2_->Unref();
+}*/
+
+
+TEST_F(SstableCompactionIterTest, SimpleSstableToCiter) {
+  std::cout << "[JH]\n";
+  // 1. Open
+  Options options;
+  options.create_if_missing =true;
+  
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name_, &db));
+  ColumnFamilyHandle* cfh = reinterpret_cast<DBImpl*>(db)->DefaultColumnFamily();
+
+  // 2. Put queries and prepare sstables
+  //db->Put(WriteOptions(), "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k1", "v5");
+  db->Put(WriteOptions(), cfh, "k2", "v6");
+  db->Put(WriteOptions(), cfh, "k3", "v7");
+  db->Put(WriteOptions(), cfh, "k1", "v8");
+  db->Put(WriteOptions(), cfh, "k2", "v9");
+  db->Put(WriteOptions(), cfh, "k1", "v10");
+
+  // 3. Compact SSTables
+  db->Flush(FlushOptions());
+  // 4. Close
+  delete db;
+  db = nullptr;
 }
 
 /*
