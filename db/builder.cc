@@ -163,13 +163,39 @@ Status BuildTable(
 
 
       const Slice& key = c_iter.key();
-      const Slice& value = c_iter.value();
+      //const Slice& value = c_iter.value();
+      Slice value(c_iter.value());
+      SequenceNumber sequence = c_iter.ikey().sequence;
+      ParsedInternalKey uikey;
+      ParseInternalKey(key, &uikey);
+      std::cout << "[f]add key : " << uikey.DebugString() << std::endl;
+      std::string key_str_copy = key.ToString();
+      //builder->Add(key, value);
+      //meta->UpdateBoundaries(key, c_iter.ikey().sequence);
 
+       
+      // TODO(noetzli): Update stats after flush, too.
+      //if (io_priority == Env::IO_HIGH &&
+      //    IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
+      //  ThreadStatusUtil::SetThreadOperationProperty(
+      //      ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
+      //}
 
-      builder->Add(key, value);
+      c_iter.Next();
+      uint64_t extra_key_put_cnt = c_iter.GetExtraKeyPutCnt();
+      std::cout << "[f]cur_key_put_cnt: " << uikey.put_cnt << std::endl;
+      std::cout << "[f]ext_key_put_cnt: " << extra_key_put_cnt << std::endl;
+      uint64_t cur_key_put_cnt = uikey.put_cnt + extra_key_put_cnt;
 
+      std::cout << "[f]key: " << key.ToString() << std::endl;
+      UpdatePutCount(&key_str_copy, cur_key_put_cnt);
+      std::cout << "[f]cur_key_put_cnt(2): " << ExtractPutCount(key_str_copy) << std::endl;
+      const Slice updated_key(key_str_copy);
 
-      meta->UpdateBoundaries(key, c_iter.ikey().sequence);
+      ParseInternalKey(updated_key, &uikey);
+      std::cout << "[f]add key(2) : " << uikey.DebugString() << std::endl;
+      builder->Add(updated_key, value);
+      meta->UpdateBoundaries(updated_key, sequence);
 
        
       // TODO(noetzli): Update stats after flush, too.
@@ -178,9 +204,6 @@ Status BuildTable(
         ThreadStatusUtil::SetThreadOperationProperty(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
-
-      c_iter.Next();
-
     }
 
     auto range_del_it = range_del_agg->NewIterator();

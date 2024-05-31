@@ -13,6 +13,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
+
 #include "db/dbformat.h"
 #include "db/table_properties_collector.h"
 #include "options/cf_options.h"

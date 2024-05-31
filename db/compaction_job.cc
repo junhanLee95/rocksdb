@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 #include <cstdio>
+#include <iostream>
 
 #include "db/builder.h"
 #include "db/db_impl.h"
@@ -966,7 +967,14 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
     // returns true.
     const Slice& key = c_iter->key();
-    const Slice& value = c_iter->value();
+    //const Slice& value = c_iter->value();
+    SequenceNumber sequence = c_iter->ikey().sequence;
+    ParsedInternalKey uikey;
+    ParseInternalKey(key, &uikey);
+    Slice value(c_iter->value());
+    std::cout << "[c]add key : " << uikey.DebugString() << std::endl;
+    std::cout << "[c]add value : " << value.ToString() << std::endl;
+    std::string key_str_copy = key.ToString();
 
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
@@ -990,19 +998,30 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
-    sub_compact->builder->Add(key, value);
+    c_iter->Next();
+    uint64_t extra_key_put_cnt = c_iter->GetExtraKeyPutCnt();
+    std::cout << "[c]cur_key_put_cnt: " <<  uikey.put_cnt  << std::endl;
+    std::cout << "[c]ext_key_put_cnt: " <<  extra_key_put_cnt <<  std::endl;
+    uint64_t cur_key_put_cnt = uikey.put_cnt + extra_key_put_cnt;
+
+    std::cout << "[c]key: " << key.ToString() << std::endl;
+    UpdatePutCount(&key_str_copy, cur_key_put_cnt);
+    const Slice updated_key(key_str_copy);
+
+    // [JH: since prev_key_put_cnt can be acquired after c_iter->Next() call,
+    // we now Add kv-pair to the builder after c_iter->Next().
+    // it does not affect the entire procedure,
+    // since the variable used to add Add kv-pair is already defined before
+    // c_iter->Next(), except for prev_key_put_cnt we got.
+    ParseInternalKey(updated_key, &uikey);
+    std::cout << "[c]add key(2) : " << uikey.DebugString() << std::endl;
+    sub_compact->builder->Add(updated_key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
 
     sub_compact->current_output()->meta.UpdateBoundaries(
-        key, c_iter->ikey().sequence);
+        updated_key, sequence);
     sub_compact->num_output_records++;
 
-    /*ROCKS_LOG_INFO(
-        db_options_.info_log,
-        "CompactionJob::ProcessKeyValueCompaction add builder - size(%lu), cnt(%lu)",
-        sub_compact->current_output_file_size ,
-        sub_compact->num_output_records     
-    );*/
     // Close output file if it is big enough. Two possibilities determine it's
     // time to close it: (1) the current key should be this file's last key, (2)
     // the next key should not be in this file.
@@ -1021,7 +1040,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       input_status = input->status();
       output_file_ended = true;
     }
-    c_iter->Next();
+    // JH]
+    
     if (!output_file_ended && c_iter->Valid() &&
         sub_compact->compaction->output_level() != 0 &&
         sub_compact->ShouldStopBefore(c_iter->key(),

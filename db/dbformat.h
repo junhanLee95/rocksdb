@@ -142,7 +142,6 @@ extern bool ParseInternalKey(const Slice& internal_key,
 
 // Returns the user key portion of an internal key.
 inline Slice ExtractUserKey(const Slice& internal_key) {
-  std::cout << "key size : " << internal_key.size() << std::endl;
   if (internal_key.size() < 16) {
     std::cout << "[JH] key size is less than 16\n";
   }
@@ -167,6 +166,8 @@ inline uint64_t ExtractPutCount(const Slice& internal_key) {
   const size_t n = internal_key.size();
   return DecodeFixed64(internal_key.data() + n - 8);
 }
+
+
 // A comparator for internal keys that uses a specified comparator for
 // the user key portion and breaks ties by decreasing sequence number.
 class InternalKeyComparator
@@ -294,13 +295,25 @@ inline bool ParseInternalKey(const Slice& internal_key,
 // Guarantees not to invalidate ikey.data().
 inline void UpdateInternalKey(std::string* ikey, uint64_t seq, ValueType t) {
   size_t ikey_sz = ikey->size();
-  assert(ikey_sz >= 8);
+  assert(ikey_sz >= 16); // JH: key format is now updated to regard put_cnt
   uint64_t newval = (seq << 8) | t;
 
   // Note: Since C++11, strings are guaranteed to be stored contiguously and
   // string::operator[]() is guaranteed not to change ikey.data().
-  EncodeFixed64(&(*ikey)[ikey_sz - 8], newval);
+  EncodeFixed64(&(*ikey)[ikey_sz - 8 - 8], newval);
 }
+
+// Update the sequence number in the internal key.
+// Guarantees not to invalidate ikey.data().
+inline void UpdatePutCount(std::string* ikey, uint64_t new_put_cnt) {
+  size_t ikey_sz = ikey->size();
+  assert(ikey_sz >= 16);
+
+  // Note: Since C++11, strings are guaranteed to be stored contiguously and
+  // string::operator[]() is guaranteed not to change ikey.data().
+  EncodeFixed64(&(*ikey)[ikey_sz-8], new_put_cnt);
+}
+
 
 // Get the sequence number from the internal key
 inline uint64_t GetInternalKeySeqno(const Slice& internal_key) {
@@ -464,6 +477,7 @@ class IterKey {
     uint64_t newval = (seq << 8) | t;
     EncodeFixed64(&buf_[key_size_ - 8- 8], newval);
   }
+
 
   bool IsKeyPinned() const { return (key_ != buf_); }
 

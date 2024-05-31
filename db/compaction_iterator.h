@@ -113,6 +113,14 @@ class CompactionIterator {
     return internaliter_next_micros_; 
   }
 
+  uint64_t GetExtraKeyPutCnt(void) {
+    // get
+    uint64_t extra_key_put_cnt = extra_key_put_cnt_;
+    // reset
+    extra_key_put_cnt_ = 0;
+    return extra_key_put_cnt;
+  }
+
  private:
 
   // JH
@@ -232,6 +240,7 @@ class CompactionIterator {
   // uncommitted values by providing a SnapshotChecker object.
   bool current_key_committed_;
 
+  uint64_t extra_key_put_cnt_; // JH: put_cnt of the current key, except for the first key appearance.
 
   bool IsShuttingDown() {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.

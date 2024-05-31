@@ -77,7 +77,8 @@ CompactionIterator::CompactionIterator(
       current_user_key_sequence_(0),
       current_user_key_snapshot_(0),
       merge_out_iter_(merge_helper_),
-      current_key_committed_(false) {
+      current_key_committed_(false),
+      extra_key_put_cnt_(0) {
 
   std::cout << "=======construct c_ter============\n";
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
@@ -331,7 +332,10 @@ void CompactionIterator::NextFromInput() {
       ikey_.user_key = current_key_.GetUserKey();
 
       uint64_t put_cnt = ikey_.put_cnt;
+      extra_key_put_cnt_ += put_cnt;
+      std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
       user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
+      std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
 
       // Note that newer version of a key is ordered before older versions. If a
       // newer version of a key is committed, so as the older version. No need
