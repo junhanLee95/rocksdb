@@ -241,6 +241,8 @@ class CompactionIterator {
   bool current_key_committed_;
 
   uint64_t extra_key_put_cnt_; // JH: put_cnt of the current key, except for the first key appearance.
+  uint64_t num_uniq_keys_;
+  uint64_t total_put_cnt_;
 
   bool IsShuttingDown() {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.

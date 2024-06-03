@@ -78,7 +78,9 @@ CompactionIterator::CompactionIterator(
       current_user_key_snapshot_(0),
       merge_out_iter_(merge_helper_),
       current_key_committed_(false),
-      extra_key_put_cnt_(0) {
+      extra_key_put_cnt_(0),
+      num_uniq_keys_(0),
+      total_put_cnt_(0){
 
   std::cout << "=======construct c_ter============\n";
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
@@ -121,6 +123,8 @@ CompactionIterator::~CompactionIterator() {
     std::cout << "CompactionIterator Stats:\n";
     std::cout << a << ": " << b << std::endl;
   }
+  std::cout << "num_uniq_keys : " << num_uniq_keys_ << std::endl;
+  std::cout << "total_put_cnt : " << total_put_cnt_ << std::endl;
   std::cout << "==================================\n";
   // input_ Iteartor lifetime is longer than pinned_iters_mgr_ lifetime
   input_->SetPinnedItersMgr(nullptr);
@@ -311,7 +315,9 @@ void CompactionIterator::NextFromInput() {
       current_user_key_snapshot_ = 0;
       current_key_committed_ = KeyCommitted(ikey_.sequence);
 
+      num_uniq_keys_ ++;
       uint64_t put_cnt = ikey_.put_cnt;
+      total_put_cnt_ += put_cnt;
       user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
 
       // Apply the compaction filter to the first committed version of the user
@@ -333,6 +339,7 @@ void CompactionIterator::NextFromInput() {
 
       uint64_t put_cnt = ikey_.put_cnt;
       extra_key_put_cnt_ += put_cnt;
+      total_put_cnt_ += put_cnt;
       std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
       user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
       std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
