@@ -3388,7 +3388,7 @@ TEST_F(SstableCompactionIterTest, TwoMemtablesToFlush) {
 */
 TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
 
-  db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test");
+  db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "_2";
   std::cout << "[JH]\n";
   // 1. Open
   Options options;
@@ -3445,9 +3445,10 @@ TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
   delete db;
   db = nullptr;
 }
+
 TEST_F(SstableCompactionIterTest, ThreeSstablesToCompact) {
 
-  db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "3";
+  db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "_3";
   std::cout << "[JH]\n";
   // 1. Open
   Options options;
@@ -3517,6 +3518,97 @@ TEST_F(SstableCompactionIterTest, ThreeSstablesToCompact) {
   db = nullptr;
 }
 
+TEST_F(SstableCompactionIterTest, TwoLevelsToCompact) {
+
+  db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "_2lvl";
+  std::cout << "[JH]\n";
+  // 1. Open
+  Options options;
+  options.create_if_missing =true;
+  options.max_write_buffer_number = 3;
+  
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name_, &db));
+  DBImpl* dbimpl = reinterpret_cast<DBImpl*>(db);
+  ColumnFamilyHandle* cfh = reinterpret_cast<DBImpl*>(db)->DefaultColumnFamily();
+
+  // 2. Put queries and prepare sstable
+  //db->Put(WriteOptions(), "k1", "v1");
+  // (1,2,3,4)
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Flush(FlushOptions());
+
+  // 3. Prepare another sstable
+  // create second memtable
+  // (4,3,2,1)
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Flush(FlushOptions());
+
+  // (4,3,2,1)
+  db->Put(WriteOptions(), cfh, "k1", "v4");
+  db->Put(WriteOptions(), cfh, "k1", "v6");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k2", "v1");
+  db->Put(WriteOptions(), cfh, "k2", "v1");
+  db->Put(WriteOptions(), cfh, "k3", "v4");
+  db->Put(WriteOptions(), cfh, "k3", "v5");
+  db->Put(WriteOptions(), cfh, "k4", "v5");
+  db->Put(WriteOptions(), cfh, "k1", "v7");
+  db->Put(WriteOptions(), cfh, "k1", "v3");
+  db->Flush(FlushOptions());
+
+  // 4. Compact two sstables
+  CompactRangeOptions compact_options;
+  compact_options.exclusive_manual_compaction = false;
+  db->CompactRange(compact_options, cfh, nullptr, nullptr);
+  dbimpl->TEST_WaitForCompact();
+
+  // 5. Prepare another sstable
+  // create second memtable
+  // (3,1,3,1)
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k2", "v2");
+  db->Put(WriteOptions(), cfh, "k4", "v4");
+  db->Put(WriteOptions(), cfh, "k1", "v1");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Put(WriteOptions(), cfh, "k3", "v3");
+  db->Flush(FlushOptions());
+
+
+  // 6. Compact two sstables
+  db->CompactRange(compact_options, cfh, nullptr, nullptr);
+  dbimpl->TEST_WaitForCompact();
+
+
+  // cnt(k1) = 12
+  // cnt(k2) = 9
+  // cnt(k3) = 10
+  // cnt(k4) = 7
+
+  // 7. Close
+  delete db;
+  db = nullptr;
+}
 
 /*
 
