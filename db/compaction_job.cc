@@ -401,8 +401,9 @@ CompactionJob::CompactionJob(
       write_hint_(Env::WLTH_NOT_SET),
       thread_pri_(thread_pri),
       sst_split_files_(sst_split_files),
-      cfd_to_split_(cfd_to_split)
-       {
+      cfd_to_split_(cfd_to_split),
+      prev_num_uniq_keys_(0),
+      prev_total_put_cnt_(0) {
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->compaction->column_family_data();
   ThreadStatusUtil::SetColumnFamily(cfd, cfd->ioptions()->env,
@@ -972,8 +973,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     ParsedInternalKey uikey;
     ParseInternalKey(key, &uikey);
     Slice value(c_iter->value());
-    std::cout << "[c]add key : " << uikey.DebugString() << std::endl;
-    std::cout << "[c]add value : " << value.ToString() << std::endl;
+    //std::cout << "[c]add key : " << uikey.DebugString() << std::endl;
+    //std::cout << "[c]add value : " << value.ToString() << std::endl;
     std::string key_str_copy = key.ToString();
 
     // If an end key (exclusive) is specified, check if the current key is
@@ -1000,11 +1001,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     assert(sub_compact->current_output() != nullptr);
     c_iter->Next();
     uint64_t extra_key_put_cnt = c_iter->GetExtraKeyPutCnt();
-    std::cout << "[c]cur_key_put_cnt: " <<  uikey.put_cnt  << std::endl;
-    std::cout << "[c]ext_key_put_cnt: " <<  extra_key_put_cnt <<  std::endl;
+    //std::cout << "[c]cur_key_put_cnt: " <<  uikey.put_cnt  << std::endl;
+    //std::cout << "[c]ext_key_put_cnt: " <<  extra_key_put_cnt <<  std::endl;
     uint64_t cur_key_put_cnt = uikey.put_cnt + extra_key_put_cnt;
 
-    std::cout << "[c]key: " << key.ToString() << std::endl;
+    //std::cout << "[c]key: " << key.ToString() << std::endl;
     UpdatePutCount(&key_str_copy, cur_key_put_cnt);
     const Slice updated_key(key_str_copy);
 
@@ -1014,7 +1015,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // since the variable used to add Add kv-pair is already defined before
     // c_iter->Next(), except for prev_key_put_cnt we got.
     ParseInternalKey(updated_key, &uikey);
-    std::cout << "[c]add key(2) : " << uikey.DebugString() << std::endl;
+    //std::cout << "[c]add key(2) : " << uikey.DebugString() << std::endl;
     sub_compact->builder->Add(updated_key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
 
@@ -1416,16 +1417,24 @@ Status CompactionJob::FinishCompactionOutputFile(
   }
 
   if (s.ok() && (current_entries > 0 || tp.num_range_deletions > 0)) {
+    // JH: print current file's key density
+    uint64_t cur_total_put_cnt = sub_compact->c_iter->GetTotalPutCnt();
+    uint64_t file_total_put_cnt = cur_total_put_cnt - prev_total_put_cnt_;
+    prev_total_put_cnt_ = cur_total_put_cnt;
+    float density = (float)file_total_put_cnt/current_entries;
+
     // Output to event logger and fire events.
     float efficiency = (float)current_entries/current_input_entries;
     sub_compact->current_output()->table_properties =
         std::make_shared<TableProperties>(tp);
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s", cfd->GetName().c_str(), job_id_, output_number,
+                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s, %" PRIu64 " put_cnt, %.2f density", cfd->GetName().c_str(), job_id_, output_number,
                    current_entries, current_input_entries,
                    efficiency, current_bytes,
-                   meta->marked_for_compaction ? " (need compaction)" : "");
+                   meta->marked_for_compaction ? " (need compaction)" : "",
+                   file_total_put_cnt,
+                   density);
 
     // JH: If db allows column family split,
     // Generate split request if necessary

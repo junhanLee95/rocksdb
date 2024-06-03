@@ -121,6 +121,16 @@ class CompactionIterator {
     return extra_key_put_cnt;
   }
 
+  uint64_t GetNumUniqKeys(void) { 
+    return num_uniq_keys_;
+  }
+
+  uint64_t GetTotalPutCnt(void) {
+    return total_put_cnt_;
+  }
+
+
+
  private:
 
   // JH

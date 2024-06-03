@@ -82,7 +82,7 @@ CompactionIterator::CompactionIterator(
       num_uniq_keys_(0),
       total_put_cnt_(0){
 
-  std::cout << "=======construct c_ter============\n";
+  //std::cout << "=======construct c_ter============\n";
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
   assert(snapshots_ != nullptr);
   internaliter_next_micros_ = 0;
@@ -115,7 +115,7 @@ CompactionIterator::CompactionIterator(
 
 CompactionIterator::~CompactionIterator() {
 
-  std::cout << "=======destruct c_ter============\n";
+  /*std::cout << "=======destruct c_ter============\n";
   std::cout << "==================================\n";
   for (auto& it: user_key_put_cnts_) {
     std::string a = it.first;
@@ -125,7 +125,7 @@ CompactionIterator::~CompactionIterator() {
   }
   std::cout << "num_uniq_keys : " << num_uniq_keys_ << std::endl;
   std::cout << "total_put_cnt : " << total_put_cnt_ << std::endl;
-  std::cout << "==================================\n";
+  std::cout << "==================================\n";*/
   // input_ Iteartor lifetime is longer than pinned_iters_mgr_ lifetime
   input_->SetPinnedItersMgr(nullptr);
 }
@@ -140,13 +140,13 @@ void CompactionIterator::ResetRecordCounts() {
 }
 
 void CompactionIterator::SeekToFirst() {
-  std::cout << "c_iter::SeekToFirst()\n";
+  //std::cout << "c_iter::SeekToFirst()\n";
   NextFromInput();
   PrepareOutput();
 }
 
 void CompactionIterator::Next() {
-  std::cout << "c_iter::Next()\n";
+  //std::cout << "c_iter::Next()\n";
   // If there is a merge output, return it before continuing to process the
   // input.
   if (merge_out_iter_.Valid()) {
@@ -247,23 +247,23 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
 }
 
 void CompactionIterator::NextFromInput() {
-  std::cout << "NextFromInput()\n";
+  //std::cout << "NextFromInput()\n";
   at_next_ = false;
   valid_ = false;
 
-  std::cout << "NextFromInput()\t" << "(1)" <<std::endl;
+  /*std::cout << "NextFromInput()\t" << "(1)" <<std::endl;
   std::cout << "NextFromInput()\t" << "valid? : " << valid_ << std::endl;
   std::cout << "NextFromInput()\t" << "input_->valid? : " << input_->Valid() << std::endl;
-  std::cout << "NextFromInput()\t" << "is shutting down? : " << IsShuttingDown() << std::endl;
+  std::cout << "NextFromInput()\t" << "is shutting down? : " << IsShuttingDown() << std::endl;*/
   while (!valid_ && input_->Valid() && !IsShuttingDown()) {
 
-    std::cout << "NextFromInput()\t" << "(2)" <<std::endl;
+    //std::cout << "NextFromInput()\t" << "(2)" <<std::endl;
     key_ = input_->key();
     value_ = input_->value();
     iter_stats_.num_input_records++;
 
     if (!ParseInternalKey(key_, &ikey_)) {
-      std::cout << "NextFromInput()\t" << "key is not valid" <<std::endl;
+      //std::cout << "NextFromInput()\t" << "key is not valid" <<std::endl;
       // If `expect_valid_internal_key_` is false, return the corrupted key
       // and let the caller decide what to do with it.
       // TODO(noetzli): We should have a more elegant solution for this.
@@ -281,7 +281,7 @@ void CompactionIterator::NextFromInput() {
       break;
     }
 
-    std::cout << "NextFromInput()\t" << "parsed key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
+    //std::cout << "NextFromInput()\t" << "parsed key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
     TEST_SYNC_POINT_CALLBACK("CompactionIterator:ProcessKV", &ikey_);
 
     // Update input statistics
@@ -304,7 +304,7 @@ void CompactionIterator::NextFromInput() {
     if (!has_current_user_key_ ||
         !cmp_->Equal(ikey_.user_key, current_user_key_)) {
       //JH
-      std::cout << "NextFromInput()\t" << "first key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
+      //std::cout << "NextFromInput()\t" << "first key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
       // First occurrence of this user key
       // Copy key for output
       key_ = current_key_.SetInternalKey(key_, &ikey_);
@@ -327,7 +327,7 @@ void CompactionIterator::NextFromInput() {
       }
     } else {
       //JH
-      std::cout << "NextFromInput()\t" << "same key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
+      //std::cout << "NextFromInput()\t" << "same key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
       // Update the current key to reflect the new sequence number/type without
       // copying the user key.
       // TODO(rven): Compaction filter does not process keys in this path
@@ -340,9 +340,9 @@ void CompactionIterator::NextFromInput() {
       uint64_t put_cnt = ikey_.put_cnt;
       extra_key_put_cnt_ += put_cnt;
       total_put_cnt_ += put_cnt;
-      std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
+      //std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
       user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
-      std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
+      //std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
 
       // Note that newer version of a key is ordered before older versions. If a
       // newer version of a key is committed, so as the older version. No need
@@ -658,11 +658,11 @@ void CompactionIterator::NextFromInput() {
     }
   }
 
-  std::cout << "NextFromInput()\t" << "(3)" <<std::endl;
+  //std::cout << "NextFromInput()\t" << "(3)" <<std::endl;
 
   if (!valid_ && IsShuttingDown()) {
 
-    std::cout << "NextFromInput()\t" << "(4)" <<std::endl;
+    //std::cout << "NextFromInput()\t" << "(4)" <<std::endl;
     status_ = Status::ShutdownInProgress();
   }
 }

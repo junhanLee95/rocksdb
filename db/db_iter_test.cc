@@ -3196,16 +3196,16 @@ TEST_F(CompactionIterTest, SimpleCiter2) {
         0, snapshot_checker_.get(),
         0, nullptr, &shutting_down_));
 
-  std::cout << "MergingIterator is valid? " << merge_iter_->Valid() << std::endl;
+  //std::cout << "MergingIterator is valid? " << merge_iter_->Valid() << std::endl;
   c_iter_.reset(new CompactionIterator(
         merge_iter_.get(), cmp_, merge_helper_.get(), kMaxSequenceNumber, &snapshots_,
         kMaxSequenceNumber, snapshot_checker_.get(),
         env_, false, false,
         range_del_agg_.get()));
 
-  std::cout << "is valid? " << c_iter_->Valid() << std::endl;
+  //std::cout << "is valid? " << c_iter_->Valid() << std::endl;
   c_iter_->SeekToFirst();
-  std::cout << "is valid(2)? " << c_iter_->Valid() << std::endl;
+  //std::cout << "is valid(2)? " << c_iter_->Valid() << std::endl;
   ASSERT_TRUE(c_iter_->Valid());
   ASSERT_EQ(c_iter_->user_key().ToString(), "a1");
   ASSERT_EQ(c_iter_->value().ToString(), "A3");
@@ -3389,7 +3389,7 @@ TEST_F(SstableCompactionIterTest, TwoMemtablesToFlush) {
 TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
 
   db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "_2";
-  std::cout << "[JH]\n";
+  //std::cout << "[JH]\n";
   // 1. Open
   Options options;
   options.create_if_missing =true;
@@ -3449,7 +3449,7 @@ TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
 TEST_F(SstableCompactionIterTest, ThreeSstablesToCompact) {
 
   db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "_3";
-  std::cout << "[JH]\n";
+  //std::cout << "[JH]\n";
   // 1. Open
   Options options;
   options.create_if_missing =true;
@@ -3521,7 +3521,7 @@ TEST_F(SstableCompactionIterTest, ThreeSstablesToCompact) {
 TEST_F(SstableCompactionIterTest, TwoLevelsToCompact) {
 
   db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "_2lvl";
-  std::cout << "[JH]\n";
+  //std::cout << "[JH]\n";
   // 1. Open
   Options options;
   options.create_if_missing =true;

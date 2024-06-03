@@ -168,7 +168,7 @@ Status BuildTable(
       SequenceNumber sequence = c_iter.ikey().sequence;
       ParsedInternalKey uikey;
       ParseInternalKey(key, &uikey);
-      std::cout << "[f]add key : " << uikey.DebugString() << std::endl;
+      //std::cout << "[f]add key : " << uikey.DebugString() << std::endl;
       std::string key_str_copy = key.ToString();
       //builder->Add(key, value);
       //meta->UpdateBoundaries(key, c_iter.ikey().sequence);
@@ -183,17 +183,17 @@ Status BuildTable(
 
       c_iter.Next();
       uint64_t extra_key_put_cnt = c_iter.GetExtraKeyPutCnt();
-      std::cout << "[f]cur_key_put_cnt: " << uikey.put_cnt << std::endl;
-      std::cout << "[f]ext_key_put_cnt: " << extra_key_put_cnt << std::endl;
+      //std::cout << "[f]cur_key_put_cnt: " << uikey.put_cnt << std::endl;
+      //std::cout << "[f]ext_key_put_cnt: " << extra_key_put_cnt << std::endl;
       uint64_t cur_key_put_cnt = uikey.put_cnt + extra_key_put_cnt;
 
-      std::cout << "[f]key: " << key.ToString() << std::endl;
+      //std::cout << "[f]key: " << key.ToString() << std::endl;
       UpdatePutCount(&key_str_copy, cur_key_put_cnt);
-      std::cout << "[f]cur_key_put_cnt(2): " << ExtractPutCount(key_str_copy) << std::endl;
+      //std::cout << "[f]cur_key_put_cnt(2): " << ExtractPutCount(key_str_copy) << std::endl;
       const Slice updated_key(key_str_copy);
 
       ParseInternalKey(updated_key, &uikey);
-      std::cout << "[f]add key(2) : " << uikey.DebugString() << std::endl;
+      //std::cout << "[f]add key(2) : " << uikey.DebugString() << std::endl;
       builder->Add(updated_key, value);
       meta->UpdateBoundaries(updated_key, sequence);
 

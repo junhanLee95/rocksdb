@@ -150,16 +150,16 @@ void InternalKeyComparator::FindShortestSeparator(std::string* start,
 }
 
 void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
-  std::cout << "key(" <<  *key << ") size : " << key->size() << std::endl;
+  //std::cout << "key(" <<  *key << ") size : " << key->size() << std::endl;
   Slice user_key = ExtractUserKey(*key);
-  std::cout << "user_key(" <<  user_key.ToString() << ") size : " << user_key.size() << std::endl;
+  //std::cout << "user_key(" <<  user_key.ToString() << ") size : " << user_key.size() << std::endl;
   std::string tmp(user_key.data(), user_key.size());
-  std::cout << "tmp(" <<  tmp << ") size : " << tmp.size() << std::endl;
+  //std::cout << "tmp(" <<  tmp << ") size : " << tmp.size() << std::endl;
   user_comparator_.FindShortSuccessor(&tmp);
-  std::cout << "tmp(2)(" <<  tmp << ") size : " << tmp.size() << std::endl;
+  //std::cout << "tmp(2)(" <<  tmp << ") size : " << tmp.size() << std::endl;
   if (tmp.size() <= user_key.size() &&
       user_comparator_.Compare(user_key, tmp) < 0) {
-    std::cout << "User key has become shorter physically, but larger logically." << std::endl;
+    //std::cout << "User key has become shorter physically, but larger logically." << std::endl;
     // User key has become shorter physically, but larger logically.
     // Tack on the earliest possible number to the shortened user key.
     PutFixed64(&tmp,
@@ -168,10 +168,10 @@ void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
     uint64_t dummy = 0;
     PutFixed64(&tmp, dummy);
 
-    std::cout << "tmp(3)(" <<  tmp << ") size : " << tmp.size() << std::endl;
+    //std::cout << "tmp(3)(" <<  tmp << ") size : " << tmp.size() << std::endl;
     assert(this->Compare(*key, tmp) < 0);
     key->swap(tmp);
-    std::cout << "key(2)(" <<  *key << ") size : " << key->size() << std::endl;
+    //std::cout << "key(2)(" <<  *key << ") size : " << key->size() << std::endl;
   }
 }
 

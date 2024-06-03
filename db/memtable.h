@@ -110,7 +110,7 @@ class MemTable {
   // operations on the same MemTable.
   void Ref() { 
     ++refs_;
-    fprintf(stdout, "ref memtable(id:%ld)\n", id_);
+    //fprintf(stdout, "ref memtable(id:%ld)\n", id_);
   }
 
   // Drop reference count.
@@ -120,7 +120,7 @@ class MemTable {
   MemTable* Unref() {
     --refs_;
     assert(refs_ >= 0);
-    fprintf(stdout, "unref memtable(id:%ld)\n", id_);
+    //fprintf(stdout, "unref memtable(id:%ld)\n", id_);
     if (refs_ <= 0) {
       return this;
     }

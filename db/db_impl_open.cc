@@ -1074,7 +1074,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   column_families.push_back(
       ColumnFamilyDescriptor(kDefaultColumnFamilyName, cf_options));
   std::vector<ColumnFamilyHandle*> handles;
-  std::cout << "OPEN\n";
+  //std::cout << "OPEN\n";
   Status s = DB::Open(db_options, dbname, column_families, &handles, dbptr);
   if (s.ok()) {
     assert(handles.size() == 1);
