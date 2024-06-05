@@ -10,6 +10,7 @@ db/*.sst
 db/*.log
 build_db.sh
 do_expr_thread.sh
+sst_dump_all.sh
 mytrace
 cscope.files
 

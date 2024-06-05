@@ -1398,6 +1398,9 @@ Status CompactionJob::FinishCompactionOutputFile(
   TableProperties tp;
   if (s.ok()) {
     tp = sub_compact->builder->GetTableProperties();
+    // JH: apply smallest/largest user key to tp
+    tp.smallest_user_key = meta->smallest.user_key().ToString();
+    tp.largest_user_key = meta->largest.user_key().ToString();
   }
 
   if (s.ok() && current_entries == 0 && tp.num_range_deletions == 0) {

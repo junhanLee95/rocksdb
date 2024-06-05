@@ -216,6 +216,9 @@ struct TableProperties {
   uint64_t flush_policy_time = 0;
   uint64_t etc_time = 0;
   uint64_t stat_time = 0;
+  // print smallest/largest user key of the sstable.
+  std::string smallest_user_key;
+  std::string largest_user_key;
 
   // Name of the column family with which this SST file is associated.
   // If column family is unknown, `column_family_name` will be an empty string.

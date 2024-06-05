@@ -107,7 +107,9 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
               << "etc" << table_properties.etc_time
               << "stat" << table_properties.stat_time
               /* JH: for debugging (collect flush stat) */
-              << "filter_policy_name" << table_properties.filter_policy_name;
+              << "filter_policy_name" << table_properties.filter_policy_name
+              << "smallest" << table_properties.smallest_user_key
+              << "largest" << table_properties.largest_user_key;
 
 			// prefix key properties
 			/*for (unsigned int i=0; i<11; i++) {

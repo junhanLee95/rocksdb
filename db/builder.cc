@@ -218,6 +218,8 @@ Status BuildTable(
 
     // Finish and check for builder errors
     tp = builder->GetTableProperties();
+
+
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
     s = c_iter.status();
     if (!s.ok() || empty) {
@@ -237,6 +239,12 @@ Status BuildTable(
       }
     }
     delete builder;
+
+    // JH: apply smallest/largest key to tp
+    std::cout << "[f]smallest : " << meta->smallest.user_key().ToString() << std::endl;
+    std::cout << "[f]largest  : " << meta->largest.user_key().ToString() << std::endl;
+    tp.smallest_user_key = meta->smallest.user_key().ToString();
+    tp.largest_user_key = meta->largest.user_key().ToString();
 
     // Finish and check for file errors
     if (s.ok() && !empty) {
@@ -1107,6 +1115,10 @@ Status BuildsubTable(
 
     // Finish and check for builder errors
     tp = builder->GetTableProperties();
+    // JH: apply smallest/largest key to tp
+    tp.smallest_user_key = meta->smallest.user_key().ToString();
+    tp.largest_user_key = meta->largest.user_key().ToString();
+
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
     s = c_iter.status();
     if (!s.ok() || empty) {
