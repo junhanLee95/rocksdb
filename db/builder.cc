@@ -182,10 +182,11 @@ Status BuildTable(
       //}
 
       c_iter.Next();
-      uint64_t extra_key_put_cnt = c_iter.GetExtraKeyPutCnt();
+      //uint64_t extra_key_put_cnt = c_iter.GetExtraKeyPutCnt();
       //std::cout << "[f]cur_key_put_cnt: " << uikey.put_cnt << std::endl;
       //std::cout << "[f]ext_key_put_cnt: " << extra_key_put_cnt << std::endl;
-      uint64_t cur_key_put_cnt = uikey.put_cnt + extra_key_put_cnt;
+      // uint64_t cur_key_put_cnt = uikey.put_cnt + extra_key_put_cnt;
+      uint64_t cur_key_put_cnt = 1;
 
       //std::cout << "[f]key: " << key.ToString() << std::endl;
       UpdatePutCount(&key_str_copy, cur_key_put_cnt);

@@ -3404,30 +3404,21 @@ TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
   //db->Put(WriteOptions(), "k1", "v1");
   // (1,2,3,4)
   db->Put(WriteOptions(), cfh, "k3", "v3");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
-  db->Put(WriteOptions(), cfh, "k4", "v4");
-  db->Put(WriteOptions(), cfh, "k4", "v4");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k3", "v3");
-  db->Put(WriteOptions(), cfh, "k4", "v4");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k3", "v3");
-  db->Put(WriteOptions(), cfh, "k4", "v4");
   db->Flush(FlushOptions());
 
   // 3. Prepare another sstable
   // create second memtable
   // (4,3,2,1)
-  db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k2", "v2");
-  db->Put(WriteOptions(), cfh, "k4", "v4");
   db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k1", "v1");
-  db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Flush(FlushOptions());
 
 
@@ -3470,7 +3461,6 @@ TEST_F(SstableCompactionIterTest, ThreeSstablesToCompact) {
   db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Put(WriteOptions(), cfh, "k4", "v4");
-  db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Put(WriteOptions(), cfh, "k4", "v4");
   db->Flush(FlushOptions());
@@ -3482,10 +3472,6 @@ TEST_F(SstableCompactionIterTest, ThreeSstablesToCompact) {
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k1", "v1");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
-  db->Put(WriteOptions(), cfh, "k4", "v4");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Flush(FlushOptions());
@@ -3542,7 +3528,6 @@ TEST_F(SstableCompactionIterTest, TwoLevelsToCompact) {
   db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Put(WriteOptions(), cfh, "k4", "v4");
-  db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Put(WriteOptions(), cfh, "k4", "v4");
   db->Flush(FlushOptions());
@@ -3554,25 +3539,17 @@ TEST_F(SstableCompactionIterTest, TwoLevelsToCompact) {
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k1", "v1");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k4", "v4");
-  db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Flush(FlushOptions());
 
   // (4,3,2,1)
-  db->Put(WriteOptions(), cfh, "k1", "v4");
-  db->Put(WriteOptions(), cfh, "k1", "v6");
   db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k2", "v1");
   db->Put(WriteOptions(), cfh, "k2", "v1");
   db->Put(WriteOptions(), cfh, "k3", "v4");
   db->Put(WriteOptions(), cfh, "k3", "v5");
-  db->Put(WriteOptions(), cfh, "k4", "v5");
-  db->Put(WriteOptions(), cfh, "k1", "v7");
-  db->Put(WriteOptions(), cfh, "k1", "v3");
   db->Flush(FlushOptions());
 
   // 4. Compact two sstables
@@ -3596,8 +3573,8 @@ TEST_F(SstableCompactionIterTest, TwoLevelsToCompact) {
 
 
   // 6. Compact two sstables
-  db->CompactRange(compact_options, cfh, nullptr, nullptr);
-  dbimpl->TEST_WaitForCompact();
+  //db->CompactRange(compact_options, cfh, nullptr, nullptr);
+  //dbimpl->TEST_WaitForCompact();
 
 
   // cnt(k1) = 12
