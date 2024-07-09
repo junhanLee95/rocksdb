@@ -3224,7 +3224,7 @@ Status VersionSet::ProcessManifestWrites(
           }
         }
         else {
-          ROCKS_LOG_INFO(db_options_->info_log,
+          /*ROCKS_LOG_INFO(db_options_->info_log,
               "Column family(2) create target_file_size_base: %ld",
               new_cf_options->target_file_size_base );
           ROCKS_LOG_INFO(db_options_->info_log,
@@ -3233,6 +3233,14 @@ Status VersionSet::ProcessManifestWrites(
 
           const ColumnFamilyOptions cf_options = BuildColumnFamilyOptions(*new_cf_options,
                                                      writer.mutable_cf_options);
+																										 
+          auto cfd_out = CreateColumnFamily(cf_options, writer.edit_list.front());
+																										 */
+
+          const ColumnFamilyOptions cf_options = BuildColumnFamilyOptions(*new_cf_options,
+                                                     writer.mutable_cf_options);
+
+					//const ColumnFamilyOptions cf_options = *new_cf_options;
           auto cfd_out = CreateColumnFamily(cf_options, writer.edit_list.front());
           cfd_outs.push_back(cfd_out);
         }

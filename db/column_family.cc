@@ -1791,11 +1791,21 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     // JH: for now, we assume that new column family has one-fourth size of L1
     // compared to the old one.
     //options.target_file_size_base = old_target_file_size_base * 0.25;
-
-		options.max_bytes_for_level_base = 268435456  ;
-		options.level0_file_num_compaction_trigger = 40;
+    if (i == 0) { // default1
+			options.max_bytes_for_level_base = 64*1024*1024*4*0.15  ;
+			options.target_file_size_base =  64*1024*1024*0.15 ;
+			options.level0_file_num_compaction_trigger = 4;
+	  }
+		else if (i == 1) { // default2
+			options.max_bytes_for_level_base = 64*1024*1024*4*0.10  ;
+			options.target_file_size_base =  64*1024*1024*0.10 ;
+			options.level0_file_num_compaction_trigger = 4;
+	  }
+		//options.max_bytes_for_level_base = 64*1024*1024/16*4  ;
+		//options.target_file_size_base =  64*1024*1024/16 ;
+		/*options.level0_file_num_compaction_trigger = 40;
 		options.level0_slowdown_writes_trigger = 200;
-		options.level0_stop_writes_trigger = 360;
+		options.level0_stop_writes_trigger = 360;*/
 
 		/*if (new_smallests[i] == "user00000000000014636574" || \
 				new_smallests[i] == "user00000000000016835323" || \
