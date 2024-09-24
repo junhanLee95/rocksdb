@@ -77,7 +77,8 @@ void UnPackSequenceAndType(uint64_t packed, uint64_t* seq, ValueType* t) {
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
   result->append(key.user_key.data(), key.user_key.size());
   PutFixed64(result, PackSequenceAndType(key.sequence, key.type));
-  PutFixed64(result, key.put_cnt);
+  PutFixed64(result, key.f_cnt);
+  PutFixed64(result, key.c_cnt);
 }
 
 void AppendInternalKeyFooter(std::string* result, SequenceNumber s,
@@ -86,9 +87,9 @@ void AppendInternalKeyFooter(std::string* result, SequenceNumber s,
 }
 
 std::string ParsedInternalKey::DebugString(bool hex) const {
-  char buf[50];
-  snprintf(buf, sizeof(buf), "' seq:%" PRIu64 ", type:%d, put_cnt:%" PRIu64 "", sequence,
-           static_cast<int>(type), put_cnt);
+  char buf[100];
+  snprintf(buf, sizeof(buf), "' seq:%" PRIu64 ", type:%d, flush_cnt:%" PRIu64 ", compaction_cnt:%" PRIu64 "", sequence,
+           static_cast<int>(type), f_cnt, c_cnt);
   std::string result = "'";
   result += user_key.ToString(hex);
   result += buf;
@@ -133,9 +134,13 @@ int InternalKeyComparator::Compare(const ParsedInternalKey& a,
 void InternalKeyComparator::FindShortestSeparator(std::string* start,
                                                   const Slice& limit) const {
   // Attempt to shorten the user portion of the key
+  //std::cout << "key(" <<  *start << ") size : " << start->size() << std::endl;
   Slice user_start = ExtractUserKey(*start);
+  //std::cout << "user_key(" <<  user_start.ToString() << ") size : " << user_start.size() << std::endl;
   Slice user_limit = ExtractUserKey(limit);
   std::string tmp(user_start.data(), user_start.size());
+  //std::cout << "tmp key(" <<  tmp << ") size : " << tmp.size() << std::endl;
+  //std::cout << "user_limit key(" <<  user_limit.ToString() << ") size : " << user_limit.size() << std::endl;
   user_comparator_.FindShortestSeparator(&tmp, user_limit);
   if (tmp.size() <= user_start.size() &&
       user_comparator_.Compare(user_start, tmp) < 0) {
@@ -143,6 +148,9 @@ void InternalKeyComparator::FindShortestSeparator(std::string* start,
     // Tack on the earliest possible number to the shortened user key.
     PutFixed64(&tmp,
                PackSequenceAndType(kMaxSequenceNumber, kValueTypeForSeek));
+		int dummy=0;
+		PutFixed64(&tmp, dummy);
+		PutFixed64(&tmp, dummy);
     assert(this->Compare(*start, tmp) < 0);
     assert(this->Compare(tmp, limit) < 0);
     start->swap(tmp);
@@ -150,7 +158,7 @@ void InternalKeyComparator::FindShortestSeparator(std::string* start,
 }
 
 void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
-  //std::cout << "key(" <<  *key << ") size : " << key->size() << std::endl;
+  //std::cout << "fkey(" <<  *key << ") size : " << key->size() << std::endl;
   Slice user_key = ExtractUserKey(*key);
   //std::cout << "user_key(" <<  user_key.ToString() << ") size : " << user_key.size() << std::endl;
   std::string tmp(user_key.data(), user_key.size());
@@ -164,9 +172,12 @@ void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
     // Tack on the earliest possible number to the shortened user key.
     PutFixed64(&tmp,
                PackSequenceAndType(kMaxSequenceNumber, kValueTypeForSeek));
-    // JH put dummy put_cnt for the format
+    // JH put dummy flush_cnt for the format
     uint64_t dummy = 0;
     PutFixed64(&tmp, dummy);
+    // JH put dummy compaction_cnt for the format
+    PutFixed64(&tmp, dummy);
+
 
     //std::cout << "tmp(3)(" <<  tmp << ") size : " << tmp.size() << std::endl;
     assert(this->Compare(*key, tmp) < 0);

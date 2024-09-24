@@ -78,9 +78,12 @@ CompactionIterator::CompactionIterator(
       current_user_key_snapshot_(0),
       merge_out_iter_(merge_helper_),
       current_key_committed_(false),
-      extra_key_put_cnt_(0),
+      extra_key_flush_cnt_(0),
+      extra_key_compaction_cnt_(0),
       num_uniq_keys_(0),
-      total_put_cnt_(0){
+      total_flush_cnt_(0),
+      total_compaction_cnt_(0)
+	{
 
   //std::cout << "=======construct c_ter============\n";
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
@@ -117,14 +120,22 @@ CompactionIterator::~CompactionIterator() {
 
   /*std::cout << "=======destruct c_ter============\n";
   std::cout << "==================================\n";
-  for (auto& it: user_key_put_cnts_) {
+  for (auto& it: user_key_flush_cnts_) {
     std::string a = it.first;
     uint64_t b = it.second;
-    std::cout << "CompactionIterator Stats:\n";
+    std::cout << "CompactionIterator Flush Stats:\n";
     std::cout << a << ": " << b << std::endl;
   }
+  for (auto& it: user_key_compaction_cnts_) {
+    std::string a = it.first;
+    uint64_t b = it.second;
+    std::cout << "CompactionIterator Compaction Stats:\n";
+    std::cout << a << ": " << b << std::endl;
+  }
+
   std::cout << "num_uniq_keys : " << num_uniq_keys_ << std::endl;
-  std::cout << "total_put_cnt : " << total_put_cnt_ << std::endl;
+  std::cout << "total_flush_cnt : " << total_flush_cnt_ << std::endl;
+  std::cout << "total_compaction_cnt : " << total_compaction_cnt_ << std::endl;
   std::cout << "==================================\n";*/
   // input_ Iteartor lifetime is longer than pinned_iters_mgr_ lifetime
   input_->SetPinnedItersMgr(nullptr);
@@ -251,10 +262,10 @@ void CompactionIterator::NextFromInput() {
   at_next_ = false;
   valid_ = false;
 
-  /*std::cout << "NextFromInput()\t" << "(1)" <<std::endl;
+  std::cout << "NextFromInput()\t" << "(1)" <<std::endl;
   std::cout << "NextFromInput()\t" << "valid? : " << valid_ << std::endl;
   std::cout << "NextFromInput()\t" << "input_->valid? : " << input_->Valid() << std::endl;
-  std::cout << "NextFromInput()\t" << "is shutting down? : " << IsShuttingDown() << std::endl;*/
+  std::cout << "NextFromInput()\t" << "is shutting down? : " << IsShuttingDown() << std::endl;
   while (!valid_ && input_->Valid() && !IsShuttingDown()) {
 
     //std::cout << "NextFromInput()\t" << "(2)" <<std::endl;
@@ -281,7 +292,7 @@ void CompactionIterator::NextFromInput() {
       break;
     }
 
-    //std::cout << "NextFromInput()\t" << "parsed key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
+    std::cout << "NextFromInput()\t" << "parsed key: (" << ikey_.DebugString(false)<<std::endl;// << ", " << value_.ToString() << ")" <<std::endl;
     TEST_SYNC_POINT_CALLBACK("CompactionIterator:ProcessKV", &ikey_);
 
     // Update input statistics
@@ -304,11 +315,13 @@ void CompactionIterator::NextFromInput() {
     if (!has_current_user_key_ ||
         !cmp_->Equal(ikey_.user_key, current_user_key_)) {
       //JH
-      //std::cout << "NextFromInput()\t" << "first key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
+      std::cout << "NextFromInput()\t" << "first key: (" << ikey_.DebugString(true) << ")" <<std::endl;
       // First occurrence of this user key
       // Copy key for output
       key_ = current_key_.SetInternalKey(key_, &ikey_);
+      std::cout << "NextFromInput()\t" << "user_key: (" << ikey_.user_key.ToString() <<std::endl;
       current_user_key_ = ikey_.user_key;
+      std::cout << "NextFromInput()\t" << "current_key: (" << current_user_key_.ToString() <<std::endl;
       has_current_user_key_ = true;
       has_outputted_key_ = false;
       current_user_key_sequence_ = kMaxSequenceNumber;
@@ -316,9 +329,15 @@ void CompactionIterator::NextFromInput() {
       current_key_committed_ = KeyCommitted(ikey_.sequence);
 
       num_uniq_keys_ ++;
-      uint64_t put_cnt = ikey_.put_cnt;
-      total_put_cnt_ += put_cnt;
-      user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
+      uint64_t flush_cnt = ikey_.f_cnt;
+      /*extra_key_flush_cnt_ += flush_cnt;
+      total_flush_cnt_ += flush_cnt;*/
+      uint64_t compaction_cnt = ikey_.c_cnt+1;
+      /*extra_key_compaction_cnt_ += compaction_cnt;
+      total_compaction_cnt_ += compaction_cnt;*/
+
+      user_key_flush_cnts_[current_user_key_.ToString()] += flush_cnt;
+      user_key_compaction_cnts_[current_user_key_.ToString()] += compaction_cnt;
 
       // Apply the compaction filter to the first committed version of the user
       // key.
@@ -327,7 +346,7 @@ void CompactionIterator::NextFromInput() {
       }
     } else {
       //JH
-      //std::cout << "NextFromInput()\t" << "same key: (" << ikey_.DebugString(true) << ", " << value_.ToString() << ")" <<std::endl;
+      std::cout << "NextFromInput()\t" << "same key: " << ikey_.DebugString(true) <<std::endl;// << ", " << value_.ToString() << ")" <<std::endl;
       // Update the current key to reflect the new sequence number/type without
       // copying the user key.
       // TODO(rven): Compaction filter does not process keys in this path
@@ -337,12 +356,19 @@ void CompactionIterator::NextFromInput() {
       key_ = current_key_.GetInternalKey();
       ikey_.user_key = current_key_.GetUserKey();
 
-      uint64_t put_cnt = ikey_.put_cnt;
-      extra_key_put_cnt_ += put_cnt;
-      total_put_cnt_ += put_cnt;
-      //std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
-      user_key_put_cnts_[current_user_key_.ToString()] += put_cnt;
-      //std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "cnt : " << user_key_put_cnts_[current_user_key_.ToString()] <<std::endl;
+      uint64_t flush_cnt = ikey_.f_cnt;
+      extra_key_flush_cnt_ += flush_cnt;
+      total_flush_cnt_ += flush_cnt;
+      uint64_t compaction_cnt = ikey_.c_cnt;
+      extra_key_compaction_cnt_ += compaction_cnt;
+      total_compaction_cnt_ += compaction_cnt;
+
+      //std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "f_cnt : " << user_key_flush_cnts_[current_user_key_.ToString()] <<std::endl;
+      //std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "c_cnt : " << user_key_compaction_cnts_[current_user_key_.ToString()] <<std::endl;
+      user_key_flush_cnts_[current_user_key_.ToString()] += flush_cnt;
+      user_key_compaction_cnts_[current_user_key_.ToString()] += compaction_cnt;
+			//std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "f_cnt : " << user_key_flush_cnts_[current_user_key_.ToString()] <<std::endl;
+			//std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "c_cnt : " << user_key_compaction_cnts_[current_user_key_.ToString()] <<std::endl;
 
       // Note that newer version of a key is ordered before older versions. If a
       // newer version of a key is committed, so as the older version. No need
@@ -658,11 +684,11 @@ void CompactionIterator::NextFromInput() {
     }
   }
 
-  //std::cout << "NextFromInput()\t" << "(3)" <<std::endl;
+  std::cout << "NextFromInput()\t" << "(3)" <<std::endl;
 
   if (!valid_ && IsShuttingDown()) {
 
-    //std::cout << "NextFromInput()\t" << "(4)" <<std::endl;
+    std::cout << "NextFromInput()\t" << "(4)" <<std::endl;
     status_ = Status::ShutdownInProgress();
   }
 }

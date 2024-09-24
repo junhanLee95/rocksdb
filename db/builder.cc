@@ -189,7 +189,8 @@ Status BuildTable(
       uint64_t cur_key_put_cnt = 1;
 
       //std::cout << "[f]key: " << key.ToString() << std::endl;
-      UpdatePutCount(&key_str_copy, cur_key_put_cnt);
+      UpdateFlushCount(&key_str_copy, cur_key_put_cnt);
+      UpdateCompactionCount(&key_str_copy, cur_key_put_cnt);
       //std::cout << "[f]cur_key_put_cnt(2): " << ExtractPutCount(key_str_copy) << std::endl;
       const Slice updated_key(key_str_copy);
 
@@ -242,8 +243,8 @@ Status BuildTable(
     delete builder;
 
     // JH: apply smallest/largest key to tp
-    std::cout << "[f]smallest : " << meta->smallest.user_key().ToString() << std::endl;
-    std::cout << "[f]largest  : " << meta->largest.user_key().ToString() << std::endl;
+    //std::cout << "[f]smallest : " << meta->smallest.user_key().ToString() << std::endl;
+    //std::cout << "[f]largest  : " << meta->largest.user_key().ToString() << std::endl;
     tp.smallest_user_key = meta->smallest.user_key().ToString();
     tp.largest_user_key = meta->largest.user_key().ToString();
 
@@ -688,8 +689,11 @@ Status BuildParentTable(
       }
       continue;
     }
+    ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() end key : %s", sub_ends[i-1].c_str());
     start_iter[i].SetInternalKey(Slice(sub_ends[i-1]), kMaxSequenceNumber, kValueTypeForSeek);
+    ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() start iter key : %s", start_iter[i].GetInternalKey().ToString().c_str());
     iter->Seek(start_iter[i].GetInternalKey());
+    ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() seek iter key : %s", iter->key().ToString().c_str());
   }
 	bool iter_valid = true;
   /*
@@ -779,6 +783,10 @@ Status BuildParentTable(
       if (i != 0 && c_iter->Valid()) {
         c_iter->Next(); 
       }
+      ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] [%s] BuildParentTable %ld key start : %s",
+          job_id,
+          column_family_name.c_str(),
+          i, c_iter->user_key().ToString().c_str());
 
 		  c_iters.push_back(c_iter);
 		}
@@ -806,7 +814,10 @@ Status BuildParentTable(
 
 				if (i == children_size || 
 						user_key_str.compare(sub_starts[i]) < 0) {
-					builder->Add(key, value);
+          builder->Add(key, value);
+          ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable c_iter[%ld] add key : %s",
+              job_id, i, user_key_str.c_str());
+
           //std::cout <<  "[" << column_family_name << "] int add : " << user_key_str << std::endl;
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
 				} else {

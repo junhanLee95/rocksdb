@@ -3141,9 +3141,14 @@ TEST_F(CompactionIterTest, SimpleCiter) {
 
 
   c_iter_->SeekToFirst();
+	ParsedInternalKey pkey;
+	ParseInternalKey(c_iter_->key(), &pkey);
+	std::cout << "pkey: " << pkey.DebugString() << std::endl;
+	std::cout << "key : " << c_iter_->user_key().ToString() <<", value : " <<c_iter_->value().ToString() << std::endl;
   ASSERT_TRUE(c_iter_->Valid());
-  ASSERT_EQ(c_iter_->user_key().ToString(), "a1");
   ASSERT_EQ(c_iter_->value().ToString(), "A3");
+  ASSERT_EQ(c_iter_->user_key().ToString(), "a1");
+  //ASSERT_EQ("a1", "a1");
   c_iter_->Next();
   ASSERT_TRUE(c_iter_->Valid());
   ASSERT_EQ(c_iter_->user_key().ToString(), "b1");
@@ -3157,7 +3162,6 @@ TEST_F(CompactionIterTest, SimpleCiter) {
 }
 
 TEST_F(CompactionIterTest, SimpleCiter2) {
-  /* Prepare for SimpleCiter */
   internal_iter1_ = new TestIterator(BytewiseComparator());
   internal_iter1_->Add("a1", kTypeValue, "A2", 2u);
   internal_iter1_->Add("b1", kTypeValue, "B1", 1u);
@@ -3386,6 +3390,7 @@ TEST_F(SstableCompactionIterTest, TwoMemtablesToFlush) {
   db = nullptr;
 }
 */
+
 TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
 
   db_name_ = test::PerThreadDBPath("sstable_compaction_iter_test") + "_2";
@@ -3408,7 +3413,7 @@ TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Put(WriteOptions(), cfh, "k3", "v3");
   db->Flush(FlushOptions());
-
+  
   // 3. Prepare another sstable
   // create second memtable
   // (4,3,2,1)
@@ -3420,7 +3425,7 @@ TEST_F(SstableCompactionIterTest, TwoSstablesToCompact) {
   db->Put(WriteOptions(), cfh, "k2", "v2");
   db->Put(WriteOptions(), cfh, "k1", "v1");
   db->Flush(FlushOptions());
-
+  
 
   // 4. Compact two sstables
   CompactRangeOptions compact_options;
@@ -3573,8 +3578,8 @@ TEST_F(SstableCompactionIterTest, TwoLevelsToCompact) {
 
 
   // 6. Compact two sstables
-  //db->CompactRange(compact_options, cfh, nullptr, nullptr);
-  //dbimpl->TEST_WaitForCompact();
+  db->CompactRange(compact_options, cfh, nullptr, nullptr);
+  dbimpl->TEST_WaitForCompact();
 
 
   // cnt(k1) = 12

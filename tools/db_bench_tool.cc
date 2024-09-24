@@ -982,6 +982,7 @@ DEFINE_double(keyrange_dist_d, 0.0,
 DEFINE_int64(keyrange_num, 1,
              "The number of key ranges that are in the same prefix "
              "group, each prefix range will have its key access distribution");
+DEFINE_bool(uni_prefix_dist, false, "non-spatial version of prefix_dist");
 DEFINE_double(key_dist_a, 0.0,
               "The parameter 'a' of key access distribution model "
               "f(x)=a*x^b");
@@ -4111,6 +4112,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 
     int64_t stage = 0;
     int64_t num_written = 0;
+
+    //FILE* file_fillrandom = fopen("filerandom.txt","w");
     while (!duration.Done(entries_per_batch_)) {
       if (duration.GetStage() != stage) {
         stage = duration.GetStage();
@@ -4136,9 +4139,10 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         // once per write.
         thread->stats.ResetLastOpTime();
       }
-
       for (int64_t j = 0; j < entries_per_batch_; j++) {
         int64_t rand_num = key_gens[id]->Next();
+
+        //fprintf(file_fillrandom, "%" PRIu64 "\n", rand_num);
         GenerateKeyFromInt(rand_num, FLAGS_num, &key);
         if (use_blob_db_) {
 #ifndef ROCKSDB_LITE
@@ -4238,7 +4242,9 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         fprintf(stderr, "put error: %s\n", s.ToString().c_str());
         exit(1);
       }
+
     }
+	  //fclose(file_fillrandom);
     thread->stats.AddBytes(bytes);
   }
 
@@ -5040,7 +5046,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     RandomGenerator gen;
     Status s;
 
-    FILE* file_key_stats = fopen("key_stats.txt", "w");
+    //FILE* file_key_stats = fopen("key_stats.txt", "w");
     ReadOptions options(FLAGS_verify_checksum, true);
     if (value_max > FLAGS_mix_max_value_size) {
       value_max = FLAGS_mix_max_value_size;
@@ -5072,7 +5078,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     }
     // For now, we set duration as FLAGS_num instead of FLAGS_reads
     // since we measure Write-Amp of MixGraph when put ratio is 1.00
-    Duration duration(FLAGS_duration, FLAGS_num);
+    Duration duration(FLAGS_duration, reads_);
     while (!duration.Done(1)) {
       DBWithColumnFamilies* db_with_cfh = SelectDBWithCfh(thread);
       int64_t ini_rand, rand_v, key_rand, key_seed;
@@ -5081,18 +5087,23 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       double u = static_cast<double>(rand_v) / FLAGS_num;
 
       // Generate the keyID based on the key hotness and prefix hotness
-      if (use_random_modeling) {
-        key_rand = ini_rand;
-      } else if (use_prefix_modeling) {
+      if (use_prefix_modeling) {
         key_rand =
             gen_exp.DistGetKeyID(ini_rand, FLAGS_key_dist_a, FLAGS_key_dist_b);
-      } else {
+				/*key_seed = gen_exp.DistGetKeyID(ini_rand, FLAGS_key_dist_a, FLAGS_key_dist_b);
+				Random64 rand(key_seed);
+        key_rand = static_cast<int64_t>(rand.Next()) % FLAGS_num;*/
+      }
+			else if (use_random_modeling) {
+        key_rand = ini_rand;
+      }
+			else {
         key_seed = PowerCdfInversion(u, FLAGS_key_dist_a, FLAGS_key_dist_b);
         Random64 rand(key_seed);
-        key_rand = static_cast<int64_t>(rand.Next()) % FLAGS_num;
+        key_rand = static_cast<int64_t>(rand.Next() % FLAGS_num);
       }
       GenerateKeyFromInt(key_rand, FLAGS_num, &key);
-      fprintf(file_key_stats, "key : %ld\n", key_rand);
+      //fprintf(file_key_stats, "%" PRIu64 "\n", key_rand);
       int query_type = query.GetType(rand_v);
 
       // change the qps
@@ -5178,6 +5189,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         thread->stats.FinishedOps(db_with_cfh, db_with_cfh->db, 1, kWrite);
       } else if (query_type == 2) {
         // Seek query
+				
         if (db_with_cfh->db != nullptr) {
           Iterator* single_iter = nullptr;
           single_iter = db_with_cfh->db->NewIterator(options);
@@ -5206,7 +5218,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         thread->stats.FinishedOps(db_with_cfh, db_with_cfh->db, 1, kSeek);
       }
     }
-    fclose(file_key_stats);
+    //fclose(file_key_stats);
     char msg[256];
     snprintf(msg, sizeof(msg),
              "( Gets:%" PRIu64 " Puts:%" PRIu64 " Seek:%" PRIu64

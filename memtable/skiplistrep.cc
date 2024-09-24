@@ -7,7 +7,7 @@
 #include "db/memtable.h"
 #include "rocksdb/memtablerep.h"
 #include "util/arena.h"
-
+#include <iostream>
 namespace rocksdb {
 namespace {
 class SkipListRep : public MemTableRep {
@@ -119,10 +119,14 @@ public:
     // Advance to the first entry with a key >= target
     void Seek(const Slice& user_key, const char* memtable_key) override {
       if (memtable_key != nullptr) {
-        iter_.Seek(memtable_key);
+        //iter_.Seek(memtable_key);
+        iter_.Seek(EncodeKey(&tmp_, user_key));
       } else {
         iter_.Seek(EncodeKey(&tmp_, user_key));
       }
+      iter_.Seek(EncodeKey(&tmp_, user_key));
+      std::cout << "JH SKIP key : " << user_key.ToString() << std::endl;
+      std::cout << "JH FIND key : " << iter_.key() << std::endl;
     }
 
     // Retreat to the last entry with a key <= target

@@ -14,6 +14,8 @@ sst_dump_all.sh
 mytrace
 cscope.files
 
+*.sh
+*.py
 *.a
 *.arc
 *.d

@@ -158,6 +158,7 @@ void BlockBuilder::Add(const Slice& key, const Slice& value,
     // faster to just copy the whole thing.
     last_key_.assign(key.data(), key.size());
   }
+	//std::cout << "blast_key : " << last_key_ << std::endl;
 
   const size_t non_shared = key.size() - shared;
   const size_t curr_size = buffer_.size();

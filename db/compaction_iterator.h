@@ -113,28 +113,39 @@ class CompactionIterator {
     return internaliter_next_micros_; 
   }
 
-  uint64_t GetExtraKeyPutCnt(void) {
+  uint64_t GetExtraKeyFlushCnt(void) {
     // get
-    uint64_t extra_key_put_cnt = extra_key_put_cnt_;
+    uint64_t extra_key_flush_cnt = extra_key_flush_cnt_;
     // reset
-    extra_key_put_cnt_ = 0;
-    return extra_key_put_cnt;
+    extra_key_flush_cnt_ = 0;
+    return extra_key_flush_cnt;
+  }
+
+  uint64_t GetExtraKeyCompactionCnt(void) {
+    // get
+    uint64_t extra_key_compaction_cnt = extra_key_compaction_cnt_;
+    // reset
+    extra_key_compaction_cnt_ = 0;
+    return extra_key_compaction_cnt;
   }
 
   uint64_t GetNumUniqKeys(void) { 
     return num_uniq_keys_;
   }
 
-  uint64_t GetTotalPutCnt(void) {
-    return total_put_cnt_;
+  uint64_t GetTotalFlushCnt(void) {
+    return total_flush_cnt_;
   }
 
-
+  uint64_t GetTotalCompactionCnt(void) {
+    return total_compaction_cnt_;
+  }
 
  private:
 
   // JH
-  std::unordered_map<std::string, uint64_t> user_key_put_cnts_;
+  std::unordered_map<std::string, uint64_t> user_key_flush_cnts_;
+  std::unordered_map<std::string, uint64_t> user_key_compaction_cnts_;
 
   // Processes the input stream to find the next output
   void NextFromInput();
@@ -250,9 +261,11 @@ class CompactionIterator {
   // uncommitted values by providing a SnapshotChecker object.
   bool current_key_committed_;
 
-  uint64_t extra_key_put_cnt_; // JH: put_cnt of the current key, except for the first key appearance.
+  uint64_t extra_key_flush_cnt_; // JH: put_cnt of the current key, except for the first key appearance.
+  uint64_t extra_key_compaction_cnt_; // JH: put_cnt of the current key, except for the first key appearance.
   uint64_t num_uniq_keys_;
-  uint64_t total_put_cnt_;
+  uint64_t total_flush_cnt_;
+  uint64_t total_compaction_cnt_;
 
   bool IsShuttingDown() {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.

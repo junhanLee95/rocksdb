@@ -197,7 +197,8 @@ class CompactionJob {
   std::vector<FileMetaData*>& sst_split_files_;
   ColumnFamilyData** cfd_to_split_;
   uint64_t prev_num_uniq_keys_;
-  uint64_t prev_total_put_cnt_;
+  uint64_t prev_total_flush_cnt_;
+  uint64_t prev_total_compaction_cnt_;
 };
 
 }  // namespace rocksdb

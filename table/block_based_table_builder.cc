@@ -490,6 +490,7 @@ BlockBasedTableBuilder::~BlockBasedTableBuilder() {
 }
 
 void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
+	//std::cout << "add key : " << key.ToString() << std::endl;
   Rep* r = rep_;
   assert(rep_->state != Rep::State::kClosed);
   if (!ok()) return;
@@ -528,6 +529,8 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
       // blocks.
       if (ok() && r->state == Rep::State::kUnbuffered) {
         uint64_t index_start_micros = r->ioptions.env->NowMicros();
+
+	      //std::cout << "last_key : " << r->last_key << std::endl;
         r->index_builder->AddIndexEntry(&r->last_key, &key, r->pending_handle);
         uint64_t index_finish_micros = r->ioptions.env->NowMicros();
         r->props.index_block_time += (index_finish_micros - index_start_micros);
@@ -544,6 +547,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     }
 
     r->last_key.assign(key.data(), key.size());
+	  //std::cout << "last_key(2) : " << r->last_key << std::endl;
     uint64_t data_start_micros = r->ioptions.env->NowMicros();
     r->data_block.Add(key, value);
     uint64_t data_finish_micros = r->ioptions.env->NowMicros();

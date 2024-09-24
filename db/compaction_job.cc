@@ -403,7 +403,9 @@ CompactionJob::CompactionJob(
       sst_split_files_(sst_split_files),
       cfd_to_split_(cfd_to_split),
       prev_num_uniq_keys_(0),
-      prev_total_put_cnt_(0) {
+      prev_total_flush_cnt_(0),
+      prev_total_compaction_cnt_(0)
+{
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->compaction->column_family_data();
   ThreadStatusUtil::SetColumnFamily(cfd, cfd->ioptions()->env,
@@ -976,6 +978,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     //std::cout << "[c]add key : " << uikey.DebugString() << std::endl;
     //std::cout << "[c]add value : " << value.ToString() << std::endl;
     std::string key_str_copy = key.ToString();
+		//std::cout << "[c]key : " << uikey.DebugString() << std::endl;
 
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
@@ -1000,13 +1003,19 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
     c_iter->Next();
-    uint64_t extra_key_put_cnt = c_iter->GetExtraKeyPutCnt();
-    //std::cout << "[c]cur_key_put_cnt: " <<  uikey.put_cnt  << std::endl;
-    //std::cout << "[c]ext_key_put_cnt: " <<  extra_key_put_cnt <<  std::endl;
-    uint64_t cur_key_put_cnt = uikey.put_cnt + extra_key_put_cnt;
+    uint64_t extra_key_flush_cnt = c_iter->GetExtraKeyFlushCnt();
+    uint64_t extra_key_compaction_cnt = c_iter->GetExtraKeyCompactionCnt();
+    /*std::cout << "[c]cur_key_f_cnt: " <<  uikey.f_cnt  << std::endl;
+    std::cout << "[c]ext_key_f_cnt: " <<  extra_key_flush_cnt <<  std::endl;
+    std::cout << "[c]cur_key_c_cnt: " <<  uikey.c_cnt  << std::endl;
+    std::cout << "[c]ext_key_c_cnt: " <<  extra_key_compaction_cnt <<  std::endl;
+    */
+    uint64_t cur_key_flush_cnt = uikey.f_cnt + extra_key_flush_cnt;
+    uint64_t cur_key_compaction_cnt = uikey.c_cnt + extra_key_compaction_cnt+ 1;// 1 : additional w-amp;
 
     //std::cout << "[c]key: " << key.ToString() << std::endl;
-    UpdatePutCount(&key_str_copy, cur_key_put_cnt);
+    UpdateFlushCount(&key_str_copy, cur_key_flush_cnt);
+    UpdateCompactionCount(&key_str_copy, cur_key_compaction_cnt);
     const Slice updated_key(key_str_copy);
 
     // [JH: since prev_key_put_cnt can be acquired after c_iter->Next() call,
@@ -1421,10 +1430,13 @@ Status CompactionJob::FinishCompactionOutputFile(
 
   if (s.ok() && (current_entries > 0 || tp.num_range_deletions > 0)) {
     // JH: print current file's key density
-    uint64_t cur_total_put_cnt = sub_compact->c_iter->GetTotalPutCnt();
-    uint64_t file_total_put_cnt = cur_total_put_cnt - prev_total_put_cnt_;
-    prev_total_put_cnt_ = cur_total_put_cnt;
-    float density = (float)file_total_put_cnt/current_entries;
+    uint64_t cur_total_flush_cnt = sub_compact->c_iter->GetTotalFlushCnt();
+    uint64_t cur_total_compaction_cnt = sub_compact->c_iter->GetTotalCompactionCnt();
+    uint64_t file_total_flush_cnt = cur_total_flush_cnt - prev_total_flush_cnt_;
+    uint64_t file_total_compaction_cnt = cur_total_compaction_cnt - prev_total_compaction_cnt_;
+    prev_total_flush_cnt_ = cur_total_flush_cnt;
+    prev_total_compaction_cnt_ = cur_total_compaction_cnt;
+    float density = (float)file_total_flush_cnt/current_entries;
 
     // Output to event logger and fire events.
     float efficiency = (float)current_entries/current_input_entries;
@@ -1432,11 +1444,12 @@ Status CompactionJob::FinishCompactionOutputFile(
         std::make_shared<TableProperties>(tp);
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s, %" PRIu64 " put_cnt, %.2f density", cfd->GetName().c_str(), job_id_, output_number,
+                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s, %" PRIu64 " flush_cnt, %" PRIu64 " comp_cnt, %.2f density", cfd->GetName().c_str(), job_id_, output_number,
                    current_entries, current_input_entries,
                    efficiency, current_bytes,
                    meta->marked_for_compaction ? " (need compaction)" : "",
-                   file_total_put_cnt,
+                   file_total_flush_cnt,
+                   file_total_compaction_cnt,
                    density);
 
     // JH: If db allows column family split,

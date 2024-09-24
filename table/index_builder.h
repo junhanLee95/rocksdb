@@ -140,10 +140,14 @@ class ShortenedIndexBuilder : public IndexBuilder {
     if (first_key_in_next_block != nullptr) {
       comparator_->FindShortestSeparator(last_key_in_current_block,
                                          *first_key_in_next_block);
+			Slice ul = ExtractUserKey(*last_key_in_current_block);
+			Slice uf = ExtractUserKey(*first_key_in_next_block);
+			//std::cout << "ul : " << ul.ToString(true) << std::endl;
+			//std::cout << "uf : " << uf.ToString(true) << std::endl;
       if (!seperator_is_key_plus_seq_ &&
           comparator_->user_comparator()->Compare(
-              ExtractUserKey(*last_key_in_current_block),
-              ExtractUserKey(*first_key_in_next_block)) == 0) {
+              ul,
+              uf) == 0) {
         seperator_is_key_plus_seq_ = true;
       }
     } else {

@@ -475,7 +475,7 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
   //  value bytes  : char[value.size()]
   uint32_t key_size = static_cast<uint32_t>(key.size());
   uint32_t val_size = static_cast<uint32_t>(value.size());
-  uint32_t internal_key_size = key_size + 8 + 8/* put_cnt */;
+  uint32_t internal_key_size = key_size + 8 + 8 + 8/* flush and compaction_cnt */;
   const uint32_t encoded_len = VarintLength(internal_key_size) +
                                internal_key_size + VarintLength(val_size) +
                                val_size;
@@ -492,9 +492,14 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
   EncodeFixed64(p, packed);
   p += 8;
   // JH
-  uint64_t packed2 = 1; // put_cnt
+  uint64_t packed2 = 1; // flush_cnt
   EncodeFixed64(p, packed2);
   p += 8;
+  // JH
+  uint64_t packed3 = 1; // compaction_cnt
+  EncodeFixed64(p, packed3);
+  p += 8;
+
   p = EncodeVarint32(p, val_size);
   memcpy(p, value.data(), val_size);
   assert((unsigned)(p + val_size - buf) == (unsigned)encoded_len);

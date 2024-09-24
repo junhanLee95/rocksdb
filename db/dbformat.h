@@ -90,15 +90,16 @@ struct ParsedInternalKey {
   Slice user_key;
   SequenceNumber sequence;
   ValueType type;
-  uint64_t put_cnt;
+  uint64_t f_cnt; // flush count
+  uint64_t c_cnt; // compaction count
 
   ParsedInternalKey()
-      : sequence(kMaxSequenceNumber), put_cnt(1)  // Make code analyzer happy
+      : sequence(kMaxSequenceNumber), f_cnt(1), c_cnt(1)   // Make code analyzer happy
   {}  // Intentionally left uninitialized (for speed)
   ParsedInternalKey(const Slice& u, const SequenceNumber& seq, ValueType t)
-      : user_key(u), sequence(seq), type(t), put_cnt(1) {}
-  ParsedInternalKey(const Slice& u, const SequenceNumber& seq, ValueType t, uint64_t p)
-      : user_key(u), sequence(seq), type(t), put_cnt(p) {}
+      : user_key(u), sequence(seq), type(t), f_cnt(1), c_cnt(1){}
+  ParsedInternalKey(const Slice& u, const SequenceNumber& seq, ValueType t, uint64_t f, uint64_t c)
+      : user_key(u), sequence(seq), type(t), f_cnt(f), c_cnt(c){}
 
   std::string DebugString(bool hex = false) const;
 
@@ -106,13 +107,14 @@ struct ParsedInternalKey {
     user_key.clear();
     sequence = 0;
     type = kTypeDeletion;
-    put_cnt = 0;
+    f_cnt = 0;
+    c_cnt = 0;
   }
 };
 
 // Return the length of the encoding of "key".
 inline size_t InternalKeyEncodingLength(const ParsedInternalKey& key) {
-  return key.user_key.size() + 8 + 8;
+  return key.user_key.size() + 8 + 8 + 8;
 }
 
 // Pack a sequence number and a ValueType into a uint64_t
@@ -145,14 +147,14 @@ inline Slice ExtractUserKey(const Slice& internal_key) {
   /*if (internal_key.size() < 16) {
     std::cout << "[JH] key size is less than 16\n";
   }*/
-  assert(internal_key.size() >= 8+8);
-  return Slice(internal_key.data(), internal_key.size() - 8-8);
+  assert(internal_key.size() >= 8+8+8);
+  return Slice(internal_key.data(), internal_key.size() - 8-8-8);
 }
 
 inline uint64_t ExtractInternalKeyFooter(const Slice& internal_key) {
-  assert(internal_key.size() >= 8+8);
+  assert(internal_key.size() >= 8+8+8);
   const size_t n = internal_key.size();
-  return DecodeFixed64(internal_key.data() + n - 8 - 8);
+  return DecodeFixed64(internal_key.data() + n - 8 - 8 - 8);
 }
 
 inline ValueType ExtractValueType(const Slice& internal_key) {
@@ -161,8 +163,14 @@ inline ValueType ExtractValueType(const Slice& internal_key) {
   return static_cast<ValueType>(c);
 }
 
-inline uint64_t ExtractPutCount(const Slice& internal_key) {
-  assert(internal_key.size() >= 8+8);
+inline uint64_t ExtractFlushCount(const Slice& internal_key) {
+  assert(internal_key.size() >= 8+8+8);
+  const size_t n = internal_key.size();
+  return DecodeFixed64(internal_key.data() + n - 8 - 8);
+}
+
+inline uint64_t ExtractCompactionCount(const Slice& internal_key) {
+  assert(internal_key.size() >= 8+8+8);
   const size_t n = internal_key.size();
   return DecodeFixed64(internal_key.data() + n - 8);
 }
@@ -278,16 +286,19 @@ inline int InternalKeyComparator::Compare(const InternalKey& a,
 inline bool ParseInternalKey(const Slice& internal_key,
                              ParsedInternalKey* result) {
   const size_t n = internal_key.size();
-  if (n < 16) return false;
-  uint64_t num = DecodeFixed64(internal_key.data() + n - 8 - 8);
+  if (n < 24) return false;
+  uint64_t num = DecodeFixed64(internal_key.data() + n - 8 - 8 - 8);
   unsigned char c = num & 0xff;
   result->sequence = num >> 8;
   result->type = static_cast<ValueType>(c);
-  uint64_t cnt = DecodeFixed64(internal_key.data() + n - 8);
-  result->put_cnt = cnt;
+  uint64_t f_cnt = DecodeFixed64(internal_key.data() + n - 8 - 8);
+  result->f_cnt = f_cnt;
+  uint64_t c_cnt = DecodeFixed64(internal_key.data() + n - 8 );
+  result->c_cnt = c_cnt;
+
   assert(result->type <= ValueType::kMaxValue);
-  result->user_key = Slice(internal_key.data(), n - 8 - 8);
-  //std::cout << "ParseInternalKey: " << result->user_key.ToString() << std::endl;
+  result->user_key = Slice(internal_key.data(), n - 8 - 8 - 8);
+  //std::cout << "ParseInternalKey: " << result->user_key.ToString(true) << std::endl;
   return IsExtendedValueType(result->type);
 }
 
@@ -295,19 +306,30 @@ inline bool ParseInternalKey(const Slice& internal_key,
 // Guarantees not to invalidate ikey.data().
 inline void UpdateInternalKey(std::string* ikey, uint64_t seq, ValueType t) {
   size_t ikey_sz = ikey->size();
-  assert(ikey_sz >= 16); // JH: key format is now updated to regard put_cnt
+  assert(ikey_sz >= 24); // JH: key format is now updated to regard put_cnt
   uint64_t newval = (seq << 8) | t;
 
   // Note: Since C++11, strings are guaranteed to be stored contiguously and
   // string::operator[]() is guaranteed not to change ikey.data().
-  EncodeFixed64(&(*ikey)[ikey_sz - 8 - 8], newval);
+  EncodeFixed64(&(*ikey)[ikey_sz - 8 - 8 - 8], newval);
 }
 
 // Update the sequence number in the internal key.
 // Guarantees not to invalidate ikey.data().
-inline void UpdatePutCount(std::string* ikey, uint64_t new_put_cnt) {
+inline void UpdateFlushCount(std::string* ikey, uint64_t new_put_cnt) {
   size_t ikey_sz = ikey->size();
-  assert(ikey_sz >= 16);
+  assert(ikey_sz >= 24);
+
+  // Note: Since C++11, strings are guaranteed to be stored contiguously and
+  // string::operator[]() is guaranteed not to change ikey.data().
+  EncodeFixed64(&(*ikey)[ikey_sz-8-8], new_put_cnt);
+}
+
+// Update the sequence number in the internal key.
+// Guarantees not to invalidate ikey.data().
+inline void UpdateCompactionCount(std::string* ikey, uint64_t new_put_cnt) {
+  size_t ikey_sz = ikey->size();
+  assert(ikey_sz >= 24);
 
   // Note: Since C++11, strings are guaranteed to be stored contiguously and
   // string::operator[]() is guaranteed not to change ikey.data().
@@ -315,11 +337,12 @@ inline void UpdatePutCount(std::string* ikey, uint64_t new_put_cnt) {
 }
 
 
+
 // Get the sequence number from the internal key
 inline uint64_t GetInternalKeySeqno(const Slice& internal_key) {
   const size_t n = internal_key.size();
-  assert(n >= 8);
-  uint64_t num = DecodeFixed64(internal_key.data() + n - 8);
+  assert(n >= 8+8+8);
+  uint64_t num = DecodeFixed64(internal_key.data() + n - 8-8-8);
   return num >> 8;
 }
 
@@ -395,8 +418,8 @@ class IterKey {
     if (IsUserKey()) {
       return Slice(key_, key_size_);
     } else {
-      assert(key_size_ >= 8);
-      return Slice(key_, key_size_ - 8);
+      assert(key_size_ >= 8+8);
+      return Slice(key_, key_size_ - 8 - 8);
     }
   }
 
@@ -454,9 +477,9 @@ class IterKey {
   // and returns a Slice referencing the new copy.
   Slice SetInternalKey(const Slice& key, ParsedInternalKey* ikey) {
     size_t key_n = key.size();
-    assert(key_n >= 8);
+    assert(key_n >= 8+8+8);
     SetInternalKey(key);
-    ikey->user_key = Slice(key_, key_n - 8-8);
+    ikey->user_key = Slice(key_, key_n - 8-8-8);
     return Slice(key_, key_n);
   }
 
@@ -473,9 +496,9 @@ class IterKey {
   // invalidate slices to the key (and the user key).
   void UpdateInternalKey(uint64_t seq, ValueType t) {
     assert(!IsKeyPinned());
-    assert(key_size_ >= 8);
+    assert(key_size_ >= 8+8+8);
     uint64_t newval = (seq << 8) | t;
-    EncodeFixed64(&buf_[key_size_ - 8- 8], newval);
+    EncodeFixed64(&buf_[key_size_ - 8- 8 - 8], newval);
   }
 
 
@@ -674,16 +697,27 @@ inline int InternalKeyComparator::Compare(const Slice& akey,
   //    increasing user key (according to user-supplied comparator)
   //    decreasing sequence number
   //    decreasing type (though sequence# should be enough to disambiguate)
+	ParsedInternalKey pakey;
+	ParsedInternalKey pbkey;
+	ParseInternalKey(akey, &pakey);
+	ParseInternalKey(bkey, &pbkey);
+	//std::cout << "pakey: " << pakey.DebugString() << std::endl;
+	//std::cout << "pbkey: " << pbkey.DebugString() << std::endl;
+	//std::cout << "akey: " << akey.ToString() << " bkey: " <<bkey.ToString() << std::endl;
+  //std::cout << "anum_sz : " << akey.size() <<", bnum_sz : " << bkey.size() <<std::endl;
+	//std::cout << "user_a: " << ExtractUserKey(akey).ToString() << "user_b: " << ExtractUserKey(bkey).ToString() << std::endl;
   int r = user_comparator_.Compare(ExtractUserKey(akey), ExtractUserKey(bkey));
   if (r == 0) {
-    const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8 - 8);
-    const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8 - 8);
+    const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8 - 8 -8);
+    const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8 - 8 -8);
+		//std::cout << "anum : " << anum <<", bnum : " << bnum <<std::endl;
     if (anum > bnum) {
       r = -1;
     } else if (anum < bnum) {
       r = +1;
     }
   }
+	//std::cout << "r : " << r << std::endl;
   return r;
 }
 
@@ -695,8 +729,10 @@ inline int InternalKeyComparator::CompareKeySeq(const Slice& akey,
   int r = user_comparator_.Compare(ExtractUserKey(akey), ExtractUserKey(bkey));
   if (r == 0) {
     // Shift the number to exclude the last byte which contains the value type
-    const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8 - 8) >> 8;
-    const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8 - 8) >> 8;
+    const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8 - 8-8) >> 8;
+    const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8 - 8-8) >> 8;
+
+		//std::cout << "[ks]anum : " << anum <<", bnum : " << bnum <<std::endl;
     if (anum > bnum) {
       r = -1;
     } else if (anum < bnum) {

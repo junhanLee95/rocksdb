@@ -384,12 +384,17 @@ void FlushJob::Prepare() {
         sub_edit, idx,
         skip_starts, skip_ends);
 
-    ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare sub_flush_state for %s(ID : %d) with range [%s, %s], skip_starts : %s, skip_ends : %s",
+    ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare sub_flush_state for %s(ID : %d) with range [%s, %s], skip_starts : %s",
         job_context_->job_id,
         target_nodes_[idx]->cfd_->GetName().c_str(),
         target_nodes_[idx]->cfd_->GetID(),
         start_key.c_str(), end_key.c_str(),
-        skip_starts_str.c_str(),
+        skip_starts_str.c_str());
+    ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare sub_flush_state for %s(ID : %d) with range [%s, %s], skip_ends : %s",
+        job_context_->job_id,
+        target_nodes_[idx]->cfd_->GetName().c_str(),
+        target_nodes_[idx]->cfd_->GetID(),
+        start_key.c_str(), end_key.c_str(),
         skip_ends_str.c_str());
     // JH: prepare superversion_contexts for child nodes
     superversion_contexts.emplace_back(SuperVersionContext(true));  
