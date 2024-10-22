@@ -129,14 +129,14 @@ TEST_F(LCFPutTest, SplitWhileCompact) {
     ASSERT_OK(db->Flush(FlushOptions()));
   }
 
-  std::vector<SplitFileInfo> infos;
+  std::vector<FileMetaData*> infos;
 
   FileMetaData* f1 = new FileMetaData;
   std::string s1 = "user1200";
   std::string l1 = "user1400";
   f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
   f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f1, cfd));
+  infos.push_back(f1);
 
   rocksdb::SyncPoint::GetInstance()->LoadDependency(
     {
@@ -160,7 +160,7 @@ TEST_F(LCFPutTest, SplitWhileCompact) {
   // trigger Split
   TEST_SYNC_POINT("LCFPutTest::TEST3");
   fprintf(stdout, "[LCFPutTest] First Split Start (1/3)\n");
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
   fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
   TEST_SYNC_POINT("LCFPutTest::TEST4");
 
@@ -236,17 +236,17 @@ TEST_F(LCFPutTest, SingleSplit) {
   assert(num_level0 == 2);
   assert(num_level1 == 1);
 
-  std::vector<SplitFileInfo> infos;
+  std::vector<FileMetaData*> infos;
 
   FileMetaData* f1 = new FileMetaData;
   std::string s1 = "user1200";
   std::string l1 = "user1400";
   f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
   f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f1, cfd));
+  infos.push_back(f1);
 
   fprintf(stdout, "[LCFPutTest] First Split Start [%s, %s] (1/3)\n", s1.c_str(), l1.c_str());
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
   fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
   //dbfull(db)->TEST_WaitForSplit();
   infos.clear();
@@ -302,17 +302,17 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
     db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(values1[i]));
   }
   
-  std::vector<SplitFileInfo> infos;
+  std::vector<FileMetaData*> infos;
 
   FileMetaData* f1 = new FileMetaData;
   std::string s1 = "user1200";
   std::string l1 = "user1400";
   f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
   f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f1, cfd));
+  infos.push_back(f1);
 
   fprintf(stdout, "[LCFPutTest] First Split Start [%s, %s] (1/3)\n", s1.c_str(), l1.c_str());
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
   fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
   //dbfull(db)->TEST_WaitForSplit();
   ColumnFamilyData* cfd1 = cfd->GetColumnFamilySet()->GetColumnFamily(1);
@@ -332,9 +332,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   std::string l2 = "user1280";
   f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
   f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f2, cfd1));
+  infos.push_back(f2);
   fprintf(stdout, "[LCFPutTest] Second Split Start [%s, %s] (2/3)\n", s2.c_str(), l2.c_str());
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd1, infos);
   fprintf(stdout, "[LCFPutTest] Second Split Finish (2/3)\n");
   //dbfull(db)->TEST_WaitForSplit();
 
@@ -352,9 +352,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut) {
   std::string l3 = "user1500";
   f3->smallest = InternalKey(Slice(s3), 0, kTypeValue);
   f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f3, cfd));
+  infos.push_back(f3);
   fprintf(stdout, "[LCFPutTest] Third Split Start [%s, %s] (3/3)\n", s3.c_str(), l3.c_str());
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
   fprintf(stdout, "[LCFPutTest] Third Split Finish (3/3)\n");
   //dbfull(db)->TEST_WaitForSplit();
   infos.clear();
@@ -419,16 +419,16 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
     db->Put(WriteOptions(), cfh, Slice(keys[i]), Slice(values1[i]));
   }
 
-  std::vector<SplitFileInfo> infos;
+  std::vector<FileMetaData*> infos;
 
   FileMetaData* f1 = new FileMetaData;
   std::string s1 = "user1200";
   std::string l1 = "user1400";
   f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
   f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f1, cfd));
+  infos.push_back(f1);
   fprintf(stdout, "[LCFPutTest] First Split Start (1/3)\n");
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
   fprintf(stdout, "[LCFPutTest] First Split Finish (1/3)\n");
   dbfull(db)->TEST_WaitForSplit();
   sleep(5); 
@@ -449,9 +449,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   std::string l2 = "user1280";
   f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
   f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f2, cfd1));
+  infos.push_back(f2);
   fprintf(stdout, "[LCFPutTest] Second Split Start (2/3)\n");
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd1, infos);
   fprintf(stdout, "[LCFPutTest] Second Split Finish (2/3)\n");
   dbfull(db)->TEST_WaitForSplit();
   sleep(5); 
@@ -470,9 +470,9 @@ TEST_F(LCFPutTest, ThreeLevelAfterPut2) {
   std::string l3 = "user1500";
   f3->smallest = InternalKey(Slice(s3), 0, kTypeValue);
   f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
-  infos.push_back(SplitFileInfo(f3, cfd));
+  infos.push_back(f3);
   fprintf(stdout, "[LCFPutTest] Third Split Start (3/3)\n");
-  dbfull(db)->SplitColumnFamilyFromSstFiles(infos);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
   fprintf(stdout, "[LCFPutTest] Third Split Finish (3/3)\n");
   dbfull(db)->TEST_WaitForSplit();
   sleep(5); 

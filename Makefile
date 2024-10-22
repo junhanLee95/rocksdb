@@ -71,6 +71,10 @@ ifeq ($(MAKECMDGOALS),lcf_put_test)
 	DEBUG_LEVEL=2
 endif
 
+ifeq ($(MAKECMDGOALS),lcf_single_lvl_level_test)
+	DEBUG_LEVEL=2
+endif
+
 ifeq ($(MAKECMDGOALS),install-static)
 	DEBUG_LEVEL=0
 endif
@@ -554,6 +558,7 @@ TESTS = \
 	sst_file_reader_test \
 	sst_file_split_test \
 	lcf_put_test \
+	lcf_single_lvl_level_test \
 	lcf_flush_test \
 	db_secondary_test \
 
@@ -1584,6 +1589,9 @@ sst_file_split_test: table/sst_file_split_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 lcf_put_test: db/lcf_put_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+lcf_single_lvl_level_test: db/lcf_single_lvl_level_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 lcf_flush_test: db/lcf_flush_test.o $(LIBOBJECTS) $(TESTHARNESS)

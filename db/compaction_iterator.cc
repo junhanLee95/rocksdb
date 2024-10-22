@@ -262,10 +262,10 @@ void CompactionIterator::NextFromInput() {
   at_next_ = false;
   valid_ = false;
 
-  std::cout << "NextFromInput()\t" << "(1)" <<std::endl;
-  std::cout << "NextFromInput()\t" << "valid? : " << valid_ << std::endl;
-  std::cout << "NextFromInput()\t" << "input_->valid? : " << input_->Valid() << std::endl;
-  std::cout << "NextFromInput()\t" << "is shutting down? : " << IsShuttingDown() << std::endl;
+  //std::cout << "NextFromInput()\t" << "(1)" <<std::endl;
+  //std::cout << "NextFromInput()\t" << "valid? : " << valid_ << std::endl;
+  //std::cout << "NextFromInput()\t" << "input_->valid? : " << input_->Valid() << std::endl;
+  //std::cout << "NextFromInput()\t" << "is shutting down? : " << IsShuttingDown() << std::endl;
   while (!valid_ && input_->Valid() && !IsShuttingDown()) {
 
     //std::cout << "NextFromInput()\t" << "(2)" <<std::endl;
@@ -292,7 +292,7 @@ void CompactionIterator::NextFromInput() {
       break;
     }
 
-    std::cout << "NextFromInput()\t" << "parsed key: (" << ikey_.DebugString(false)<<std::endl;// << ", " << value_.ToString() << ")" <<std::endl;
+    //std::cout << "NextFromInput()\t" << "parsed key: (" << ikey_.DebugString(false)<<std::endl;// << ", " << value_.ToString() << ")" <<std::endl;
     TEST_SYNC_POINT_CALLBACK("CompactionIterator:ProcessKV", &ikey_);
 
     // Update input statistics
@@ -315,13 +315,13 @@ void CompactionIterator::NextFromInput() {
     if (!has_current_user_key_ ||
         !cmp_->Equal(ikey_.user_key, current_user_key_)) {
       //JH
-      std::cout << "NextFromInput()\t" << "first key: (" << ikey_.DebugString(true) << ")" <<std::endl;
+      //std::cout << "NextFromInput()\t" << "first key: (" << ikey_.DebugString(true) << ")" <<std::endl;
       // First occurrence of this user key
       // Copy key for output
       key_ = current_key_.SetInternalKey(key_, &ikey_);
-      std::cout << "NextFromInput()\t" << "user_key: (" << ikey_.user_key.ToString() <<std::endl;
+      //std::cout << "NextFromInput()\t" << "user_key: (" << ikey_.user_key.ToString() <<std::endl;
       current_user_key_ = ikey_.user_key;
-      std::cout << "NextFromInput()\t" << "current_key: (" << current_user_key_.ToString() <<std::endl;
+      //std::cout << "NextFromInput()\t" << "current_key: (" << current_user_key_.ToString() <<std::endl;
       has_current_user_key_ = true;
       has_outputted_key_ = false;
       current_user_key_sequence_ = kMaxSequenceNumber;
@@ -346,7 +346,7 @@ void CompactionIterator::NextFromInput() {
       }
     } else {
       //JH
-      std::cout << "NextFromInput()\t" << "same key: " << ikey_.DebugString(true) <<std::endl;// << ", " << value_.ToString() << ")" <<std::endl;
+      //std::cout << "NextFromInput()\t" << "same key: " << ikey_.DebugString(true) <<std::endl;// << ", " << value_.ToString() << ")" <<std::endl;
       // Update the current key to reflect the new sequence number/type without
       // copying the user key.
       // TODO(rven): Compaction filter does not process keys in this path
@@ -684,11 +684,11 @@ void CompactionIterator::NextFromInput() {
     }
   }
 
-  std::cout << "NextFromInput()\t" << "(3)" <<std::endl;
+  //std::cout << "NextFromInput()\t" << "(3)" <<std::endl;
 
   if (!valid_ && IsShuttingDown()) {
 
-    std::cout << "NextFromInput()\t" << "(4)" <<std::endl;
+    //std::cout << "NextFromInput()\t" << "(4)" <<std::endl;
     status_ = Status::ShutdownInProgress();
   }
 }
