@@ -14,6 +14,7 @@
 #include <vector>
 #include <string>
 #include "rocksdb/cache.h"
+#include "rocksdb/slice.h"
 #include "db/dbformat.h"
 #include "util/arena.h"
 #include "util/autovector.h"
@@ -294,7 +295,7 @@ class VersionEdit {
     column_family_ = column_family_id;
   }
 
-  void SetColumnFamilyKeyRange(std::string lower, std::string upper) {
+  void SetColumnFamilyKeyRange(Slice lower, Slice upper) {
     smallest_user_key_ = lower;
     largest_user_key_ = upper;
   }
@@ -397,8 +398,8 @@ class VersionEdit {
   bool is_column_family_split_;
   bool is_column_family_keyrange_update_;
   bool is_split_move_;
-  std::string smallest_user_key_;
-  std::string largest_user_key_;
+  Slice smallest_user_key_;
+  Slice largest_user_key_;
 
   std::string column_family_name_;
 

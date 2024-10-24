@@ -442,15 +442,15 @@ Status BuildTables(
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
       bool to_parent = true;
-      std::string user_key_str = c_iter.user_key().ToString();
+      Slice c_user_key = c_iter.user_key();
       while (child_idx < children_nodes.size()) {
-        if (user_key_str.compare(get_lmost_key(children_nodes[child_idx])) >= 0 &&
-            user_key_str.compare(get_rmost_key(children_nodes[child_idx])) <= 0)
+        if (c_user_key.compare(get_lmost_key(children_nodes[child_idx])) >= 0 &&
+            c_user_key.compare(get_rmost_key(children_nodes[child_idx])) <= 0)
         {
           to_parent = false;
           break; 
         }
-        else if(user_key_str.compare(get_lmost_key(children_nodes[child_idx])) < 0) {
+        else if(c_user_key.compare(get_lmost_key(children_nodes[child_idx])) < 0) {
           // to_parent = true
           break;
         }
@@ -658,8 +658,8 @@ Status BuildParentTable(
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
     Env::WriteLifeTimeHint write_hint, 
-    std::string start, std::string end,
-		std::vector<std::string> sub_starts, std::vector<std::string> sub_ends) {
+    Slice start, Slice end,
+		std::vector<Slice> sub_starts, std::vector<Slice> sub_ends) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -669,8 +669,8 @@ Status BuildParentTable(
   ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] [%s] BuildParentTable start [%s, %s]",
       job_id,
       column_family_name.c_str(),
-      start.c_str(),
-      end.c_str());
+      start.ToString().c_str(),
+      end.ToString().c_str());
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
@@ -684,13 +684,13 @@ Status BuildParentTable(
       if (column_family_id == 0) { // root node
         iter->SeekToFirst();
       } else { // internal node
-        start_iter[i].SetInternalKey(Slice(start), kMaxSequenceNumber, kValueTypeForSeek);
+        start_iter[i].SetInternalKey(start, kMaxSequenceNumber, kValueTypeForSeek);
         iter->Seek(start_iter[i].GetInternalKey());
       }
       continue;
     }
-    ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() end key : %s", sub_ends[i-1].c_str());
-    start_iter[i].SetInternalKey(Slice(sub_ends[i-1]), kMaxSequenceNumber, kValueTypeForSeek);
+    ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() end key : %s", sub_ends[i-1].ToString().c_str());
+    start_iter[i].SetInternalKey(sub_ends[i-1], kMaxSequenceNumber, kValueTypeForSeek);
     ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() start iter key : %s", start_iter[i].GetInternalKey().ToString().c_str());
     iter->Seek(start_iter[i].GetInternalKey());
     ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() seek iter key : %s", iter->key().ToString().c_str());
@@ -805,18 +805,18 @@ Status BuildParentTable(
 				}
 				const Slice& key = c_iters[i]->key();
 				const Slice& value = c_iters[i]->value();
-				std::string user_key_str = c_iters[i]->user_key().ToString();
+				Slice user_key = c_iters[i]->user_key();
 
         // boundary check
-        if (i == children_size && end != "" && user_key_str.compare(end) > 0) {
+        if (i == children_size && !end.empty() && user_key.compare(end) > 0) {
           break;
         }
 
 				if (i == children_size || 
-						user_key_str.compare(sub_starts[i]) < 0) {
+						user_key.compare(sub_starts[i]) < 0) {
           builder->Add(key, value);
           ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable c_iter[%ld] add key : %s",
-              job_id, i, user_key_str.c_str());
+              job_id, i, user_key.ToString().c_str());
 
           //std::cout <<  "[" << column_family_name << "] int add : " << user_key_str << std::endl;
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  
@@ -970,7 +970,7 @@ Status BuildsubTable(
     TableFileCreationReason reason, EventLogger* event_logger, int job_id,
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
-    Env::WriteLifeTimeHint write_hint, std::string& sub_flush_start, std::string& sub_flush_end, 
+    Env::WriteLifeTimeHint write_hint, Slice sub_flush_start, Slice sub_flush_end, 
     int sub_flush_id) {
   assert((column_family_id ==
         TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
@@ -982,11 +982,11 @@ Status BuildsubTable(
   meta->fd.file_size = 0;
 
   // WOW
-  if (sub_flush_start == "") {
+  if (!sub_flush_start.empty()) {
     iter->SeekToFirst();
   } else {
     IterKey start_iter;
-    start_iter.SetInternalKey(Slice(sub_flush_start), kMaxSequenceNumber, kValueTypeForSeek);
+    start_iter.SetInternalKey(sub_flush_start, kMaxSequenceNumber, kValueTypeForSeek);
     iter->Seek(start_iter.GetInternalKey());
   }
 
@@ -1077,7 +1077,7 @@ Status BuildsubTable(
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
 
-      std::string user_key = c_iter.user_key().ToString();
+      Slice user_key = c_iter.user_key();
 
       /*
          if (first) {
@@ -1087,12 +1087,12 @@ Status BuildsubTable(
        */
 
 
-      if (sub_flush_start != "" && user_key.compare(sub_flush_start) < 0) {
+      if (!sub_flush_start.empty() && user_key.compare(sub_flush_start) < 0) {
         c_iter.Next();
         continue;
       }
 
-      if (sub_flush_end != "" && user_key.compare(sub_flush_end) > 0) {
+      if (!sub_flush_end.empty() && user_key.compare(sub_flush_end) > 0) {
         /*
            fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
            user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());

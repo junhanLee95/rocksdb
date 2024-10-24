@@ -47,7 +47,7 @@ TEST_F(LCFSingleLvlLevelTest, SingleSplit) {
   options.max_background_jobs =32;
   options.max_write_buffer_number =3;
   options.allow_column_family_split = true;
-  options.column_family_min_key_range = 1; // set no limit of splitting
+  options.column_family_min_key_range = 0; // set no limit of splitting
   //options.atomic_flush = true;
 
   std::string db_name = test::PerThreadDBPath("test_db");
@@ -118,11 +118,25 @@ TEST_F(LCFSingleLvlLevelTest, SingleSplit) {
  
 
   dbfull(db)->TEST_WaitForSplit();
-  sleep(10);
+
+
+  FileMetaData* f2 = new FileMetaData;
+  std::string s2 = "user1100";
+  std::string l2 = "user1500";
+  f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
+  f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
+  infos.push_back(f2);
+
+  fprintf(stdout, "[LCFSingleLvlLevelTest] First Split Start [%s, %s] (2/3)\n", s2.c_str(), l2.c_str());
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
+  fprintf(stdout, "[LCFSingleLvlLevelTest] First Split Finish (2/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
+  infos.clear();
+ 
+
+  dbfull(db)->TEST_WaitForSplit();
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
-
-  delete f1;
-
+  sleep(10);
   //dbfull(db)->DestroyLogicalColumnFamilies();
 
   delete db;

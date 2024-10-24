@@ -24,6 +24,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
+#include "rocksdb/slice.h"
 #include "util/thread_local.h"
 #include "db/partition_tree.h"
 
@@ -289,14 +290,14 @@ class ColumnFamilyData {
                    LogBuffer* log_buffer);
 
   // thread-safe
-  std::string GetSmallestKey();
-  std::string GetLargestKey();
+  Slice& GetSmallestKey();
+  Slice& GetLargestKey();
 
-  void UpdateSmallestKey(std::string smallest) {
+  void UpdateSmallestKey(Slice smallest) {
     smallest_user_key_ = smallest;
   }
 
-  void UpdateLargestKey(std::string largest) {
+  void UpdateLargestKey(Slice largest) {
     largest_user_key_ = largest;
   }
 
@@ -436,7 +437,7 @@ class ColumnFamilyData {
                    ColumnFamilySet* column_family_set);
 
   ColumnFamilyData(uint32_t id, const std::string& name,
-                   std::string smallest_user_key, std::string largest_user_key,
+                   Slice smallest_user_key, Slice largest_user_key,
                    Version* dummy_versions, Cache* table_cache,
                    WriteBufferManager* write_buffer_manager,
                    const ColumnFamilyOptions& options,
@@ -446,8 +447,8 @@ class ColumnFamilyData {
 
   uint32_t id_;
   const std::string name_;
-  std::string smallest_user_key_; // active if split is enabled
-  std::string largest_user_key_;  // active if split is enabled
+  Slice smallest_user_key_; // active if split is enabled
+  Slice largest_user_key_;  // active if split is enabled
   PartitionTreeNode* partition_tree_node_;  // active if split is enabled
   Version* dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;         // == dummy_versions->prev_
@@ -615,7 +616,7 @@ class ColumnFamilySet {
   ColumnFamilyData* CreateColumnFamily(const std::string& name, uint32_t id,
                                        Version* dummy_version,
                                        const ColumnFamilyOptions& options,
-                                       std::string smallest, std::string largest
+                                       Slice smallest, Slice largest
                                        );
 
   iterator begin() { return iterator(dummy_cfd_->next_); }
@@ -643,13 +644,27 @@ class ColumnFamilySet {
                                  autovector<const MutableCFOptions*>& cf_options,
                                  size_t* create_cf_cnt,
                                  size_t* keyrange_upd_cf_cnt);
-  bool is_key_range_narrow(std::string s1, std::string s2, int limit) {
-    long n1 = stol(s1.substr(4, s1.size() - 4));
-    long n2 = stol(s2.substr(4, s2.size() - 4));
-    if (n1 < n2 && n2 - n1 >= limit) {
+  bool is_key_range_narrow(Slice s1, Slice s2, int limit) {
+    if(limit == 0){
       return false;
     }
-    return true;
+    int cmp = s1.compare(s2);
+    if(cmp < 0){
+      return false;
+    }
+    else if(cmp == 0 && limit != 0){
+      return true;
+    }
+    else{
+      size_t sz = s1.size() >= s2.size() ? s2.size(): s1.size(); // choose shorter size to compare with.
+      int dist = (int)(sz-1);
+      for(dist=sz-1; dist>=0; dist--){
+        if(s1[dist] < s2[dist]) {
+          break;
+        }
+      }
+      return dist > limit;
+    }
   }
  private:
   friend class ColumnFamilyData;
@@ -685,16 +700,15 @@ class ColumnFamilySet {
   WriteBufferManager* write_buffer_manager_;
   WriteController* write_controller_;
 
-  void AddKeyRangeIfNecessary(std::string r1, std::string r2,
+  void AddKeyRangeIfNecessary(Slice& r1, Slice& r2,
                               bool include_left,
                               bool include_right,
-                              std::vector<std::string>& new_smallests,
-                              std::vector<std::string>& new_largests,
-                              std::vector<std::string>& upd_smallests,
-                              std::vector<std::string>& upd_largests,
+                              std::vector<Slice>& new_smallests,
+                              std::vector<Slice>& new_largests,
+                              std::vector<Slice>& upd_smallests,
+                              std::vector<Slice>& upd_largests,
                               size_t* new_cf_cnt,
                               size_t* keyrange_upd_cf_cnt,
-                              std::string prefix_key,
                               autovector<ColumnFamilyData*>& column_family_datas,
                               ColumnFamilyData* child_cfd,
                               bool upd_smallest

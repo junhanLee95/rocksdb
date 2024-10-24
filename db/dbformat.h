@@ -515,9 +515,11 @@ class IterKey {
     }
     memcpy(buf_ + psize, user_key.data(), usize);
     EncodeFixed64(buf_ + usize + psize, PackSequenceAndType(s, value_type));
+    EncodeFixed64(buf_ + usize + psize + sizeof(uint64_t), 0 /* dummy f_cnt */);
+    EncodeFixed64(buf_ + usize + psize + 2*sizeof(uint64_t), 0 /* dummy c_cnt */);
 
     key_ = buf_;
-    key_size_ = psize + usize + sizeof(uint64_t);
+    key_size_ = psize + usize + sizeof(uint64_t) * 3; // f_cnt and c_cnt
     is_user_key_ = false;
   }
 

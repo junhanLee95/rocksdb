@@ -148,9 +148,9 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
     assert(new_children_cnt == cf_name_list.size());
     assert(new_children_cnt + 1 == superversion_contexts.size());
     */
-    fprintf(stdout, "[JH] mutable cf options size : %ld\n", mutable_cf_options_list.size());
-    fprintf(stdout, "[JH] new cf  size : %ld\n", new_cf_cnt);
-	  fprintf(stdout, "[JH] edit list size : %ld\n", edit_lists.size());
+    //fprintf(stdout, "[JH] mutable cf options size : %ld\n", mutable_cf_options_list.size());
+    //fprintf(stdout, "[JH] new cf  size : %ld\n", new_cf_cnt);
+	  //fprintf(stdout, "[JH] edit list size : %ld\n", edit_lists.size());
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
 			  "SplitColumnFamilyFromSstFiles[%s]: Create CF Cnt %lu, \
         KeyRange Upd CF Cnt %lu, edit size %lu",
@@ -171,11 +171,11 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 		  WriteThread::Writer w;
 		  write_thread_.EnterUnbatched(&w, &mutex_);
 
-      for (const auto& edit_list: edit_lists) {
+      /*for (const auto& edit_list: edit_lists) {
         for(const auto& edit : edit_list) {
           fprintf(stdout, "%s\n", edit->DebugString().c_str());
         }
-      }
+      }*/
 
 		  s = versions_->LogAndApply(column_family_datas, mutable_cf_options_list,
 				  edit_lists, &mutex_, directories_.GetDbDir(), false,

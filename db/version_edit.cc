@@ -217,12 +217,12 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
 
   if (!smallest_user_key_.empty()) {
     PutVarint32(dst, kColumnFamilySmallest);
-    PutLengthPrefixedSlice(dst, Slice(smallest_user_key_));
+    PutLengthPrefixedSlice(dst, smallest_user_key_);
   }
 
   if (!largest_user_key_.empty()) {
     PutVarint32(dst, kColumnFamilyLargest);
-    PutLengthPrefixedSlice(dst, Slice(largest_user_key_));
+    PutLengthPrefixedSlice(dst, largest_user_key_);
   }
 
   if (is_column_family_drop_) {
@@ -548,7 +548,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
 
       case kColumnFamilySmallest:
         if (GetLengthPrefixedSlice(&input, &str)) {
-          smallest_user_key_ = str.ToString();
+          smallest_user_key_ = str;
         } else {
           if (!msg) {
             msg = "column family smallest";
@@ -558,7 +558,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
 
       case kColumnFamilyLargest:
         if (GetLengthPrefixedSlice(&input, &str)) {
-          largest_user_key_ = str.ToString();
+          largest_user_key_ = str;
         } else {
           if (!msg) {
             msg = "column family largest";

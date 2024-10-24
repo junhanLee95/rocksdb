@@ -124,9 +124,9 @@ public:
       } else {
         iter_.Seek(EncodeKey(&tmp_, user_key));
       }
-      iter_.Seek(EncodeKey(&tmp_, user_key));
-      std::cout << "JH SKIP key : " << user_key.ToString() << std::endl;
-      std::cout << "JH FIND key : " << iter_.key() << std::endl;
+      //iter_.Seek(EncodeKey(&tmp_, user_key));
+      //std::cout << "JH SKIP key : " << user_key.ToString() << std::endl;
+      //std::cout << "JH FIND key : " << iter_.key() << std::endl;
     }
 
     // Retreat to the last entry with a key <= target

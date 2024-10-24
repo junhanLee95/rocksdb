@@ -23,6 +23,7 @@
 #include <string.h>
 #include <cstdio>
 #include <string>
+#include <iostream>
 
 #ifdef __cpp_lib_string_view
 #include <string_view>
@@ -203,6 +204,9 @@ class Slice {
   // Compare two slices and returns the first byte where they differ
   size_t difference_offset(const Slice& b) const;
 
+  std::string increment(void);
+  std::string decrement(void);
+
   // private: make these public for rocksdbjni access
   const char* data_;
   size_t size_;
@@ -329,5 +333,78 @@ inline size_t Slice::difference_offset(const Slice& b) const {
   }
   return off;
 }
+
+inline std::string Slice::increment(void) {
+  std::string inc = data_;
+  std::cout << "(inc) data_: " << data_ << std::endl;
+  for(size_t i = size_-1;; i--){
+    char c = data_[i];
+    int ci = (int)(c);
+
+    if(ci != 127){
+      char nci = (char)( ci + 1);
+      inc[i] = nci;
+      break;
+    }
+
+    if(i==0){
+      break;
+    }
+  }
+
+  if(inc == data_){
+    // increment digits
+    char c0  = (char)(0);
+    char c1  = (char)(1);
+    inc.resize(size_+1);
+    for(size_t i=0; i<size_+1; i++){
+      if(i==0){
+        inc[i] = c1;
+      }
+      else{
+        inc[i] = c0;
+      }
+    }
+    return inc;
+  }
+  else{
+    std::cout << "(inc) inc: " << inc << std::endl;
+    return inc;
+  }
+}
+
+inline std::string Slice::decrement(void) {
+  std::string inc = data_;
+  std::cout << "(dec) data_: " << data_ << std::endl;
+  for(size_t i = size_-1;; i--){
+    char c = data_[i];
+    int ci = (int)(c);
+
+    if(ci != 0){
+      char nci = (char)( ci - 1);
+      inc[i] = nci;
+      break;
+    }
+
+    if(i==0){
+      break;
+    }
+  }
+
+  if(inc == data_){
+    // decrement digits
+    char ct  = (char)(127);
+    inc.resize(size_-1);
+    for(size_t i=0; i<size_-1; i++){
+      inc[i] = ct;
+    }
+    return inc;
+  }
+  else{
+    std::cout << "(dec) data_: " << inc << std::endl;
+    return inc;
+  }
+}
+
 
 }  // namespace rocksdb

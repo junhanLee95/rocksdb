@@ -3213,13 +3213,13 @@ Status VersionSet::ProcessManifestWrites(
         }
         else if (writer.edit_list.front()->is_column_family_keyrange_update_) {
           // JH : update key range to the corresponding column family
-          std::string smallest = writer.edit_list.front()->smallest_user_key_;
-          std::string largest = writer.edit_list.front()->largest_user_key_;
+          Slice smallest = writer.edit_list.front()->smallest_user_key_;
+          Slice largest = writer.edit_list.front()->largest_user_key_;
           ColumnFamilyData* w_cfd = writer.cfd;
-          if (smallest != "") {
+          if (!smallest.empty()) {
             w_cfd->UpdateSmallestKey(smallest);
           }
-          if (largest != "") {
+          if (!largest.empty()) {
             w_cfd->UpdateLargestKey(largest);
           }
         }
@@ -4372,7 +4372,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
   auto ApplyCFManipulationToLog = [](log::Writer* wlog, ColumnFamilyData* cfd,
                                      bool split, bool add, bool comp,
                                      bool atomic, uint32_t remaining_entries,
-                                     std::string lower, std::string upper) -> Status {
+                                     Slice lower, Slice upper) -> Status {
     VersionEdit edit;
     std::string record;
     
@@ -4413,15 +4413,15 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
 
       cnodes.push_back(partition_tree->root_);
       ColumnFamilyData* default_cfd = partition_tree->root_->cfd_;
-      Status s = ApplyCFManipulationToLog(log, default_cfd, false, false, true, false, 0, "", "");
+      Status s = ApplyCFManipulationToLog(log, default_cfd, false, false, true, false, 0, Slice(""), Slice(""));
       if (!s.ok()) {
         return s; 
       }
 
       while (!cnodes.empty()) {
         std::vector<PartitionTreeNode*> nnodes;
-        std::string lower;
-        std::string upper;
+        Slice lower;
+        Slice upper;
 
         // recover cf manipulation
         for (PartitionTreeNode* cnode: cnodes) {

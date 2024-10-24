@@ -40,13 +40,12 @@ PartitionTreeNode *PartitionTreeNode::SearchNextNode (
   if (lower_level_nodes_.empty()) 
     return nullptr;
 
-  std::string key_str = key.ToString();
   // Linear Search
   for (auto nodes: lower_level_nodes_) {
     // Right most key is "" or key is less than or equal to right most key. 
-    if (get_rmost_key(nodes).empty() || key_str.compare(get_rmost_key(nodes)) <= 0) { 
+    if (get_rmost_key(nodes).empty() || key.compare(get_rmost_key(nodes)) <= 0) { 
     // Left most key is "" or key is greater than or equal to left most key. 
-      if (get_lmost_key(nodes).empty() || key_str.compare(get_lmost_key(nodes)) >= 0)
+      if (get_lmost_key(nodes).empty() || key.compare(get_lmost_key(nodes)) >= 0)
         return nodes;
       else 
         return nullptr;
@@ -72,7 +71,7 @@ void PartitionTreeNode::Print(
   ROCKS_LOG_INFO(cfd_->ioptions()->info_log,
                  "%-6s LCF[%d] %s => [%s, %s]\n", 
                  TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 
-                 cfd_->GetSmallestKey().c_str(), cfd_->GetLargestKey().c_str());
+                 cfd_->GetSmallestKey().ToString().c_str(), cfd_->GetLargestKey().ToString().c_str());
   /*
   fprintf(stdout, "%-6s LCF[%d] %s => [%s, %s]\n", 
     TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 
@@ -158,19 +157,19 @@ Status PartitionTree::InsertSplittedColumnFamily (
       assert (new_cfd != nullptr);
       new_cfd->SetPartitionTreeNode(node);  
 
-      std::string n_smallest = new_cfd->GetSmallestKey();
-      std::string n_largest = new_cfd->GetLargestKey();
+      Slice n_smallest = new_cfd->GetSmallestKey();
+      Slice n_largest = new_cfd->GetLargestKey();
       assert(!n_smallest.empty());
       assert(!n_largest.empty());
       // boundary check and let's debug it!
-      std::string b_smallest = get_lmost_key(base_node);
-      std::string b_largest = get_rmost_key(base_node);
+      Slice b_smallest = get_lmost_key(base_node);
+      Slice b_largest = get_rmost_key(base_node);
       if (!b_smallest.empty() && !b_largest.empty()) {
         if (!(b_smallest.compare(n_smallest) <= 0 &&
               n_largest.compare(b_largest) <= 0)) {
           fprintf(stderr, "InsertSplittedColumnFamily error(1) p[%s, %s] c[%s, %s]\n",
-              b_smallest.c_str(), b_largest.c_str(),
-              n_smallest.c_str(), n_largest.c_str());
+              b_smallest.ToString().c_str(), b_largest.ToString().c_str(),
+              n_smallest.ToString().c_str(), n_largest.ToString().c_str());
           exit(1);    
         }
       }
@@ -187,8 +186,8 @@ Status PartitionTree::InsertSplittedColumnFamily (
       m = (l + r) / 2;
       while (l <= r) { // binary search
         m = (l + r) / 2;
-        std::string m_smallest = base_node->lower_level_nodes_[m]->cfd_->GetSmallestKey();
-        std::string m_largest = base_node->lower_level_nodes_[m]->cfd_->GetLargestKey();
+        Slice m_smallest = base_node->lower_level_nodes_[m]->cfd_->GetSmallestKey();
+        Slice m_largest = base_node->lower_level_nodes_[m]->cfd_->GetLargestKey();
 
         if (m_smallest.compare(n_largest) >= 0) {
           // n is smaller than m
@@ -241,13 +240,13 @@ Status PartitionTree::InsertSplittedColumnFamily (
       if (i != 0) { // boundary overlap check
         PartitionTreeNode* pnode = base_node->lower_level_nodes_[i-1];
         ColumnFamilyData* p_cfd = pnode->cfd_;
-        std::string p_largest = p_cfd->GetLargestKey();
-        std::string l_smallest = l_cfd->GetSmallestKey();
-        assert(p_largest.compare(l_smallest) < 0);
-        if(p_largest.compare(l_smallest) >= 0) {
+        Slice p_largest = p_cfd->GetLargestKey();
+        Slice l_smallest = l_cfd->GetSmallestKey();
+        assert(p_largest.compare(l_smallest) <= 0);
+        if(p_largest.compare(l_smallest) > 0) {
           //exit and let's debug it!
           fprintf(stderr, "InsertSplittedColumnFamily error(2) %s %s\n",
-              p_largest.c_str(), l_smallest.c_str());
+              p_largest.ToString().c_str(), l_smallest.ToString().c_str());
           exit(1);
         }
       }

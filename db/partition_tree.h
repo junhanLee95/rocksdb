@@ -11,6 +11,7 @@
 #include <iostream>
 
 #include "db/column_family.h"
+#include "rocksdb/slice.h"
 #include "port/port.h"
 #include "util/mutexlock.h"
 

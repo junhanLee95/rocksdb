@@ -1569,17 +1569,16 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
         SequenceNumber sequence = ikey.sequence;
 
         // select memtable index to put the item
-        std::string user_key_str = user_key.ToString();
         size_t select = to_size; // where to put. from_cfd for the default
         while (to < to_size) {
-          std::string smallest_to = children_nodes[to]->cfd_->GetSmallestKey();
-          std::string largest_to = children_nodes[to]->cfd_->GetLargestKey();       
-          if (user_key_str.compare(smallest_to) < 0) {
+          Slice smallest_to = children_nodes[to]->cfd_->GetSmallestKey();
+          Slice largest_to = children_nodes[to]->cfd_->GetLargestKey();       
+          if (user_key.compare(smallest_to) < 0) {
             // user key is within parent's key range, not children nodes
             break;
           }
-          else if (user_key_str.compare(smallest_to) >= 0 &&
-              user_key_str.compare(largest_to) <= 0) {
+          else if (user_key.compare(smallest_to) >= 0 &&
+              user_key.compare(largest_to) <= 0) {
             // user key is within child's key range
             select = to;
             break; 
