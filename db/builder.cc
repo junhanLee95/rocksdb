@@ -812,12 +812,19 @@ Status BuildParentTable(
         if (i == children_size && !end.empty() && user_key.compare(end) > 0) {
           break;
         }
+        // boundary check(2): if scanning from [-inf,-inf] or [inf,inf], skip
+        if(i == 0 && start.empty() &&  sub_starts[i].empty()){
+          break;
+        }
+        if(i == children_size && end.empty() && sub_ends[i-1].empty()){
+          break;
+        }
 
 				if (i == children_size || 
 						user_key.compare(sub_starts[i]) < 0) {
           builder->Add(key, value);
-          ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable c_iter[%ld] add key : %s",
-              job_id, i, user_key.ToString().c_str());
+          //ROCKS_LOG_WARN(ioptions.info_log, "[JOB %d] BuildParentTable c_iter[%ld] add key : %s",
+          //    job_id, i, user_key.ToString().c_str());
 
           //std::cout <<  "[" << column_family_name << "] int add : " << user_key_str << std::endl;
 					meta->UpdateBoundaries(key, c_iters[i]->ikey().sequence);  

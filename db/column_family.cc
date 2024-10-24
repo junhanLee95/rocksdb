@@ -1466,6 +1466,11 @@ bool ColumnFamilySet::SplitLogicalColumnFamily(ColumnFamilyData* c_in, std::vect
   std::string s_outs="[";
   for (auto c: c_outs) {
     s_outs += c->GetName();
+    s_outs += "[";
+    s_outs += c->GetSmallestKey().ToString().c_str();
+    s_outs += ",";
+    s_outs += c->GetLargestKey().ToString().c_str();
+    s_outs += "]";
     s_outs += ", ";
   }
   s_outs += "]";

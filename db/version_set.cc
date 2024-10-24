@@ -3227,13 +3227,15 @@ Status VersionSet::ProcessManifestWrites(
           ROCKS_LOG_INFO(db_options_->info_log,
               "Column family(2) create target_file_size_base: %ld",
               new_cf_options->target_file_size_base );
-          ROCKS_LOG_INFO(db_options_->info_log,
-              "Column family(3) create target_file_size_base: %ld",
-              writer.mutable_cf_options.target_file_size_base );
 
           const ColumnFamilyOptions cf_options = BuildColumnFamilyOptions(*new_cf_options,
                                                      writer.mutable_cf_options);
           auto cfd_out = CreateColumnFamily(cf_options, writer.edit_list.front());
+          ROCKS_LOG_INFO(db_options_->info_log,
+              "Column family(3) target key range: [%s, %s]",
+              cfd_out->GetSmallestKey().ToString().c_str(),
+              cfd_out->GetLargestKey().ToString().c_str()
+              );
           cfd_outs.push_back(cfd_out);
         }
       }
@@ -4906,7 +4908,7 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
   // by avoiding calling "delete" explicitly (~Version is private)
   dummy_versions->Ref();
   ColumnFamilyData* new_cfd = nullptr;
-  if (edit->smallest_user_key_.empty() || edit->largest_user_key_.empty() ) {
+  if (edit->smallest_user_key_.empty() && edit->largest_user_key_.empty() ) {
     new_cfd = column_family_set_->CreateColumnFamily(
         edit->column_family_name_, edit->column_family_, dummy_versions,
         cf_options);

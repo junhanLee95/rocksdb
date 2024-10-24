@@ -127,6 +127,16 @@ Status PartitionTree::InsertSplittedColumnFamily (
     //fprintf(stdout, "[InsertSplittedColumnFamily] new_cfds are empty\n");
     return Status::OK(); 
   }
+  else{
+    for (ColumnFamilyData* cfd: new_cfds){
+      ROCKS_LOG_INFO(cfd->ioptions()->info_log,
+          "[InsertSplittedColumnFamily] new_cfds[%d] %s - [%s, %s]\n",  
+          cfd->GetID(),
+          cfd->GetName().c_str(),
+          cfd->GetSmallestKey().ToString().c_str(),
+          cfd->GetLargestKey().ToString().c_str());
+    }
+  }
 
   auto base_node = base_cfd->GetPartitionTreeNode();
   {
@@ -159,8 +169,9 @@ Status PartitionTree::InsertSplittedColumnFamily (
 
       Slice n_smallest = new_cfd->GetSmallestKey();
       Slice n_largest = new_cfd->GetLargestKey();
-      assert(!n_smallest.empty());
-      assert(!n_largest.empty());
+      //assert(!n_smallest.empty());
+      //assert(!n_largest.empty());
+
       // boundary check and let's debug it!
       Slice b_smallest = get_lmost_key(base_node);
       Slice b_largest = get_rmost_key(base_node);
@@ -184,32 +195,42 @@ Status PartitionTree::InsertSplittedColumnFamily (
       l = 0;
       r = base_node->lower_level_nodes_.size() - 1;
       m = (l + r) / 2;
-      while (l <= r) { // binary search
-        m = (l + r) / 2;
-        Slice m_smallest = base_node->lower_level_nodes_[m]->cfd_->GetSmallestKey();
-        Slice m_largest = base_node->lower_level_nodes_[m]->cfd_->GetLargestKey();
 
-        if (m_smallest.compare(n_largest) >= 0) {
-          // n is smaller than m
-          r = m - 1;
-        } else if (m_largest.compare(n_smallest) <= 0) {
-          // n is larger than m
-          l = m + 1;
-        } else {
-          // n and m overlaps! assert error
-          /*fprintf(stdout, "[PartitionTree] CFD[%d] %s [%s, %s] and CFD[%d] %s [%s, %s] overlaps!\n",
-            new_cfd->GetID(),
-            new_cfd->GetName().c_str(),
-            n_smallest.c_str(),
-            n_largest.c_str(),
-            base_node->lower_level_nodes_[m]->cfd_->GetID(),
-            base_node->lower_level_nodes_[m]->cfd_->GetName().c_str(),
-            m_smallest.c_str(),
-            m_largest.c_str()
-            );*/
-          return Status::Corruption();
+      if(n_smallest.empty()){ // going to leftmost
+        l = 0;
+      }
+      else if(n_largest.empty()){ // going to rightmost
+        l = r+1;
+      }
+      else{
+        while (l <= r) { // binary search
+          m = (l + r) / 2;
+          Slice m_smallest = base_node->lower_level_nodes_[m]->cfd_->GetSmallestKey();
+          Slice m_largest = base_node->lower_level_nodes_[m]->cfd_->GetLargestKey();
+
+          if (m_smallest.compare(n_largest) >= 0) {
+            // n is smaller than m
+            r = m - 1;
+          } else if (m_largest.compare(n_smallest) <= 0) {
+            // n is larger than m
+            l = m + 1;
+          } else {
+            // n and m overlaps! assert error
+            /*fprintf(stdout, "[PartitionTree] CFD[%d] %s [%s, %s] and CFD[%d] %s [%s, %s] overlaps!\n",
+              new_cfd->GetID(),
+              new_cfd->GetName().c_str(),
+              n_smallest.c_str(),
+              n_largest.c_str(),
+              base_node->lower_level_nodes_[m]->cfd_->GetID(),
+              base_node->lower_level_nodes_[m]->cfd_->GetName().c_str(),
+              m_smallest.c_str(),
+              m_largest.c_str()
+              );*/
+            return Status::Corruption();
+          }
         }
       }
+      
       // now l is the target to insert to
       /*fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s to : %d\n", 
         new_cfd->GetID(), 
@@ -225,17 +246,14 @@ Status PartitionTree::InsertSplittedColumnFamily (
     for (size_t i = 0; i < base_node->lower_level_nodes_.size(); i++) {
       PartitionTreeNode* lnode = base_node->lower_level_nodes_[i];
       ColumnFamilyData* l_cfd = lnode->cfd_;
+      
       ROCKS_LOG_INFO(l_cfd->ioptions()->info_log,
-          "InsertSplittedColumnFamily: child %ld - %s(%d)\n", 
-          i,
-          l_cfd->GetName().c_str(),
-          l_cfd->GetID());
-      LogFlush(l_cfd->ioptions()->info_log);
-      /*fprintf(stdout, "[InsertSplittedColumnFamily] after: child CFD[%d] %s - [%s, %s]\n",  
+                     "[InsertSplittedColumnFamily] child CFD[%d] %s - [%s, %s]\n",  
         l_cfd->GetID(),
         l_cfd->GetName().c_str(),
-        l_cfd->GetSmallestKey().c_str(),
-        l_cfd->GetLargestKey().c_str());*/
+        l_cfd->GetSmallestKey().ToString().c_str(),
+        l_cfd->GetLargestKey().ToString().c_str());
+      LogFlush(l_cfd->ioptions()->info_log);
 
       if (i != 0) { // boundary overlap check
         PartitionTreeNode* pnode = base_node->lower_level_nodes_[i-1];
