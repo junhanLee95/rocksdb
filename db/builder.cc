@@ -780,9 +780,10 @@ Status BuildParentTable(
         true /* internal key corruption is not ok */, range_del_agg.get());
 			c_iter->SeekToFirst();
       // JH : c_iters[i] needs to exclude sub_ends, except for i != 0
-      if (i != 0 && c_iter->Valid()) {
+      // (241024) JH : we now include sub_ends on seek
+      /*if (i != 0 && c_iter->Valid()) {
         c_iter->Next(); 
-      }
+      }*/
       ROCKS_LOG_INFO(ioptions.info_log, "[JOB %d] [%s] BuildParentTable %ld key start : %s",
           job_id,
           column_family_name.c_str(),
@@ -1091,8 +1092,9 @@ Status BuildsubTable(
         c_iter.Next();
         continue;
       }
-
-      if (!sub_flush_end.empty() && user_key.compare(sub_flush_end) > 0) {
+      /* JH: since we only consider sub_flush_start key on sub_flush_start,
+             we finish the loop when the user_key reaches sub_flush_end.   */
+      if (!sub_flush_end.empty() && user_key.compare(sub_flush_end) >= 0) {
         /*
            fprintf(stdout, "BuildsubTable() [bigger than end %d] job_id %d sub_flush_id %d sub_flush_start %s sub_flush_end %s user_key %s \n", 
            user_key.compare(sub_flush_end), job_id, sub_flush_id, sub_flush_start.c_str(), sub_flush_end.c_str(), user_key.c_str());

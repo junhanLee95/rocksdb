@@ -135,6 +135,18 @@ TEST_F(LCFSingleLvlLevelTest, SingleSplit) {
  
 
   dbfull(db)->TEST_WaitForSplit();
+
+  fprintf(stdout, "[LCFSingleLvlLevelTest] flush\n");
+  for (int num = 0; num < 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+ 
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
   sleep(10);
   //dbfull(db)->DestroyLogicalColumnFamilies();
