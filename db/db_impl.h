@@ -1190,13 +1190,15 @@ class DBImpl : public DB {
   // Note that the file must exist in Level 0 and not compacting.
   // After completing the work for all
   // column families in this request, this split is considered complete.
-  typedef std::vector<std::pair<ColumnFamilyData*, std::vector<std::pair<std::string, std::string>>>> SplitRequest;
+  typedef std::vector<std::pair<ColumnFamilyData*, std::vector<std::pair<Slice, Slice>>>> SplitRequest;
 
   void GenerateFlushRequest(const autovector<ColumnFamilyData*>& cfds,
                             FlushRequest* req);
 
-  void GenerateSplitRequest(ColumnFamilyData* cfd, const autovector<FileMetaData*>& metas,
-                            SplitRequest* req);
+  //void GenerateSplitRequest(ColumnFamilyData* cfd, const autovector<FileMetaData*>& metas,
+  //                          SplitRequest* req);
+  void GenerateSplitRequest(ColumnFamilyData* cfd, SplitRequest* req);
+
 
   void SchedulePendingFlush(const FlushRequest& req, FlushReason flush_reason);
 

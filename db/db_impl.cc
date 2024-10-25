@@ -2308,8 +2308,9 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
     SplitRequest split_req;
     if (s.ok()) {
       // generate split req
-      GenerateSplitRequest(cfd_in0, cfd_in0->current()->storage_info()->FilesMarkedForSplit(),
-                           &split_req);
+      //GenerateSplitRequest(cfd_in0, cfd_in0->current()->storage_info()->FilesMarkedForSplit(),
+      //                     &split_req);
+      GenerateSplitRequest(cfd_in0, &split_req);
       // add to schedule
       SchedulePendingSplit(cfd_in0, split_req);
       MaybeScheduleFlushOrCompaction();

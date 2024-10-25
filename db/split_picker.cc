@@ -38,7 +38,7 @@ SplitPicker::~SplitPicker() {}
 
 bool SplitPicker::SetupL0FilesIfNeeded(LogBuffer* log_buffer,
                                        VersionStorageInfo* vstorage,
-                                       std::vector<std::pair<std::string, std::string>> metas,
+                                       std::vector<std::pair<Slice, Slice>> metas,
                                        CompactionInputFiles& l0_files) {
   bool exists = false;
   for (FileMetaData* f: vstorage->LevelFiles(0)) {
@@ -53,11 +53,11 @@ bool SplitPicker::SetupL0FilesIfNeeded(LogBuffer* log_buffer,
       //fprintf(stdout,"L0 Setup: meta s: %s\n", meta.first.c_str());
       //fprintf(stdout,"L0 Setup: meta l: %s\n", meta.second.c_str());
       ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit Meta Setup: l0 [%s, %s] ",
-                     meta.first.c_str(),
-                     meta.second.c_str()
+                     meta.first.ToString().c_str(),
+                     meta.second.ToString().c_str()
                      );
-
-      if (!f->being_compacted && HaveOverlappingKeyRanges(f, meta.first, meta.second)) {
+      //JH: First of all, we include all the L0 files as split input.
+      if (!f->being_compacted/* && HaveOverlappingKeyRanges(f, meta.first, meta.second)*/) {
         ROCKS_LOG_BUFFER(log_buffer, "SplitPicker::PickSplit [#%" PRIu64 "] is overlapped",
                          f->fd.GetNumber());
         l0_files.files.push_back(f);
@@ -107,7 +107,7 @@ bool SplitPicker::SetupL1FilesIfNeeded(LogBuffer* log_buffer,
 
 Compaction* SplitPicker::PickSplit(const std::string& cf_name,
                               VersionStorageInfo* vstorage,
-                              std::vector<std::pair<std::string, std::string>> metas,
+                              std::vector<std::pair<Slice, Slice>> metas,
                               LogBuffer* log_buffer) {
   /*
   CompactionInputFiles input_files;

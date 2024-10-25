@@ -1644,12 +1644,18 @@ void DBImpl::GenerateFlushRequest(const autovector<ColumnFamilyData*>& cfds,
 }
 
 void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
-                                  const autovector<FileMetaData*>& metas,
+                                  /*const autovector<FileMetaData*>& metas,*/
                                   SplitRequest* req) {
   assert(req != nullptr);
   req->reserve(1);
-  std::vector<std::pair<std::string, std::string>> key_ranges;
-  for (auto& meta: metas) {
+  std::vector<std::pair<Slice, Slice>> key_ranges;
+  key_ranges.push_back(std::make_pair(Slice(""), Slice(""))); // include the entire key range
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+      "GenerateSplitRequest : cfd(%s) R[%s, %s]",
+      cfd->GetName().c_str(),
+      key_ranges[0].first.ToString().c_str(),
+      key_ranges[0].second.ToString().c_str());
+  /*for (auto& meta: metas) {
     std::string smallest = meta->smallest.user_key().ToString();
     std::string largest  = meta->largest.user_key().ToString();
     key_ranges.push_back(std::make_pair(smallest, largest));
@@ -1667,7 +1673,7 @@ void DBImpl::GenerateSplitRequest(ColumnFamilyData* cfd,
                    "GenerateSplitRequest : no request cfd(%s)",
                    cfd->GetName().c_str()
                    );
-  }
+  }*/
   req->emplace_back(cfd, key_ranges);
 }
 
@@ -2136,8 +2142,8 @@ void DBImpl::AddToSplitQueue(const SplitRequest& req) {
   cfd->Ref();
   std::string meta_info_str = "";
   for (auto meta: metas) {
-    meta_info_str += "[" + meta.first +
-                     ", " + meta.second +
+    meta_info_str += "[" + meta.first.ToString() +
+                     ", " + meta.second.ToString() +
                      "], ";
   }
   ROCKS_LOG_INFO(
@@ -2769,7 +2775,7 @@ Status DBImpl::BackgroundSplit(bool* made_progress,
   TEST_SYNC_POINT("DBImpl::BackgroundSplit:Start");
 
   std::unique_ptr<Compaction> c;
-  std::vector<std::pair<std::string, std::string>> metas;
+  std::vector<std::pair<Slice, Slice>> metas;
   ColumnFamilyData* cfd;
 
   SplitJobStats split_job_stats;

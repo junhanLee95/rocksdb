@@ -357,8 +357,13 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
     }*/
 
     //fprintf(stdout, "Split sst(2)\n");
-    GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(),
-                         &split_req);
+    //GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(),
+    //                     &split_req);
+
+    // JH: for debugging, let's include all the files as the target of split job and
+    // schedule it.
+    GenerateSplitRequest(cfd, &split_req);
+
     SchedulePendingSplit(cfd, split_req);
     MaybeScheduleFlushOrCompaction();  
   } // InstrumentedMutexLock l(&mutex_)
