@@ -2163,8 +2163,8 @@ DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   std::string meta_info_str = "";
 
   for (auto meta: metas) {
-    meta_info_str += "[" + meta.first +
-                     ", " + meta.second +
+    meta_info_str += "[" + meta.first.ToString() +
+                     ", " + meta.second.ToString() +
                      "], ";
   }
   //assert(unscheduled_splits_ >= static_cast<int>(split_req.size()));
@@ -2256,7 +2256,7 @@ void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd, const SplitRequest& spl
     return;
   }
   else {
-    if (!cfd->queued_for_split() && cfd->NeedsSplit()
+    if (!cfd->queued_for_split() /*&& cfd->NeedsSplit()*/
         /* && !cfd->queued_for_compaction()*/) {
       //fprintf(stdout, "schedule pending split : %d\n", cfd->GetID());
       //SplitRequest split_req;

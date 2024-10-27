@@ -292,7 +292,7 @@ struct SplitJob::SplitState {
   explicit SplitState(Compaction* c/*, std::vector<FileMetaData*> m*/)
       : compaction(c),
        /* metas(m),*/
-        median_key(c->column_family_data()->current()->storage_info()->GetMedianKey((*c->column_family_data()->ioptions()))),
+        median_key(Slice("") /*c->column_family_data()->current()->storage_info()->GetMedianKey((*c->column_family_data()->ioptions()))*/),
         total_bytes(0),
         num_input_records(0),
         num_output_records(0) {}
@@ -912,7 +912,9 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
           user_key_str.c_str(),
           child_smallest.c_str(),
           child_largest.c_str());*/
-      if (user_key.compare(child_smallest) < 0) {
+      // JH: if child_smallest is empty, it means the range is from -inf
+      // and that must be is_child=true
+      if (!child_smallest.empty() && user_key.compare(child_smallest) < 0) {
         // user key is within parent's key range, not children nodes
         /*fprintf(stdout, "ProcessKeyValueSplit - is_parent\n");
         ROCKS_LOG_INFO(
@@ -922,7 +924,18 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
         is_child = false;
         break;
       }
-      else if (user_key.compare(child_smallest) >= 0 &&
+      else if(child_smallest.empty() && user_key.compare(child_largest) < 0) {
+        // [-inf, child_largest] check
+        is_child = true;
+        break;
+      }
+      else if(child_largest.empty() && user_key.compare(child_smallest) >= 0) {
+        // [child_smallest, inf] check
+        is_child = true;
+        break;
+      }
+      else if (!child_smallest.empty() && !child_largest.empty() &&
+               user_key.compare(child_smallest) >= 0 &&
                user_key.compare(child_largest) <= 0) {
         // user key is within child's key range
         /*fprintf(stdout, "ProcessKeyValueSplit - is_child\n");

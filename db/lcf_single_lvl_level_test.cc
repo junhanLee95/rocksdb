@@ -125,24 +125,14 @@ TEST_F(LCFSingleLvlLevelTest, OneTwoSplit) {
 
   dbfull(db)->TEST_WaitForSplit();
 
-
   fprintf(stdout, "[LCFSingleLvlLevelTest] flush\n");
   for (int num = 0; num < 1;
        num ++) {
     for (int i=0; i<1000; i++) {
-      std::string k = RandomString(&rnd, 8);
+      std::string k = RandomString(&rnd, 9);
       std::string v = RandomString(&rnd, 200);
       db->Put(WriteOptions(), cfh, k, v);  
     }
-    db->Put(WriteOptions(), cfh, "user1200", "12345");
-    db->Put(WriteOptions(), cfh, "user1400", "12345");
-    db->Put(WriteOptions(), cfh, "user1400", "12345");
-    db->Put(WriteOptions(), cfh, "user1100", "12345");
-    db->Put(WriteOptions(), cfh, "user1100", "12345");
-    db->Put(WriteOptions(), cfh, "user1100", "12345");
-    db->Put(WriteOptions(), cfh, "user1500", "12345");
-    db->Put(WriteOptions(), cfh, "user1500", "12345");
-    db->Put(WriteOptions(), cfh, "user1500", "12345");
     ASSERT_OK(db->Flush(FlushOptions())); 
   }
  
