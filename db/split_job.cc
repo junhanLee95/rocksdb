@@ -474,6 +474,15 @@ void SplitJob::Prepare() {
     ROCKS_LOG_INFO(db_options_.info_log, "SplitJob::kSplit");
     write_hint_ = Env::WriteLifeTimeHint::WLTH_NONE;
     split_->sub_split_states.emplace_back(c, nullptr, nullptr, nullptr);
+
+
+    for (size_t i=0; i<children_cnt_; i++) {
+      ColumnFamilyData* cfd_c = split_->sub_split_states[0].children_nodes[i]->cfd_;
+      auto vstorage_c = cfd_c->current()->storage_info();
+      int empty_output_level = vstorage_c->num_non_empty_levels() + 1;
+      ROCKS_LOG_INFO(db_options_.info_log, "SplitJob:: cfd[%s] empty level : %d", cfd_c->GetName().c_str(), empty_output_level);
+      children_output_level_.push_back(empty_output_level);
+    }
   }
   else {
     ROCKS_LOG_INFO(db_options_.info_log, "SplitJob::kSplitManual Prepare median_key : %s\n",
@@ -1642,7 +1651,8 @@ Status SplitJob::InstallSplitResults() {
     for (const auto& out : sub_split.child_outputs) {
       int idx = out.child_idx;
       ColumnFamilyData* child_cfd = sub_split.children_nodes[idx]->cfd_;
-      e_out[idx].AddFile(compaction->output_level(), out.meta);
+      //e_out[idx].AddFile(compaction->output_level(), out.meta);
+      e_out[idx].AddFile(children_output_level_[idx], out.meta);
       e_out[idx].SetSplitMove(true);
       e_out[idx].SetColumnFamily(child_cfd->GetID());
       column_family_datas.push_back(child_cfd);
@@ -1806,7 +1816,8 @@ Status SplitJob::OpenSplitOutputFile(
         sub_split->compaction->output_compression(),
         0 /*sample_for_compression */,
         sub_split->compaction->output_compression_opts(),
-        sub_split->compaction->output_level(), skip_filters,
+        children_output_level_[sub_split->child_idx]
+        /*sub_split->compaction->output_level()*/, skip_filters,
         output_file_creation_time, 0 /* oldest_key_time */,
         sub_split->compaction->max_output_file_size()));
   } else{

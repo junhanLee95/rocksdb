@@ -129,6 +129,7 @@ class SplitJob {
   struct SplitState;
   SplitState* split_;
   size_t children_cnt_;
+  std::vector<int> children_output_level_;
   SplitJobStats* split_job_stats_;
   InternalStats::CompactionStats compaction_stats_;
 
