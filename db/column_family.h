@@ -386,6 +386,7 @@ class ColumnFamilyData {
   void set_queued_for_compaction(bool value) { queued_for_compaction_ = value; }
   void set_queued_for_split(bool value) { queued_for_split_ = value; }
   void set_need_split(bool value) { need_split_ = value; }
+  bool need_split() { return need_split_; }
   bool queued_for_flush() { return queued_for_flush_; }
   bool queued_for_compaction() { return queued_for_compaction_; }
   bool queued_for_split() { return queued_for_split_; }

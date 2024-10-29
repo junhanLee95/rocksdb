@@ -878,7 +878,14 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
     if(median_key.empty()) {
       // if there is no median key, cancel triggering split job.
       ROCKS_LOG_INFO(db_options_.info_log,
-          "[%s] [JOB %d] Cancel Split because median_key is empty",
+          "[%s] [JOB %d] Cancel(1) Split because median_key is empty",
+          cfd->GetName().c_str(), job_id_);
+    }
+    else if(!cfd->need_split()){
+      // Branch(lcf_single_lvl_leveled) if cfd is already splitted, we do not create additional
+      // split process.
+      ROCKS_LOG_INFO(db_options_.info_log,
+          "[%s] [JOB %d] Cancel(2) Split because column family is already splitted.",
           cfd->GetName().c_str(), job_id_);
     }
     else{
@@ -896,6 +903,9 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
       sst_split_files_.push_back(f1);
       sst_split_files_.push_back(f2);
       *cfd_to_split_ = cfd;
+      // Branch(lcf_single_lvl_leveled) if cfd is already splitted, we do not create additional
+      // split process.
+      cfd->set_need_split(false);
     }
   }
 

@@ -100,6 +100,8 @@ TEST_F(LCFSingleLvlLevelTest, OneTwoSplit) {
   assert(num_level0 == 2);
   assert(num_level1 == 1);
 
+
+  // FIRST Split
   std::vector<FileMetaData*> infos;
 
   FileMetaData* f1 = new FileMetaData;
@@ -124,6 +126,34 @@ TEST_F(LCFSingleLvlLevelTest, OneTwoSplit) {
  
 
   dbfull(db)->TEST_WaitForSplit();
+
+
+  // SECOND Split
+  FileMetaData* f3 = new FileMetaData;
+  std::string s3 = "";
+  std::string l3 = "user1000";
+  f3->smallest = InternalKey(Slice(s3), 0, kTypeValue);
+  f3->largest = InternalKey(Slice(l3), 0, kTypeValue);
+  infos.push_back(f3);
+  FileMetaData* f4 = new FileMetaData;
+  std::string s4 = "user1000";
+  std::string l4 = "user1400";
+  f4->smallest = InternalKey(Slice(s4), 0, kTypeValue);
+  f4->largest = InternalKey(Slice(l4), 0, kTypeValue);
+  infos.push_back(f4);
+
+  fprintf(stdout, "[LCFSingleLvlLevelTest] Second Split Start [%s, %s] (2/3)\n", s3.c_str(), l3.c_str());
+  ColumnFamilyData* cfd1 = cfd->GetColumnFamilySet()->GetColumnFamily(1);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd1, infos);
+  fprintf(stdout, "[LCFSingleLvlLevelTest] Second Split Finish (2/3)\n");
+  //dbfull(db)->TEST_WaitForSplit();
+  infos.clear();
+ 
+
+  dbfull(db)->TEST_WaitForSplit();
+
+
+
 
   fprintf(stdout, "[LCFSingleLvlLevelTest] flush\n");
   for (int num = 0; num < 1;

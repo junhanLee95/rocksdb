@@ -1071,7 +1071,7 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
   ColumnFamilyData* cfd = node->cfd_;
   std::vector<PartitionTreeNode*> children_nodes = cfd->GetChildrenNodes();
   size_t children_size = children_nodes.size();
-
+  /*
   if (children_size > 0) { // {root OR internal} nodes
 		
 
@@ -1102,6 +1102,7 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
 			iters.push_back(iter);
 		}
 
+    LogFlush(db_options_.info_log);
     status = BuildParentTable(
             dbname_, db_options_.env, *cfd->ioptions(), mutable_cf_options_,
             env_options_, cfd->table_cache(), iters,
@@ -1123,7 +1124,9 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
             sub_flush->end,
 						sub_flush->skip_starts,
 						sub_flush->skip_ends); 
-  } else { // leaf nodes
+  } else*/
+  if(children_size==0)
+  { // leaf nodes
     std::vector<InternalIterator*> memtables;
     std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
         range_del_iters;

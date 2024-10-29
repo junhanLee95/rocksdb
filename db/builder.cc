@@ -690,7 +690,7 @@ Status BuildParentTable(
       continue;
     }
     ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() end key : %s", sub_ends[i-1].ToString().c_str());
-    if(!sub_ends[i-1].empty()){
+    if(!sub_ends[i-1].empty() && sub_ends[i-1].compare(end)<0){
       start_iter[i].SetInternalKey(sub_ends[i-1], kMaxSequenceNumber, kValueTypeForSeek);
       iter->Seek(start_iter[i].GetInternalKey());
       ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() seek iter key : %s", iter->key().ToString().c_str());
