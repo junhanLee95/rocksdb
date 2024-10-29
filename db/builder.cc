@@ -676,24 +676,28 @@ Status BuildParentTable(
   Status s;
   meta->fd.file_size = 0;
 
-
   std::vector <IterKey> start_iter(children_size+1);
   for (size_t i = 0; i < children_size + 1; i++) {
     InternalIterator* iter = iters[i]->get();
     if (i == 0) {
-      if (column_family_id == 0) { // root node
+      if (column_family_id == 0 || start.empty() ) { // root node
         iter->SeekToFirst();
       } else { // internal node
         start_iter[i].SetInternalKey(start, kMaxSequenceNumber, kValueTypeForSeek);
         iter->Seek(start_iter[i].GetInternalKey());
+        ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() seek iter key : %s", iter->key().ToString().c_str());
       }
       continue;
     }
     ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() end key : %s", sub_ends[i-1].ToString().c_str());
-    start_iter[i].SetInternalKey(sub_ends[i-1], kMaxSequenceNumber, kValueTypeForSeek);
-    ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() start iter key : %s", start_iter[i].GetInternalKey().ToString().c_str());
-    iter->Seek(start_iter[i].GetInternalKey());
-    ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() seek iter key : %s", iter->key().ToString().c_str());
+    if(!sub_ends[i-1].empty()){
+      start_iter[i].SetInternalKey(sub_ends[i-1], kMaxSequenceNumber, kValueTypeForSeek);
+      iter->Seek(start_iter[i].GetInternalKey());
+      ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() seek iter key : %s", iter->key().ToString().c_str());
+    }
+    else {
+      ROCKS_LOG_INFO(ioptions.info_log, "BuildParentTable() seek iter key is not used since end key is inf");
+    }
   }
 	bool iter_valid = true;
   /*

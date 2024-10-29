@@ -869,6 +869,37 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   }
   stream.EndArray();
 
+  // check whether triggering lcf_single_lvl_level_test
+  if(compact_->compaction->output_level() == 1 &&
+     compact_->total_bytes >= 1024*1024*64*2 &&
+     db_options_.allow_column_family_split &&
+     compact_->NumOutputFiles() >= 2) {
+    Slice median_key = vstorage->GetMedianKey(*cfd->ioptions());
+    if(median_key.empty()) {
+      // if there is no median key, cancel triggering split job.
+      ROCKS_LOG_INFO(db_options_.info_log,
+          "[%s] [JOB %d] Cancel Split because median_key is empty",
+          cfd->GetName().c_str(), job_id_);
+    }
+    else{
+      // trigger split job.
+      ROCKS_LOG_INFO(db_options_.info_log,
+          "[%s] [JOB %d] Split with median_key [%s]",
+          cfd->GetName().c_str(), job_id_,
+          median_key.ToString().c_str());
+      FileMetaData* f1 = new FileMetaData;
+      f1->smallest = InternalKey(cfd->GetSmallestKey(), 0, kTypeValue);
+      f1->largest = InternalKey(median_key, 0, kTypeValue);
+      FileMetaData* f2 = new FileMetaData;
+      f2->smallest = InternalKey(median_key, 0, kTypeValue);
+      f2->largest = InternalKey(cfd->GetLargestKey(), 0, kTypeValue);
+      sst_split_files_.push_back(f1);
+      sst_split_files_.push_back(f2);
+      *cfd_to_split_ = cfd;
+    }
+  }
+
+
   CleanupCompaction();
   return status;
 }
@@ -1454,11 +1485,11 @@ Status CompactionJob::FinishCompactionOutputFile(
 
     // JH: If db allows column family split,
     // Generate split request if necessary
-		
+		/*
     if (db_options_.allow_column_family_split) {
       float threshold =  db_options_.column_family_split_threshold - 0.1 * cfd->GetPartitionTreeNode()->GetDepth();
       if (efficiency < threshold && compact_->compaction->output_level() == 1
-        /*  && current_entries >= 4096*/) {
+          && current_entries >= 4096) {
         ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Split table #%" PRIu64 " with range [%s,%s]",
                     cfd->GetName().c_str(), job_id_, output_number,
@@ -1479,7 +1510,7 @@ Status CompactionJob::FinishCompactionOutputFile(
       //auto vstorage = cfd->current()->storage_info();
       //vstorage->AddToFilesMarkedForSplit(meta);
       }
-    }
+    }*/
   }
   std::string fname;
   FileDescriptor output_fd;

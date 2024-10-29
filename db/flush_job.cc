@@ -359,6 +359,8 @@ void FlushJob::Prepare() {
 		// SetLogNumber(log_num) indicates logs with number smaller than log_num
 		// will no longer be picked up for recovery.
 		sub_edit->SetLogNumber(mems_.back()->GetNextLogNumber());
+    ROCKS_LOG_BUFFER(log_buffer_, "JH241029 [JOB %d] sub_edit log number : %d", job_context_->job_id, mems_.back()->GetNextLogNumber());
+
     sub_edit->SetColumnFamily(target_nodes_[idx]->cfd_->GetID());
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
@@ -543,6 +545,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     //fprintf(stdout, "Rollback\n");
   } else if (write_manifest_) {
     TEST_SYNC_POINT("FlushJob::InstallResults");
+    
     if (db_options_.allow_column_family_split) {
       // JH: Prepare input args to apply to MANIFEST
 
@@ -590,11 +593,6 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
       // column families.
       // This function involves LogAndApply().
 
-      /*for(auto es: edit_lists) {
-        for(auto e: es) {
-          fprintf(stdout, "%s\n" , e->DebugString().c_str());
-        } 
-      }*/
 
       status = cfd_->imm()->InstallMemtableSplitThenFlushResults(
         edit_lists, cfd_, tmp_cfds, mutable_cf_options_list, mems_, versions_,
@@ -602,12 +600,11 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
         db_directory_, log_buffer_);
     } else {
       // Replace immutable memtable with the generated Table
-      status = cfd_->imm()->TryInstallMemtableFlushResults(
-          cfd_, mutable_cf_options_, mems_, prep_tracker, versions_, db_mutex_,
-          meta_.fd.GetNumber(), &job_context_->memtables_to_free, db_directory_,
-          log_buffer_);  
+    status = cfd_->imm()->TryInstallMemtableFlushResults(
+        cfd_, mutable_cf_options_, mems_, prep_tracker, versions_, db_mutex_,
+        meta_.fd.GetNumber(), &job_context_->memtables_to_free, db_directory_,
+        log_buffer_);  
     }
-    
   }
   //fprintf(stdout, "Inside running flush : %" PRIu64 "\n", meta_.fd.GetNumber());
   if (status.ok() && file_meta != nullptr) {
