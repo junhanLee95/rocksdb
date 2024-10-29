@@ -1615,7 +1615,9 @@ void VersionStorageInfo::ComputeCompactionScore(
     const MutableCFOptions& mutable_cf_options) {
   for (int level = 0; level <= MaxInputLevel(); level++) {
     double score;
-    if (level == 0) {
+    // Branch(lcf_single_lvl_leveled) if split is enabled,
+    // compute compaction score of L0 based on the total file size.
+    if (!immutable_cf_options.allow_column_family_split && level == 0) {
       // We treat level-0 specially by bounding the number of files
       // instead of number of bytes for two reasons:
       //
