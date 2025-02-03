@@ -559,6 +559,7 @@ TESTS = \
 	sst_file_split_test \
 	lcf_put_test \
 	lcf_single_lvl_level_test \
+	compaction_cnt_test \
 	lcf_flush_test \
 	db_secondary_test \
 
@@ -1592,6 +1593,9 @@ lcf_put_test: db/lcf_put_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 lcf_single_lvl_level_test: db/lcf_single_lvl_level_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+compaction_cnt_test: db/compaction_cnt_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 lcf_flush_test: db/lcf_flush_test.o $(LIBOBJECTS) $(TESTHARNESS)

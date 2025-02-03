@@ -870,6 +870,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   stream.EndArray();
 
   // check whether triggering lcf_single_lvl_level_test
+  /*
   if(compact_->compaction->output_level() == 1 &&
      compact_->total_bytes >= 1024*1024*64*2 &&
      db_options_.allow_column_family_split &&
@@ -907,7 +908,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
       // split process.
       cfd->set_need_split(false);
     }
-  }
+  }*/
 
 
   CleanupCompaction();
@@ -1046,13 +1047,37 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     c_iter->Next();
     uint64_t extra_key_flush_cnt = c_iter->GetExtraKeyFlushCnt();
     uint64_t extra_key_compaction_cnt = c_iter->GetExtraKeyCompactionCnt();
-    /*std::cout << "[c]cur_key_f_cnt: " <<  uikey.f_cnt  << std::endl;
-    std::cout << "[c]ext_key_f_cnt: " <<  extra_key_flush_cnt <<  std::endl;
-    std::cout << "[c]cur_key_c_cnt: " <<  uikey.c_cnt  << std::endl;
-    std::cout << "[c]ext_key_c_cnt: " <<  extra_key_compaction_cnt <<  std::endl;
-    */
+    //std::cout << "[c]cur_key_f_cnt: " <<  uikey.f_cnt  << std::endl;
+    //std::cout << "[c]ext_key_f_cnt: " <<  extra_key_flush_cnt <<  std::endl;
+    //std::cout << "[c]cur_key_c_cnt: " <<  uikey.c_cnt  << std::endl;
+    //std::cout << "[c]ext_key_c_cnt: " <<  extra_key_compaction_cnt <<  std::endl;
+    
     uint64_t cur_key_flush_cnt = uikey.f_cnt + extra_key_flush_cnt;
-    uint64_t cur_key_compaction_cnt = uikey.c_cnt + extra_key_compaction_cnt+ 1;// 1 : additional w-amp;
+    //uint64_t cur_key_compaction_cnt = uikey.c_cnt + extra_key_compaction_cnt+ 1;// 1 : additional w-amp;
+    uint64_t ui_compaction_cnt = uikey.c_cnt;
+    uint64_t ex_compaction_cnt = extra_key_compaction_cnt;
+    uint64_t mask1 = 0xffff;
+    uint64_t mask2 = 0xffff0000;
+    uint64_t mask3 = 0xffff00000000;
+    uint64_t mask4 = 0xffff000000000000;
+
+    uint64_t c_cnt_arr[4] = {0,0,0,0};
+    c_cnt_arr[0] = (ui_compaction_cnt & mask1) + (ex_compaction_cnt & mask1);
+    c_cnt_arr[1] = ((ui_compaction_cnt & mask2)>>16) + ((ex_compaction_cnt & mask2)>>16);
+    c_cnt_arr[2] = ((ui_compaction_cnt & mask3)>>32) + ((ex_compaction_cnt & mask3)>>32);
+    c_cnt_arr[3] = ((ui_compaction_cnt & mask4)>>48) + ((ex_compaction_cnt & mask4)>>48);
+
+    int output_level = sub_compact->compaction->output_level();
+    if(output_level==0){
+      c_cnt_arr[3] ++;
+    }
+    else{
+      //JH: 1227 use dynawmic leveled compaction
+      //c_cnt_arr[output_level-4] ++;
+      c_cnt_arr[output_level-1] ++;
+    }
+
+    uint64_t cur_key_compaction_cnt = (c_cnt_arr[0]) | (c_cnt_arr[1] << 16) | (c_cnt_arr[2] << 32) | (c_cnt_arr[3] << 48);
 
     //std::cout << "[c]key: " << key.ToString() << std::endl;
     UpdateFlushCount(&key_str_copy, cur_key_flush_cnt);

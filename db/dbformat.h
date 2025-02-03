@@ -94,10 +94,10 @@ struct ParsedInternalKey {
   uint64_t c_cnt; // compaction count
 
   ParsedInternalKey()
-      : sequence(kMaxSequenceNumber), f_cnt(1), c_cnt(1)   // Make code analyzer happy
+      : sequence(kMaxSequenceNumber), f_cnt(1), c_cnt(0)   // Make code analyzer happy
   {}  // Intentionally left uninitialized (for speed)
   ParsedInternalKey(const Slice& u, const SequenceNumber& seq, ValueType t)
-      : user_key(u), sequence(seq), type(t), f_cnt(1), c_cnt(1){}
+      : user_key(u), sequence(seq), type(t), f_cnt(1), c_cnt(0){}
   ParsedInternalKey(const Slice& u, const SequenceNumber& seq, ValueType t, uint64_t f, uint64_t c)
       : user_key(u), sequence(seq), type(t), f_cnt(f), c_cnt(c){}
 

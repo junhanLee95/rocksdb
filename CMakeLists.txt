@@ -920,6 +920,7 @@ if(WITH_TESTS)
         db/write_controller_test.cc
         db/lcf_put_test.cc
         db/lcf_single_lvl_level_test.cc
+        db/compaction_cnt_test.cc
         db/lcf_flush_test.cc
         env/env_basic_test.cc
         env/env_test.cc

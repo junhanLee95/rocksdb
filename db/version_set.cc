@@ -1500,6 +1500,7 @@ int VersionStorageInfo::MaxOutputLevel(bool allow_ingest_behind) const {
 }
 
 void VersionStorageInfo::EstimateCompactionBytesNeeded(
+    const ImmutableCFOptions& immutable_cf_options,
     const MutableCFOptions& mutable_cf_options) {
   // Only implemented for level-based compaction
   if (compaction_style_ != kCompactionStyleLevel) {
@@ -1529,9 +1530,14 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
       level_size >= mutable_cf_options.max_bytes_for_level_base) {
     level0_compact_triggered = true;
     estimated_compaction_needed_bytes_ = level_size;
+    ROCKS_LOG_INFO(immutable_cf_options.info_log,
+        "[JH] compaction pending byte level 0 : %" PRIu64"\n", level_size);
+
     bytes_compact_to_next_level = level_size;
   } else {
     estimated_compaction_needed_bytes_ = 0;
+    ROCKS_LOG_INFO(immutable_cf_options.info_log,
+        "[JH] compaction pending byte level 0 : 0\n");
   }
 
   // Level 1 and up.
@@ -1556,6 +1562,8 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
     if (level == base_level() && level0_compact_triggered) {
       // Add base level size to compaction if level0 compaction triggered.
       estimated_compaction_needed_bytes_ += level_size;
+      ROCKS_LOG_INFO(immutable_cf_options.info_log,
+          "[JH] compaction pending byte level b : %" PRIu64"\n", level_size);
     }
     // Add size added by previous compaction
     level_size += bytes_compact_to_next_level;
@@ -1574,11 +1582,14 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
       }
       if (bytes_next_level > 0) {
         assert(level_size > 0);
-        estimated_compaction_needed_bytes_ += static_cast<uint64_t>(
+        uint64_t estimated_compaction_needed_bytes_level  = static_cast<uint64_t>(
             static_cast<double>(bytes_compact_to_next_level) *
             (static_cast<double>(bytes_next_level) /
                  static_cast<double>(level_size) +
              1));
+        ROCKS_LOG_INFO(immutable_cf_options.info_log,
+            "[JH] compaction pending byte level %d : %" PRIu64"\n", level,  estimated_compaction_needed_bytes_level);
+        estimated_compaction_needed_bytes_ +=  estimated_compaction_needed_bytes_level;
       }
     }
   }
@@ -1617,7 +1628,7 @@ void VersionStorageInfo::ComputeCompactionScore(
     double score;
     // Branch(lcf_single_lvl_leveled) if split is enabled,
     // compute compaction score of L0 based on the total file size.
-    if (!immutable_cf_options.allow_column_family_split && level == 0) {
+    if (/*!immutable_cf_options.allow_column_family_split && */level == 0) {
       // We treat level-0 specially by bounding the number of files
       // instead of number of bytes for two reasons:
       //
@@ -1690,15 +1701,38 @@ void VersionStorageInfo::ComputeCompactionScore(
         }
       }
     } else {
-      // Compute the ratio of current size to size limit.
-      uint64_t level_bytes_no_compacting = 0;
-      for (auto f : files_[level]) {
-        if (!f->being_compacted) {
-          level_bytes_no_compacting += f->compensated_file_size;
+      // JH: dynamic level 0
+      // if files_[0].size() is less than 4, set score as files_[0].size() / 4
+      // else, compute the total file size and divide into MaxBytesForLevel
+      if(immutable_cf_options.allow_column_family_split && level == 0) {
+        int num_sorted_runs = 0;
+        uint64_t total_size = 0;
+        for (auto* f : files_[level]) {
+          if (!f->being_compacted) {
+            total_size += f->compensated_file_size;
+            num_sorted_runs++;
+          }
         }
+        if (num_sorted_runs < 4){
+          score = static_cast<double>(num_sorted_runs) /
+                  mutable_cf_options.level0_file_num_compaction_trigger;
+        }
+        else{
+          score = static_cast<double>(total_size) /
+            MaxBytesForLevel(level);
+        }
+      } else {
+        // JH: Original code.
+        // Compute the ratio of current size to size limit.
+        uint64_t level_bytes_no_compacting = 0;
+        for (auto f : files_[level]) {
+          if (!f->being_compacted) {
+            level_bytes_no_compacting += f->compensated_file_size;
+          }
+        }
+        score = static_cast<double>(level_bytes_no_compacting) /
+          MaxBytesForLevel(level);
       }
-      score = static_cast<double>(level_bytes_no_compacting) /
-              MaxBytesForLevel(level);
     }
     compaction_level_[level] = level;
     compaction_score_[level] = score;
@@ -1723,7 +1757,7 @@ void VersionStorageInfo::ComputeCompactionScore(
   if (mutable_cf_options.ttl > 0) {
     ComputeExpiredTtlFiles(immutable_cf_options, mutable_cf_options.ttl);
   }
-  EstimateCompactionBytesNeeded(mutable_cf_options);
+  EstimateCompactionBytesNeeded(immutable_cf_options, mutable_cf_options);
 }
 
 void VersionStorageInfo::ComputeFilesMarkedForCompaction() {
@@ -2522,6 +2556,8 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
   // Special logic to set number of sorted runs.
   // It is to match the previous behavior when all files are in L0.
   int num_l0_count = static_cast<int>(files_[0].size());
+  int total_l0_file_size = 0;
+
   if (compaction_style_ == kCompactionStyleUniversal) {
     // For universal compaction, we use level0 score to indicate
     // compaction score for the whole DB. Adding other levels as if
@@ -2533,6 +2569,13 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
     }
   }
   set_l0_delay_trigger_count(num_l0_count);
+
+  if (ioptions.allow_column_family_split) {
+    for (int i = 0; i < num_l0_count; i++) {
+      total_l0_file_size += files_[0][i]->fd.GetFileSize();
+    } 
+  }
+  
 
   level_max_bytes_.resize(ioptions.num_levels);
   if (!ioptions.level_compaction_dynamic_level_bytes) {
@@ -2549,6 +2592,21 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
             options.MaxBytesMultiplerAdditional(i - 1));
       } else {
         level_max_bytes_[i] = options.max_bytes_for_level_base;
+        //JH: if average size of Level 0 is less than max_bytes_for_level_base/4,
+        //    set level_max_bytes as max_bytes_for_level_base.
+        //    if not,
+        //    set level_max_bytes as 4* average size of Level 0.
+        /*if (ioptions.allow_column_family_split && 
+            average_l0_file_size * 4 > options.max_bytes_for_level_base) {
+          level_max_bytes_[i] = average_l0_file_size * 4;
+          ROCKS_LOG_INFO(ioptions.info_log,
+                       "JH: reset level base as %ld\n", level_max_bytes_[i]);
+        } else{
+          if(level_max_bytes_[i] <= options.max_bytes_for_level_base) {
+            //JH: original setting
+            level_max_bytes_[i] = options.max_bytes_for_level_base;
+          }
+        }*/
       }
     }
   } else {
@@ -3103,6 +3161,8 @@ Status VersionSet::ProcessManifestWrites(
 
     if (!first_writer.edit_list.front()->IsColumnFamilyManipulation()) {
       for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
+        ROCKS_LOG_INFO(db_options_->info_log, "[JH] %s(%d) Prepare Apply\n", versions[i]->cfd_->GetName().c_str(), versions[i]->cfd_->GetID());
+
         versions[i]->PrepareApply(*mutable_cf_options_ptrs[i], true);
       }
     }

@@ -141,5 +141,20 @@ void MockTableFactory::AssertLatestFile(
   }
 }
 
+void MockTableFactory::ScanAllFiles(void) {
+  for(auto& file: file_system_.files) {
+    uint32_t id = file.first;
+    std::cout<< "--------------------" << std::endl;
+    std::cout<< "file id: " << id << std::endl;
+    for (auto& kv: file.second) {
+      ParsedInternalKey ikey;
+      std::string key, value;
+      std::tie(key, value) = kv;
+      ParseInternalKey(Slice(key), &ikey);
+      std::cout << ikey.DebugString(false) << " -> " << value << std::endl;
+    }
+  }
+}
+
 }  // namespace mock
 }  // namespace rocksdb

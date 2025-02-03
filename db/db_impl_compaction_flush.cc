@@ -2095,6 +2095,7 @@ DBImpl::BGJobLimits DBImpl::GetBGJobLimits(int max_background_flushes,
   }
   if (!parallelize_compactions) {
     // throttle background compactions until we deem necessary
+    //res.max_compactions =  std::max(1, max_background_jobs - res.max_flushes);
     res.max_compactions = 1;
   }
   return res;

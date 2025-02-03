@@ -1793,10 +1793,12 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     // compared to the old one.
     //options.target_file_size_base = old_target_file_size_base * 0.25;
 
-		/*options.max_bytes_for_level_base = 268435456  ;
-		options.level0_file_num_compaction_trigger = 40;
-		options.level0_slowdown_writes_trigger = 200;
-		options.level0_stop_writes_trigger = 360; */
+		//options.max_bytes_for_level_base = 268435456  ;
+		options.level0_file_num_compaction_trigger = 4;
+		options.level0_slowdown_writes_trigger = 20000;
+		options.level0_stop_writes_trigger = 36000; 
+    options.target_file_size_base = 64*1024*1024/16;
+    options.max_bytes_for_level_base = 256*1024*1024/16;
 
 		/*if (new_smallests[i] == "user00000000000014636574" || \
 				new_smallests[i] == "user00000000000016835323" || \

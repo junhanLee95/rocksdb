@@ -129,6 +129,7 @@ class VersionStorageInfo {
 
   // Estimate est_comp_needed_bytes_
   void EstimateCompactionBytesNeeded(
+      const ImmutableCFOptions& immutable_cf_options,
       const MutableCFOptions& mutable_cf_options);
 
   // This computes files_marked_for_compaction_ and is called by

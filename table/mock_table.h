@@ -184,6 +184,8 @@ class MockTableFactory : public TableFactory {
   // contents are equal to file_contents
   void AssertSingleFile(const stl_wrappers::KVMap& file_contents);
   void AssertLatestFile(const stl_wrappers::KVMap& file_contents);
+  //JH
+  void ScanAllFiles(void);
 
  private:
   uint32_t GetAndWriteNextID(WritableFileWriter* file) const;

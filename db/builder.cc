@@ -190,8 +190,10 @@ Status BuildTable(
 
       //std::cout << "[f]key: " << key.ToString() << std::endl;
       UpdateFlushCount(&key_str_copy, cur_key_put_cnt);
-      UpdateCompactionCount(&key_str_copy, cur_key_put_cnt);
-      //std::cout << "[f]cur_key_put_cnt(2): " << ExtractPutCount(key_str_copy) << std::endl;
+      //UpdateCompactionCount(&key_str_copy, cur_key_put_cnt);
+      UpdateCompactionCount(&key_str_copy, 0);
+      //std::cout << "[f]cur_key_flush_cnt(2): " << ExtractFlushCount(key_str_copy) << std::endl;
+      //std::cout << "[f]cur_key_compaction_cnt(2): " << ExtractCompactionCount(key_str_copy) << std::endl;
       const Slice updated_key(key_str_copy);
 
       ParseInternalKey(updated_key, &uikey);
@@ -1113,7 +1115,7 @@ Status BuildsubTable(
         break;
       }
 
-      //std::cout <<  "[" << column_family_name << "] sub add : " << user_key << std::endl;
+      //std::cout <<  "[" << column_family_name << "] sub add : " << user_key.ToString() << std::endl;
       builder->Add(key, value);
       meta->UpdateBoundaries(key, c_iter.ikey().sequence);
 

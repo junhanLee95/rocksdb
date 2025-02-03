@@ -167,20 +167,37 @@ Status Replayer::Replay() {
     return s;
   }
 
-  std::chrono::system_clock::time_point replay_epoch =
+  //std::chrono::system_clock::time_point replay_epoch =
       std::chrono::system_clock::now();
   WriteOptions woptions;
-  ReadOptions roptions;
+  //ReadOptions roptions;
   Trace trace;
   uint64_t ops = 0;
-  Iterator* single_iter = nullptr;
+  //Iterator* single_iter = nullptr;
   while (s.ok()) {
     trace.reset();
     s = ReadTrace(&trace);
     if (!s.ok()) {
       break;
     }
+    if (trace.type == kTraceWrite) {
+      WriteBatch batch(trace.payload);
+      db_->Write(woptions, &batch);
+      ops++;
+    }
+    else if (trace.type == kTraceGet || trace.type == kTraceIteratorSeek || trace.type == kTraceIteratorSeekForPrev){
+      uint32_t cf_id = 0;
+      Slice key;
+      DecodeCFAndKey(trace.payload, &cf_id, &key);
+      std::string s_value(100, '0');
+      Slice value(s_value);
+      WriteBatch batch;
 
+      batch.Put(cf_id, key, value);
+      db_->Write(woptions, &batch);
+      ops++;
+    }
+        /*
     std::this_thread::sleep_until(
         replay_epoch + std::chrono::microseconds(trace.ts - header.ts));
     if (trace.type == kTraceWrite) {
@@ -240,6 +257,7 @@ Status Replayer::Replay() {
       // TODO: Add some validations later.
       break;
     }
+    */
   }
 
   if (s.IsIncomplete()) {

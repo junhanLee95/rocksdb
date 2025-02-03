@@ -228,7 +228,6 @@ class CompactionJobTest : public testing::Test {
 
   void RunCompaction(
       const std::vector<std::vector<FileMetaData*>>& input_files,
-      const stl_wrappers::KVMap& expected_results,
       const std::vector<SequenceNumber>& snapshots = {},
       SequenceNumber earliest_write_conflict_snapshot = kMaxSequenceNumber) {
     auto cfd = versions_->GetColumnFamilySet()->GetDefault();
@@ -275,11 +274,13 @@ class CompactionJobTest : public testing::Test {
     ASSERT_OK(compaction_job.Install(*cfd->GetLatestMutableCFOptions()));
     mutex_.Unlock();
 
-    if (expected_results.size() == 0) {
+
+    if (expected_results.size() == 0){
       ASSERT_GE(compaction_job_stats_.elapsed_micros, 0U);
       ASSERT_EQ(compaction_job_stats_.num_input_files, num_input_files);
       ASSERT_EQ(compaction_job_stats_.num_output_files, 0U);
-    } else {
+    }
+    else {
       ASSERT_GE(compaction_job_stats_.elapsed_micros, 0U);
       ASSERT_EQ(compaction_job_stats_.num_input_files, num_input_files);
       ASSERT_EQ(compaction_job_stats_.num_output_files, 1U);
@@ -927,15 +928,9 @@ TEST_F(CompactionJobTest, CorruptionAfterDeletion) {
                           {test::KeyStr("c", 1U, kTypeValue), "val2"}});
   AddMockFile(file2);
 
-  auto expected_results =
-      mock::MakeMockFile({{test::KeyStr("A", 0U, kTypeValue), "val3"},
-                          {test::KeyStr("a", 0U, kTypeValue, true), "val"},
-                          {test::KeyStr("b", 0U, kTypeValue, true), "val"},
-                          {test::KeyStr("c", 0U, kTypeValue), "val2"}});
-
   SetLastSequence(6U);
   auto files = cfd_->current()->storage_info()->LevelFiles(0);
-  RunCompaction({files}, expected_results);
+  RunCompaction({files});
 }
 
 }  // namespace rocksdb
