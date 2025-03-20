@@ -45,7 +45,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   options.create_if_missing = true;
   options.max_background_jobs =32;
   options.max_write_buffer_number =3;
-  options.allow_column_family_split = false;
+  options.allow_column_family_split = true;
   options.column_family_min_key_range = 0; // set no limit of splitting
   //options.atomic_flush = true;
 
@@ -54,8 +54,8 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   ASSERT_OK(DB::Open(options, db_name, &db));
 
   ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
-  //ColumnFamilyData* cfd =
-  //    static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
 
   Random rnd(301);
   // Prepare one Level 1 sstable file

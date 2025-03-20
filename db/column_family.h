@@ -384,11 +384,13 @@ class ColumnFamilyData {
   // Protected by DB mutex
   void set_queued_for_flush(bool value) { queued_for_flush_ = value; }
   void set_queued_for_compaction(bool value) { queued_for_compaction_ = value; }
+  void set_queued_for_l0_compaction(bool value) { queued_for_l0_compaction_ = value; }
   void set_queued_for_split(bool value) { queued_for_split_ = value; }
   void set_need_split(bool value) { need_split_ = value; }
   bool need_split() { return need_split_; }
   bool queued_for_flush() { return queued_for_flush_; }
   bool queued_for_compaction() { return queued_for_compaction_; }
+  bool queued_for_l0_compaction() { return queued_for_l0_compaction_; }
   bool queued_for_split() { return queued_for_split_; }
 
 
@@ -518,6 +520,10 @@ class ColumnFamilyData {
   // If true --> this ColumnFamily is currently present in
   // DBImpl::compaction_queue_
   bool queued_for_compaction_;
+
+  // If true --> this ColumnFamily is currently present in
+  // DBImpl::l0_compaction_queue_
+  bool queued_for_l0_compaction_;
 
   // If true --> this ColumnFamily is currently present in
   // DBImpl::split_queue_

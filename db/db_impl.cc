@@ -555,6 +555,13 @@ Status DBImpl::CloseHelper() {
       delete cfd;
     }
   }
+  while (!l0_compaction_queue_.empty()) {
+    auto cfd = PopFirstFromL0CompactionQueue();
+    if (cfd->Unref()) {
+      delete cfd;
+    }
+  }
+
 
   if (default_cf_handle_ != nullptr) {
     // we need to delete handle outside of lock because it does its own locking

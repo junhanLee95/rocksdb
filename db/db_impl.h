@@ -499,6 +499,7 @@ class DBImpl : public DB {
 
   struct BGJobLimits {
     int max_flushes;
+    int max_l0_compactions; // LCF
     int max_compactions;
   };
   // Returns maximum background flushes and compactions allowed to be scheduled
@@ -507,7 +508,8 @@ class DBImpl : public DB {
   static BGJobLimits GetBGJobLimits(int max_background_flushes,
                                     int max_background_compactions,
                                     int max_background_jobs,
-                                    bool parallelize_compactions);
+                                    bool parallelize_compactions,
+                                    bool allow_column_family_split = false /* for lcf */);
 
   // move logs pending closing from job_context to the DB queue and
   // schedule a purge
@@ -1206,6 +1208,7 @@ class DBImpl : public DB {
   void SchedulePendingSplit(ColumnFamilyData* cfd, const SplitRequest& req);
   void SchedulePendingPurge(std::string fname, std::string dir_to_sync,
                             FileType type, uint64_t number, int job_id);
+  static void BGWorkL0Compaction(void* arg);
   static void BGWorkCompaction(void* arg);
   // Runs a pre-chosen universal compaction involving bottom level in a
   // separate, bottom-pri thread pool.
@@ -1214,9 +1217,12 @@ class DBImpl : public DB {
   static void BGWorkSplit(void* arg);
   static void BGWorkPurge(void* arg);
   static void UnscheduleSplitCallback(void* arg);
+  static void UnscheduleL0CompactionCallback(void* arg);
   static void UnscheduleCompactionCallback(void* arg);
   static void UnscheduleFlushCallback(void* arg);
   void BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
+                                Env::Priority thread_pri);
+  void BackgroundCallL0Compaction(PrepickedCompaction* prepicked_compaction,
                                 Env::Priority thread_pri);
   void BackgroundCallFlush(Env::Priority thread_pri);
   void BackgroundCallSplit(Env::Priority thread_pri);
@@ -1224,7 +1230,10 @@ class DBImpl : public DB {
   Status BackgroundSplit(bool* madeProgress, JobContext* job_context,
                          LogBuffer* log_buffer,
                          Env::Priority thread_pri);
-
+  Status BackgroundL0Compaction(bool* madeProgress, JobContext* job_context,
+                              LogBuffer* log_buffer,
+                              PrepickedCompaction* prepicked_compaction,
+                              Env::Priority thread_pri);
   Status BackgroundCompaction(bool* madeProgress, JobContext* job_context,
                               LogBuffer* log_buffer,
                               PrepickedCompaction* prepicked_compaction,
@@ -1269,10 +1278,16 @@ class DBImpl : public DB {
 
   // helper functions for adding and removing from flush & compaction queues
   void AddToCompactionQueue(ColumnFamilyData* cfd);
+  void AddToL0CompactionQueue(ColumnFamilyData* cfd);
   void AddToSplitQueue(const SplitRequest& req);
   ColumnFamilyData* PopFirstFromCompactionQueue();
+  ColumnFamilyData* PopFirstFromL0CompactionQueue();
   SplitRequest PopFirstFromSplitQueue();
   FlushRequest PopFirstFromFlushQueue();
+
+  // Pick the first unthrottled compaction with task token from l0 queue.
+  ColumnFamilyData* PickL0CompactionFromQueue(
+      std::unique_ptr<TaskLimiterToken>* token, LogBuffer* log_buffer);
 
   // Pick the first unthrottled compaction with task token from queue.
   ColumnFamilyData* PickCompactionFromQueue(
@@ -1513,6 +1528,9 @@ class DBImpl : public DB {
   // ColumnFamilyData::pending_compaction_ == true)
   std::deque<ColumnFamilyData*> compaction_queue_;
 
+  // LCF: compaction for partitioned l0 column famililies.
+  std::deque<ColumnFamilyData*> l0_compaction_queue_;
+
   // TODO: Maybe I should add split_queue_
   std::deque<SplitRequest> split_queue_;
 
@@ -1527,17 +1545,24 @@ class DBImpl : public DB {
   std::deque<log::Writer*> logs_to_free_queue_;
   int unscheduled_flushes_;
   int unscheduled_compactions_;
+  int unscheduled_l0_compactions_;
   int unscheduled_splits_;
 
   // count how many background compactions are running or have been scheduled in
   // the BOTTOM pool
   int bg_bottom_compaction_scheduled_;
 
+  // count how many background l0 compactions are running or have been scheduled
+  int bg_l0_compaction_scheduled_;
+
   // count how many background compactions are running or have been scheduled
   int bg_compaction_scheduled_;
 
   // stores the number of compactions are currently running
   int num_running_compactions_;
+
+  // stores the number of l0 compactions are currently running
+  int num_running_l0_compactions_;
 
   // number of background memtable flush jobs, submitted to the HIGH pool
   int bg_flush_scheduled_;
