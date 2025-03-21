@@ -216,6 +216,19 @@ class Compaction {
   // are non-overlapping and can be trivially moved.
   bool is_trivial_move() const { return is_trivial_move_; }
 
+  // Used when allow_trivial_move option is set in
+  // Universal compaction. If all the input files are
+  // non overlapping, then is_trivial_move_ variable
+  // will be set true, else false
+  void set_is_lcf_trivial_move(bool lcf_trivial_move) {
+    is_lcf_trivial_move_ = lcf_trivial_move;
+  }
+
+  // Used when allow_trivial_move option is set in
+  // Universal compaction. Returns true, if the input files
+  // are non-overlapping and can be trivially moved.
+  bool is_lcf_trivial_move() const { return is_lcf_trivial_move_; }
+
   // How many total levels are there?
   int number_levels() const { return number_levels_; }
 
@@ -359,6 +372,9 @@ class Compaction {
   // True if we can do trivial move in Universal multi level
   // compaction
   bool is_trivial_move_;
+
+  // LCF: True if we can do trivial move inter-column family
+  bool is_lcf_trivial_move_;
 
   // Does input compression match the output compression?
   bool InputCompressionMatchesOutput() const;

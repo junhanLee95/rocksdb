@@ -60,6 +60,12 @@ class UniversalCompactionPicker : public CompactionPicker {
     bool being_compacted;
   };
 
+  // LCF: Pick Universal compaction to limit total size <= max_bytes_for_level_base
+  Compaction* PickCompactionToReduceTotalSize(
+      const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage, double score,
+      const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);
+
   // Pick Universal compaction to limit read amplification
   Compaction* PickCompactionToReduceSortedRuns(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,

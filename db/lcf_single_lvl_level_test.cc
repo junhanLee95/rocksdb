@@ -45,9 +45,12 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   options.create_if_missing = true;
   options.max_background_jobs =32;
   options.max_write_buffer_number =3;
+  options.compression = kNoCompression;
   options.allow_column_family_split = true;
   options.column_family_min_key_range = 0; // set no limit of splitting
   //options.atomic_flush = true;
+
+  int kCnt = 280000;
 
   std::string db_name = test::PerThreadDBPath("test_db_one_two");
   DB* db;
@@ -79,7 +82,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   // trigger L0 compaction
   for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
        num ++) {
-    for (int i=0; i<1000; i++) {
+    for (int i=0; i<kCnt; i++) {
       std::string k = "user" + std::to_string(i);
       std::string v = "v" + std::to_string(i) ;
       db->Put(WriteOptions(), cfh, k, v);  
@@ -90,7 +93,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   // Prepare #1 Level 1
   for (int num = 0; num < 1;
        num ++) {
-    for (int i=0; i<1000; i++) {
+    for (int i=0; i<kCnt; i++) {
       std::string k = "user" + std::to_string(i);
       std::string v = "v" + std::to_string(i) ;
     }
@@ -98,7 +101,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   }
   
   // Prepare Memtable
-  for (int i=0; i<1000; i++) {
+  for (int i=0; i<kCnt; i++) {
     std::string k = RandomString(&rnd, 8);
     std::string v = RandomString(&rnd, 200);
     db->Put(WriteOptions(), cfh, k, v);  
@@ -119,7 +122,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   fprintf(stdout, "[LCFSingleLvlLevelTest] flush\n");
   for (int num = 0; num < 1;
        num ++) {
-    for (int i=0; i<1000; i++) {
+    for (int i=0; i<kCnt; i++) {
       std::string k = RandomString(&rnd, 9);
       std::string v = RandomString(&rnd, 200);
       db->Put(WriteOptions(), cfh, k, v);  
@@ -131,7 +134,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   // trigger L0 compaction
   for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
        num ++) {
-    for (int i=0; i<1000; i++) {
+    for (int i=0; i<kCnt; i++) {
       std::string k = RandomString(&rnd, 8);
       std::string v = RandomString(&rnd, 200);
       db->Put(WriteOptions(), cfh, k, v);  
@@ -142,7 +145,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   // Prepare #1 Level 1
   for (int num = 0; num < 1;
        num ++) {
-    for (int i=0; i<1000; i++) {
+    for (int i=0; i<kCnt; i++) {
       std::string k = RandomString(&rnd, 8);
       std::string v = RandomString(&rnd, 200);
       db->Put(WriteOptions(), cfh, k, v);  

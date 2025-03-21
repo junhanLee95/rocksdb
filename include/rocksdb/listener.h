@@ -65,6 +65,8 @@ enum class SplitReason : int {
   kLevelL0FilesNum,
   // [Level] total size of level > MaxBytesForLevel()
   kLevelMaxLevelSize,
+  // [Universal] [LCF] Compacting for size total > MaxBytesForLevel()
+  kUniversalSizeTotal,
   // [Universal] Compacting for size amplification
   kUniversalSizeAmplification,
   // [Universal] Compacting for size ratio
@@ -102,6 +104,8 @@ enum class CompactionReason : int {
   kLevelL0FilesNum,
   // [Level] total size of level > MaxBytesForLevel()
   kLevelMaxLevelSize,
+  // [Universal] [LCF] Compacting for size total > MaxBytesForLevel()
+  kUniversalSizeTotal,
   // [Universal] Compacting for size amplification
   kUniversalSizeAmplification,
   // [Universal] Compacting for size ratio

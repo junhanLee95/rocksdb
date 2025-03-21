@@ -75,6 +75,8 @@ const char* GetSplitReasonString(CompactionReason compaction_reason) {
       return "LevelL0FilesNum";
     case CompactionReason::kLevelMaxLevelSize:
       return "LevelMaxLevelSize";
+    case CompactionReason::kUniversalSizeTotal:
+      return "UniversalSizeTotal";
     case CompactionReason::kUniversalSizeAmplification:
       return "UniversalSizeAmplification";
     case CompactionReason::kUniversalSizeRatio:

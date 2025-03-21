@@ -283,11 +283,22 @@ Compaction* UniversalCompactionPicker::PickCompaction(
   if (sorted_runs.size() >=
       static_cast<size_t>(
           mutable_cf_options.level0_file_num_compaction_trigger)) {
-    if ((c = PickCompactionToReduceSizeAmp(cf_name, mutable_cf_options,
+    if (ioptions_.allow_column_family_split &&
+        (c = PickCompactionToReduceTotalSize(cf_name, mutable_cf_options,
+                                           vstorage, score, sorted_runs,
+                                           log_buffer)) != nullptr) {
+      ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: LCF compacting for size total\n",
+                       cf_name.c_str());
+      c->set_is_lcf_trivial_move(true);
+      assert(c->is_lcf_trivial_move());
+    }
+    else if ((c = PickCompactionToReduceSizeAmp(cf_name, mutable_cf_options,
                                            vstorage, score, sorted_runs,
                                            log_buffer)) != nullptr) {
       ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: compacting for size amp\n",
                        cf_name.c_str());
+
+      assert(!c->is_lcf_trivial_move());
     } else {
       // Size amplification is within limits. Try reducing read
       // amplification while maintaining file size ratios.
@@ -300,6 +311,7 @@ Compaction* UniversalCompactionPicker::PickCompaction(
         ROCKS_LOG_BUFFER(log_buffer,
                          "[%s] Universal: compacting for size ratio\n",
                          cf_name.c_str());
+        assert(!c->is_lcf_trivial_move());
       } else {
         // Size amplification and file size ratios are within configured limits.
         // If max read amplification is exceeding configured limits, then force
@@ -330,6 +342,8 @@ Compaction* UniversalCompactionPicker::PickCompaction(
             ROCKS_LOG_BUFFER(log_buffer,
                              "[%s] Universal: compacting for file num -- %u\n",
                              cf_name.c_str(), num_files);
+
+            assert(!c->is_lcf_trivial_move());
           }
         }
       }
@@ -343,6 +357,7 @@ Compaction* UniversalCompactionPicker::PickCompaction(
       ROCKS_LOG_BUFFER(log_buffer,
                        "[%s] Universal: delete triggered compaction\n",
                        cf_name.c_str());
+      assert(!c->is_lcf_trivial_move());
     }
   }
 
@@ -642,6 +657,146 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceSortedRuns(
       score, false /* deletion_compaction */, compaction_reason);
 }
 
+// LCF
+// if total size exceeeds the max_level_size_base, then do a compaction
+// of the candidate files all the way upto the earliest
+// base file (overrides configured values of file-size ratios,
+// min_merge_width and max_merge_width).
+// and move this to parent column family
+//
+Compaction* UniversalCompactionPicker::PickCompactionToReduceTotalSize(
+    const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
+    VersionStorageInfo* vstorage, double score,
+    const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer) {
+
+  uint64_t max_bytes = mutable_cf_options.max_bytes_for_level_base; // total size should be less than $max_bytes$
+  ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal:PickCompactionToReduceTotalsize max_bytes_for_level_base : %ld\n", cf_name.c_str(), max_bytes);
+
+  unsigned int candidate_count = 0;
+  uint64_t candidate_size = 0;
+  size_t start_index = 0;
+  const SortedRun* sr = nullptr;
+
+  if (sorted_runs.back().being_compacted) {
+    return nullptr;
+  }
+
+  // Skip files that are already being compacted
+  for (size_t loop = 0; loop < sorted_runs.size() - 1; loop++) {
+    sr = &sorted_runs[loop];
+    if (!sr->being_compacted) {
+      start_index = loop;  // Consider this as the first candidate.
+      break;
+    }
+    char file_num_buf[kFormatFileNumberBufSize];
+    sr->Dump(file_num_buf, sizeof(file_num_buf), true);
+    ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: skipping %s[%d] compacted %s",
+                     cf_name.c_str(), file_num_buf, loop,
+                     " cannot be a candidate to reduce size total.\n");
+    sr = nullptr;
+  }
+
+  if (sr == nullptr) {
+    return nullptr;  // no candidate files
+  }
+  {
+    char file_num_buf[kFormatFileNumberBufSize];
+    sr->Dump(file_num_buf, sizeof(file_num_buf), true);
+    ROCKS_LOG_BUFFER(
+        log_buffer,
+        "[%s] Universal: First candidate %s[%" ROCKSDB_PRIszt "] %s",
+        cf_name.c_str(), file_num_buf, start_index, " to reduce size amp.\n");
+  }
+
+  // keep adding up all the remaining files
+  for (size_t loop = start_index; loop < sorted_runs.size() - 1; loop++) {
+    sr = &sorted_runs[loop];
+    if (sr->being_compacted) {
+      char file_num_buf[kFormatFileNumberBufSize];
+      sr->Dump(file_num_buf, sizeof(file_num_buf), true);
+      ROCKS_LOG_BUFFER(
+          log_buffer, "[%s] Universal: Possible candidate %s[%d] %s",
+          cf_name.c_str(), file_num_buf, start_index,
+          " is already being compacted. No size amp reduction possible.\n");
+      return nullptr;
+    }
+    candidate_size += sr->compensated_file_size;
+    candidate_count++;
+  }
+  if (candidate_count == 0) {
+    return nullptr;
+  }
+
+  // size of earliest file
+  uint64_t earliest_file_size = sorted_runs.back().size;
+
+  if (candidate_size  < max_bytes) {
+    ROCKS_LOG_BUFFER(
+        log_buffer,
+        "[%s] Universal: size total not needed. newer-files-total-size %" PRIu64
+        " earliest-file-size %" PRIu64,
+        cf_name.c_str(), candidate_size, earliest_file_size);
+    return nullptr;
+  } else {
+    ROCKS_LOG_BUFFER(
+        log_buffer,
+        "[%s] Universal: size total needed. newer-files-total-size %" PRIu64
+        " earliest-file-size %" PRIu64,
+        cf_name.c_str(), candidate_size, earliest_file_size);
+  }
+  assert(start_index < sorted_runs.size() - 1);
+
+  // Estimate total file size
+  uint64_t estimated_total_size = 0;
+  for (size_t loop = start_index; loop < sorted_runs.size(); loop++) {
+    estimated_total_size += sorted_runs[loop].size;
+  }
+  uint32_t path_id =
+      GetPathId(ioptions_, mutable_cf_options, estimated_total_size);
+  int start_level = sorted_runs[start_index].level;
+
+  std::vector<CompactionInputFiles> inputs(vstorage->num_levels());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    inputs[i].level = start_level + static_cast<int>(i);
+  }
+  // We always compact all the files, so always compress.
+  for (size_t loop = start_index; loop < sorted_runs.size(); loop++) {
+    auto& picking_sr = sorted_runs[loop];
+    if (picking_sr.level == 0) {
+      FileMetaData* f = picking_sr.file;
+      inputs[0].files.push_back(f);
+    } else {
+      auto& files = inputs[picking_sr.level - start_level].files;
+      for (auto* f : vstorage->LevelFiles(picking_sr.level)) {
+        files.push_back(f);
+      }
+    }
+    char file_num_buf[256];
+    picking_sr.DumpSizeInfo(file_num_buf, sizeof(file_num_buf), loop);
+    ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: size total picking %s",
+                     cf_name.c_str(), file_num_buf);
+  }
+
+  // output files at the bottom most level, unless it's reserved
+  int output_level = vstorage->num_levels() - 1;
+  // last level is reserved for the files ingested behind
+  if (ioptions_.allow_ingest_behind) {
+    assert(output_level > 1);
+    output_level--;
+  }
+
+  return new Compaction(
+      vstorage, ioptions_, mutable_cf_options, std::move(inputs), output_level,
+      MaxFileSizeForLevel(mutable_cf_options, output_level,
+                          kCompactionStyleUniversal),
+      /* max_grandparent_overlap_bytes */ LLONG_MAX, path_id,
+      GetCompressionType(ioptions_, vstorage, mutable_cf_options, output_level,
+                         1),
+      GetCompressionOptions(ioptions_, vstorage, output_level),
+      /* max_subcompactions */ 0, /* grandparents */ {}, /* is manual */ false,
+      score, false /* deletion_compaction */,
+      CompactionReason::kUniversalSizeTotal);
+}
 // Look at overall size amplification. If size amplification
 // exceeeds the configured value, then do a compaction
 // of the candidate files all the way upto the earliest
