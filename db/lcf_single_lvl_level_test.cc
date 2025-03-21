@@ -57,6 +57,125 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   ColumnFamilyData* cfd =
       static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
 
+  // FIRST Split
+  std::vector<FileMetaData*> infos;
+
+  FileMetaData* f1 = new FileMetaData;
+  std::string s1 = "";
+  std::string l1 = "";
+  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+  infos.push_back(f1);
+
+  fprintf(stdout, "[LCFSingleLvlLevelTest] First Split Start [%s, %s] \n", s1.c_str(), l1.c_str());
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
+  fprintf(stdout, "[LCFSingleLvlLevelTest] First Split Finish \n");
+  infos.clear();
+ 
+  dbfull(db)->TEST_WaitForSplit();
+
+  Random rnd(301);
+  // Prepare one Level 1 sstable file
+  // trigger L0 compaction
+  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = "user" + std::to_string(i);
+      std::string v = "v" + std::to_string(i) ;
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  dbfull(db)->TEST_WaitForCompact();
+  // Prepare #1 Level 1
+  for (int num = 0; num < 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = "user" + std::to_string(i);
+      std::string v = "v" + std::to_string(i) ;
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  
+  // Prepare Memtable
+  for (int i=0; i<1000; i++) {
+    std::string k = RandomString(&rnd, 8);
+    std::string v = RandomString(&rnd, 200);
+    db->Put(WriteOptions(), cfh, k, v);  
+  }
+
+  std::string val0;
+  dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level0", &val0);
+  int num_level0 = std::stoi(val0);
+  std::string val1;
+  dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level1", &val1);
+  int num_level1 = std::stoi(val1);
+
+  fprintf(stdout, "Level 0 has : %d\n",num_level0);
+  fprintf(stdout, "Level 1 has : %d\n",num_level1);
+
+
+  
+  fprintf(stdout, "[LCFSingleLvlLevelTest] flush\n");
+  for (int num = 0; num < 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = RandomString(&rnd, 9);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+
+  // Prepare one Level 1 sstable file
+  // trigger L0 compaction
+  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  dbfull(db)->TEST_WaitForCompact();
+  // Prepare #1 Level 1
+  for (int num = 0; num < 1;
+       num ++) {
+    for (int i=0; i<1000; i++) {
+      std::string k = RandomString(&rnd, 8);
+      std::string v = RandomString(&rnd, 200);
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+ 
+ 
+  fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
+  //dbfull(db)->DestroyLogicalColumnFamilies();
+
+  delete db;
+  db = nullptr;
+}
+
+/*
+TEST_F(LCFSingleLvlLevelTest, Basic) {
+  Options options;
+  options.create_if_missing = true;
+  options.max_background_jobs =32;
+  options.max_write_buffer_number =3;
+  options.allow_column_family_split = true;
+  options.column_family_min_key_range = 0; // set no limit of splitting
+  //options.atomic_flush = true;
+
+  std::string db_name = test::PerThreadDBPath("test_db_one_two");
+  DB* db;
+  ASSERT_OK(DB::Open(options, db_name, &db));
+
+  ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
+  ColumnFamilyData* cfd =
+      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
   Random rnd(301);
   // Prepare one Level 1 sstable file
   // trigger L0 compaction
@@ -187,7 +306,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
 
   delete db;
   db = nullptr;
-}
+}*/
 /*
 TEST_F(LCFSingleLvlLevelTest, OneTwoSplit) {
   Options options;
