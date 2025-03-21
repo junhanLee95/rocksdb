@@ -43,6 +43,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   Status s;
   Status persistent_options_status;
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
+  cf_options.compaction_style = kCompactionStyleUniversal;
   size_t split_cnt = sst_split_files.size();
 
   std::string meta_str = "";

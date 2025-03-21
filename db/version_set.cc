@@ -20,6 +20,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <fstream>
 #include <unordered_map>
 #include <vector>
 #include "db/compaction.h"
@@ -2556,7 +2557,6 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
   // Special logic to set number of sorted runs.
   // It is to match the previous behavior when all files are in L0.
   int num_l0_count = static_cast<int>(files_[0].size());
-  int total_l0_file_size = 0;
 
   if (compaction_style_ == kCompactionStyleUniversal) {
     // For universal compaction, we use level0 score to indicate
@@ -2570,12 +2570,6 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
   }
   set_l0_delay_trigger_count(num_l0_count);
 
-  if (ioptions.allow_column_family_split) {
-    for (int i = 0; i < num_l0_count; i++) {
-      total_l0_file_size += files_[0][i]->fd.GetFileSize();
-    } 
-  }
-  
 
   level_max_bytes_.resize(ioptions.num_levels);
   if (!ioptions.level_compaction_dynamic_level_bytes) {
@@ -3289,7 +3283,6 @@ Status VersionSet::ProcessManifestWrites(
           ROCKS_LOG_INFO(db_options_->info_log,
               "Column family(2) create target_file_size_base: %ld",
               new_cf_options->target_file_size_base );
-
           const ColumnFamilyOptions cf_options = BuildColumnFamilyOptions(*new_cf_options,
                                                      writer.mutable_cf_options);
           auto cfd_out = CreateColumnFamily(cf_options, writer.edit_list.front());
@@ -4970,7 +4963,7 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
   // by avoiding calling "delete" explicitly (~Version is private)
   dummy_versions->Ref();
   ColumnFamilyData* new_cfd = nullptr;
-  if (edit->smallest_user_key_.empty() && edit->largest_user_key_.empty() ) {
+  if (edit->smallest_user_key_.empty() && edit->largest_user_key_.empty()) {
     new_cfd = column_family_set_->CreateColumnFamily(
         edit->column_family_name_, edit->column_family_, dummy_versions,
         cf_options);

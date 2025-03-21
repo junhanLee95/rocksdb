@@ -1789,40 +1789,11 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     //const MutableCFOptions* old_options = cfd->GetLatestMutableCFOptions();
     //uint64_t old_target_file_size_base = old_options->target_file_size_base;
     Options options;
-    // JH: for now, we assume that new column family has one-fourth size of L1
-    // compared to the old one.
-    //options.target_file_size_base = old_target_file_size_base * 0.25;
+    options.compaction_style = kCompactionStyleUniversal;
 
-		//options.max_bytes_for_level_base = 268435456  ;
-		options.level0_file_num_compaction_trigger = 4;
-		options.level0_slowdown_writes_trigger = 20000;
-		options.level0_stop_writes_trigger = 36000; 
-    options.target_file_size_base = 64*1024*1024/16;
-    options.max_bytes_for_level_base = 256*1024*1024/16;
-
-		/*if (new_smallests[i] == "user00000000000014636574" || \
-				new_smallests[i] == "user00000000000016835323" || \
-				new_smallests[i] == "user00000000000030170722" || \
-				new_smallests[i] == "user00000000000032404879") {
-			options.target_file_size_base = 64*1024*1024 ;
-			//options.max_bytes_for_level_base = options.target_file_size_base * 4;
-			options.max_bytes_for_level_base = 268435456  ;
-			options.level0_file_num_compaction_trigger = 40;
-			options.level0_slowdown_writes_trigger = 200;
-			options.level0_stop_writes_trigger = 360;
-		} else {
-			options.target_file_size_base = 64*1024*1024 ;
-			//options.max_bytes_for_level_base = options.target_file_size_base * 4;
-			options.max_bytes_for_level_base = 2684354560 ;
-			options.level0_file_num_compaction_trigger = 4*10;
-			options.level0_slowdown_writes_trigger = 20*10;
-			options.level0_stop_writes_trigger = 36*10;
-
-	  }*/
     ROCKS_LOG_INFO(db_options_->info_log.get(),
         "PrepareVersionEditsToSplit: new target file size base : %ld", 
         options.target_file_size_base);
-
     cf_options.push_back(new MutableCFOptions(options));
     ROCKS_LOG_INFO(db_options_->info_log.get(),
         "PrepareVersionEditsToSplit: new target file size base(2) : %ld", 
@@ -1846,7 +1817,11 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     edits_out.push_back(&edit_out[*new_cf_cnt + i]);
     edit_lists.push_back(edits_out);
     edits_out.clear();
-    cf_options.push_back(cfd->GetLatestMutableCFOptions());
+
+    Options options;
+    options.compaction_style = kCompactionStyleUniversal;
+
+    cf_options.push_back(new MutableCFOptions(options));
   }
   return;
 }

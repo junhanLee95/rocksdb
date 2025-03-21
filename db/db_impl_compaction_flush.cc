@@ -3434,7 +3434,6 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
                              c->column_family_data());
     int output_level __attribute__((__unused__));
     output_level = c->output_level();
-    assert(output_level == 1); // output_level must be 1 since this is l0 compaction
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCompaction:NonTrivial",
                              &output_level);
     std::vector<SequenceNumber> snapshot_seqs;
