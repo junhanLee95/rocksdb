@@ -152,6 +152,7 @@ struct MutableCFOptions {
         target_file_size_base(options.target_file_size_base),
         target_file_size_multiplier(options.target_file_size_multiplier),
         max_bytes_for_level_base(options.max_bytes_for_level_base),
+        inter_cf_base_level(options.inter_cf_base_level),
         max_bytes_for_level_multiplier(options.max_bytes_for_level_multiplier),
         ttl(options.ttl),
         max_bytes_for_level_multiplier_additional(
@@ -187,6 +188,7 @@ struct MutableCFOptions {
         target_file_size_base(0),
         target_file_size_multiplier(0),
         max_bytes_for_level_base(0),
+        inter_cf_base_level(1),
         max_bytes_for_level_multiplier(0),
         ttl(0),
         compaction_options_fifo(),
@@ -237,6 +239,7 @@ struct MutableCFOptions {
   uint64_t target_file_size_base;
   int target_file_size_multiplier;
   uint64_t max_bytes_for_level_base;
+  int inter_cf_base_level; // for LCF
   double max_bytes_for_level_multiplier;
   uint64_t ttl;
   std::vector<int> max_bytes_for_level_multiplier_additional;

@@ -262,6 +262,8 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
 
   (void)parent_vstorage;
 
+  ROCKS_LOG_BUFFER(log_buffer, "[%s] 250325 Universal inter-cf: base level : %d\n",
+      cf_name.c_str(), mutable_cf_options.inter_cf_base_level);
   if (sorted_runs.size() == 0 ||
       (vstorage->FilesMarkedForCompaction().empty() &&
        sorted_runs.size() < (unsigned int)mutable_cf_options

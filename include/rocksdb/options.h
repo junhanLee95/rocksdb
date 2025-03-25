@@ -267,6 +267,8 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // Dynamically changeable through SetOptions() API
   uint64_t max_bytes_for_level_base = 256 * 1048576;
 
+  int inter_cf_base_level = 1; // LCF
+
   // Disable automatic compactions. Manual compactions can still
   // be issued on this column family
   //
