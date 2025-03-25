@@ -37,6 +37,7 @@ class MemTable;
 class MemTableListVersion;
 class CompactionPicker;
 class Compaction;
+class InterCFCompaction;
 class SplitPicker;
 class InternalKey;
 class InternalStats;
@@ -282,6 +283,10 @@ class ColumnFamilyData {
   // REQUIRES: DB mutex held
   Compaction* PickCompaction(const MutableCFOptions& mutable_options,
                              LogBuffer* log_buffer);
+  // [LCF] REQUIRES: DB mutex held
+  InterCFCompaction* PickInterCFCompaction(const MutableCFOptions& mutable_options,
+                             LogBuffer* log_buffer);
+
   // REQUIRES: DB mutex held
   bool NeedsSplit() const;
 

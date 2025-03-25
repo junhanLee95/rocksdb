@@ -21,6 +21,7 @@
 
 #include "db/column_family.h"
 #include "db/compaction_job.h"
+#include "db/inter_cf_compaction_job.h"
 #include "db/split_job.h"
 #include "db/dbformat.h"
 #include "db/error_handler.h"
@@ -837,6 +838,16 @@ class DBImpl : public DB {
                                    const Status& st,
                                    const CompactionJobStats& job_stats,
                                    int job_id);
+
+  void NotifyOnInterCFCompactionBegin(ColumnFamilyData* cfd, InterCFCompaction* c,
+                               const Status& st,
+                               const CompactionJobStats& job_stats, int job_id);
+
+  void NotifyOnInterCFCompactionCompleted(ColumnFamilyData* cfd, InterCFCompaction* c,
+                                   const Status& st,
+                                   const CompactionJobStats& job_stats,
+                                   int job_id);
+
   void NotifyOnMemTableSealed(ColumnFamilyData* cfd,
                               const MemTableInfo& mem_table_info);
 

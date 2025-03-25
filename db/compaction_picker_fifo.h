@@ -24,6 +24,11 @@ class FIFOCompactionPicker : public CompactionPicker {
                                      VersionStorageInfo* version,
                                      LogBuffer* log_buffer) override;
 
+  virtual InterCFCompaction* PickInterCFCompaction(const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage,
+      LogBuffer* log_buffer) override;
+
   virtual Compaction* CompactRange(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, int input_level, int output_level,

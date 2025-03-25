@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "db/compaction.h"
+#include "db/inter_cf_compaction.h"
 #include "db/version_set.h"
 #include "options/cf_options.h"
 #include "rocksdb/env.h"
@@ -40,6 +41,15 @@ class CompactionPicker {
   // Otherwise returns a pointer to a heap-allocated object that
   // describes the compaction.  Caller should delete the result.
   virtual Compaction* PickCompaction(const std::string& cf_name,
+                                     const MutableCFOptions& mutable_cf_options,
+                                     VersionStorageInfo* vstorage,
+                                     LogBuffer* log_buffer) = 0;
+
+  // [LCF] Pick level and inputs for a new compaction.
+  // Returns nullptr if there is no compaction to be done.
+  // Otherwise returns a pointer to a heap-allocated object that
+  // describes the compaction.  Caller should delete the result.
+  virtual InterCFCompaction* PickInterCFCompaction(const std::string& cf_name,
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
                                      LogBuffer* log_buffer) = 0;
@@ -230,6 +240,11 @@ class LevelCompactionPicker : public CompactionPicker {
                                      VersionStorageInfo* vstorage,
                                      LogBuffer* log_buffer) override;
 
+  virtual InterCFCompaction* PickInterCFCompaction(const std::string& cf_name,
+                                     const MutableCFOptions& mutable_cf_options,
+                                     VersionStorageInfo* vstorage,
+                                     LogBuffer* log_buffer) override;
+
   virtual bool NeedsCompaction(
       const VersionStorageInfo* vstorage) const override;
 };
@@ -249,6 +264,15 @@ class NullCompactionPicker : public CompactionPicker {
                              LogBuffer* /*log_buffer*/) override {
     return nullptr;
   }
+
+  InterCFCompaction* PickInterCFCompaction(const std::string& /*cf_name*/,
+      const MutableCFOptions& /*mutable_cf_options*/,
+      VersionStorageInfo* /*vstorage*/,
+      LogBuffer* /*log_buffer*/) override {
+    return nullptr;
+  }
+
+
 
   // Always return "nullptr"
   Compaction* CompactRange(const std::string& /*cf_name*/,

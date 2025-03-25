@@ -210,6 +210,20 @@ Compaction* FIFOCompactionPicker::PickCompaction(
   return c;
 }
 
+InterCFCompaction* FIFOCompactionPicker::PickInterCFCompaction(const std::string& cf_name,
+                                     const MutableCFOptions& mutable_cf_options,
+                                     VersionStorageInfo* vstorage,
+                                     LogBuffer* log_buffer) {
+  (void)cf_name;
+  (void)mutable_cf_options;
+  (void)vstorage;
+  (void)log_buffer;
+
+  // [LCF] NOT USED
+  return nullptr;
+}
+
+
 Compaction* FIFOCompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,

@@ -8,8 +8,11 @@ LIB_SOURCES =                                                   \
   db/column_family.cc                                           \
   db/compacted_db_impl.cc                                       \
   db/compaction.cc                                              \
+  db/inter_cf_compaction.cc                                              \
   db/compaction_iterator.cc                                     \
+  db/inter_cf_compaction_iterator.cc                                     \
   db/compaction_job.cc                                          \
+  db/inter_cf_compaction_job.cc                                          \
   db/compaction_picker.cc                                       \
   db/compaction_picker_fifo.cc                                  \
   db/compaction_picker_universal.cc                             \

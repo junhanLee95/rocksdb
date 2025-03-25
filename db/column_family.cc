@@ -1055,11 +1055,21 @@ std::vector<PartitionTreeNode*> ColumnFamilyData::GetChildrenNodes(void) {
   return column_family_set_->partition_tree_->GetChildrenNodes(partition_tree_node_);
 }
 
-
 Compaction* ColumnFamilyData::PickCompaction(
     const MutableCFOptions& mutable_options,
     LogBuffer* log_buffer) {
   auto* result = compaction_picker_->PickCompaction(
+      GetName(), mutable_options, current_->storage_info(), log_buffer);
+  if (result != nullptr) {
+    result->SetInputVersion(current_);
+  }
+  return result;
+}
+
+InterCFCompaction* ColumnFamilyData::PickInterCFCompaction(
+    const MutableCFOptions& mutable_options,
+    LogBuffer* log_buffer) {
+  auto* result = compaction_picker_->PickInterCFCompaction(
       GetName(), mutable_options, current_->storage_info(), log_buffer);
   if (result != nullptr) {
     result->SetInputVersion(current_);
@@ -1790,6 +1800,7 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     //uint64_t old_target_file_size_base = old_options->target_file_size_base;
     Options options;
     options.compaction_style = kCompactionStyleUniversal;
+    options.max_bytes_for_level_base = 1024*1024; // 250325 for debugging
 
     ROCKS_LOG_INFO(db_options_->info_log.get(),
         "PrepareVersionEditsToSplit: new target file size base : %ld", 

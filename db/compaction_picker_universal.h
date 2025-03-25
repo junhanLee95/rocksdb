@@ -23,6 +23,12 @@ class UniversalCompactionPicker : public CompactionPicker {
                                      VersionStorageInfo* vstorage,
                                      LogBuffer* log_buffer) override;
 
+  virtual InterCFCompaction* PickInterCFCompaction(const std::string& cf_name,
+                                     const MutableCFOptions& mutable_cf_options,
+                                     VersionStorageInfo* vstorage,
+                                     LogBuffer* log_buffer) override;
+
+
   virtual int MaxOutputLevel() const override { return NumberLevels() - 1; }
 
   virtual bool NeedsCompaction(
@@ -61,7 +67,7 @@ class UniversalCompactionPicker : public CompactionPicker {
   };
 
   // LCF: Pick Universal compaction to limit total size <= max_bytes_for_level_base
-  Compaction* PickCompactionToReduceTotalSize(
+  InterCFCompaction* PickInterCFCompactionToReduceTotalSize(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, double score,
       const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);

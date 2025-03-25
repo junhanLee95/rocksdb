@@ -252,6 +252,57 @@ UniversalCompactionPicker::CalculateSortedRuns(
   return ret;
 }
 
+InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
+    const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
+    VersionStorageInfo* vstorage, LogBuffer* log_buffer) {
+  const int kLevel0 = 0;
+  double score = vstorage->CompactionScore(kLevel0);
+  std::vector<SortedRun> sorted_runs =
+      CalculateSortedRuns(*vstorage, ioptions_, mutable_cf_options);
+
+  if (sorted_runs.size() == 0 ||
+      (vstorage->FilesMarkedForCompaction().empty() &&
+       sorted_runs.size() < (unsigned int)mutable_cf_options
+                                .level0_file_num_compaction_trigger)) {
+    ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal inter-cf: nothing to do\n",
+                     cf_name.c_str());
+    TEST_SYNC_POINT_CALLBACK("UniversalCompactionPicker::PickInterCFCompaction:Return",
+                             nullptr);
+    return nullptr;
+  }
+  VersionStorageInfo::LevelSummaryStorage tmp;
+  ROCKS_LOG_BUFFER_MAX_SZ(
+      log_buffer, 3072,
+      "[%s] Universal inter-cf: sorted runs files(%" ROCKSDB_PRIszt "): %s\n",
+      cf_name.c_str(), sorted_runs.size(), vstorage->LevelSummary(&tmp));
+
+  // Check for size amplification first.
+  InterCFCompaction* c = nullptr;
+  if (sorted_runs.size() >=
+      static_cast<size_t>(
+          mutable_cf_options.level0_file_num_compaction_trigger)) {
+    if (ioptions_.allow_column_family_split &&
+        (c = PickInterCFCompactionToReduceTotalSize(cf_name, mutable_cf_options,
+                                           vstorage, score, sorted_runs,
+                                           log_buffer)) != nullptr) {
+      ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: LCF compacting for size total\n",
+                       cf_name.c_str());
+    }
+  }
+    
+  if (c == nullptr) {
+    TEST_SYNC_POINT_CALLBACK("UniversalCompactionPicker::PickCompaction:Return",
+                             nullptr);
+    return nullptr;
+  }
+
+
+  vstorage->ComputeCompactionScore(ioptions_, mutable_cf_options);
+
+  TEST_SYNC_POINT_CALLBACK("UniversalCompactionPicker::PickInterCFCompaction:Return",
+                           c);
+  return c;
+}
 // Universal style of compaction. Pick files that are contiguous in
 // time-range to compact.
 Compaction* UniversalCompactionPicker::PickCompaction(
@@ -283,16 +334,7 @@ Compaction* UniversalCompactionPicker::PickCompaction(
   if (sorted_runs.size() >=
       static_cast<size_t>(
           mutable_cf_options.level0_file_num_compaction_trigger)) {
-    if (ioptions_.allow_column_family_split &&
-        (c = PickCompactionToReduceTotalSize(cf_name, mutable_cf_options,
-                                           vstorage, score, sorted_runs,
-                                           log_buffer)) != nullptr) {
-      ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: LCF compacting for size total\n",
-                       cf_name.c_str());
-      c->set_is_lcf_trivial_move(true);
-      assert(c->is_lcf_trivial_move());
-    }
-    else if ((c = PickCompactionToReduceSizeAmp(cf_name, mutable_cf_options,
+    if ((c = PickCompactionToReduceSizeAmp(cf_name, mutable_cf_options,
                                            vstorage, score, sorted_runs,
                                            log_buffer)) != nullptr) {
       ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: compacting for size amp\n",
@@ -664,7 +706,7 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceSortedRuns(
 // min_merge_width and max_merge_width).
 // and move this to parent column family
 //
-Compaction* UniversalCompactionPicker::PickCompactionToReduceTotalSize(
+InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotalSize(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, double score,
     const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer) {
@@ -733,14 +775,14 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceTotalSize(
   if (candidate_size  < max_bytes) {
     ROCKS_LOG_BUFFER(
         log_buffer,
-        "[%s] Universal: size total not needed. newer-files-total-size %" PRIu64
+        "[%s] Universal(LCF): size total not needed. newer-files-total-size %" PRIu64
         " earliest-file-size %" PRIu64,
         cf_name.c_str(), candidate_size, earliest_file_size);
     return nullptr;
   } else {
     ROCKS_LOG_BUFFER(
         log_buffer,
-        "[%s] Universal: size total needed. newer-files-total-size %" PRIu64
+        "[%s] Universal(LCF): size total needed. newer-files-total-size %" PRIu64
         " earliest-file-size %" PRIu64,
         cf_name.c_str(), candidate_size, earliest_file_size);
   }
@@ -755,7 +797,7 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceTotalSize(
       GetPathId(ioptions_, mutable_cf_options, estimated_total_size);
   int start_level = sorted_runs[start_index].level;
 
-  std::vector<CompactionInputFiles> inputs(vstorage->num_levels());
+  std::vector<InterCFCompactionInputFiles> inputs(vstorage->num_levels());
   for (size_t i = 0; i < inputs.size(); ++i) {
     inputs[i].level = start_level + static_cast<int>(i);
   }
@@ -785,7 +827,7 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceTotalSize(
     output_level--;
   }
 
-  return new Compaction(
+  return new InterCFCompaction(
       vstorage, ioptions_, mutable_cf_options, std::move(inputs), output_level,
       MaxFileSizeForLevel(mutable_cf_options, output_level,
                           kCompactionStyleUniversal),

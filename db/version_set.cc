@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <vector>
 #include "db/compaction.h"
+#include "db/inter_cf_compaction.h"
 #include "db/internal_stats.h"
 #include "db/log_reader.h"
 #include "db/log_writer.h"
@@ -4722,9 +4723,65 @@ void VersionSet::AddLiveFiles(std::vector<FileDescriptor>* live_list) {
     }
   }
 }
-
 InternalIterator* VersionSet::MakeInputIterator(
     const Compaction* c, RangeDelAggregator* range_del_agg,
+    const EnvOptions& env_options_compactions) {
+  auto cfd = c->column_family_data();
+  ReadOptions read_options;
+  read_options.verify_checksums = true;
+  read_options.fill_cache = false;
+  // Compaction iterators shouldn't be confined to a single prefix.
+  // Compactions use Seek() for
+  // (a) concurrent compactions,
+  // (b) CompactionFilter::Decision::kRemoveAndSkipUntil.
+  read_options.total_order_seek = true;
+
+  // Level-0 files have to be merged together.  For other levels,
+  // we will make a concatenating iterator per level.
+  // TODO(opt): use concatenating iterator for level-0 if there is no overlap
+  const size_t space = (c->level() == 0 ? c->input_levels(0)->num_files +
+                                              c->num_input_levels() - 1
+                                        : c->num_input_levels());
+  InternalIterator** list = new InternalIterator* [space];
+  size_t num = 0;
+  for (size_t which = 0; which < c->num_input_levels(); which++) {
+    if (c->input_levels(which)->num_files != 0) {
+      if (c->level(which) == 0) {
+        const LevelFilesBrief* flevel = c->input_levels(which);
+        for (size_t i = 0; i < flevel->num_files; i++) {
+          list[num++] = cfd->table_cache()->NewIterator(
+              read_options, env_options_compactions, cfd->internal_comparator(),
+              *flevel->files[i].file_metadata, range_del_agg,
+              c->mutable_cf_options()->prefix_extractor.get(),
+              nullptr /* table_reader_ptr */,
+              nullptr /* no per level latency histogram */,
+              true /* for_compaction */, nullptr /* arena */,
+              false /* skip_filters */, static_cast<int>(which) /* level */);
+        }
+      } else {
+        // Create concatenating iterator for the files from this level
+        list[num++] = new LevelIterator(
+            cfd->table_cache(), read_options, env_options_compactions,
+            cfd->internal_comparator(), c->input_levels(which),
+            c->mutable_cf_options()->prefix_extractor.get(),
+            false /* should_sample */,
+            nullptr /* no per level latency histogram */,
+            true /* for_compaction */, false /* skip_filters */,
+            static_cast<int>(which) /* level */, range_del_agg,
+            c->boundaries(which));
+      }
+    }
+  }
+  assert(num <= space);
+  InternalIterator* result =
+      NewMergingIterator(&c->column_family_data()->internal_comparator(), list,
+                         static_cast<int>(num));
+  delete[] list;
+  return result;
+}
+
+InternalIterator* VersionSet::MakeInputIterator(
+    const InterCFCompaction* c, RangeDelAggregator* range_del_agg,
     const EnvOptions& env_options_compactions) {
   auto cfd = c->column_family_data();
   ReadOptions read_options;
@@ -4783,6 +4840,57 @@ InternalIterator* VersionSet::MakeInputIterator(
 // verify that the files listed in this compaction are present
 // in the current version
 bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
+#ifndef NDEBUG
+  Version* version = c->column_family_data()->current();
+  const VersionStorageInfo* vstorage = version->storage_info();
+  if (c->input_version() != version) {
+    ROCKS_LOG_INFO(
+        db_options_->info_log,
+        "[%s] compaction output being applied to a different base version from"
+        " input version",
+        c->column_family_data()->GetName().c_str());
+
+    if (vstorage->compaction_style_ == kCompactionStyleLevel &&
+        c->start_level() == 0 && c->num_input_levels() > 2U) {
+      // We are doing a L0->base_level compaction. The assumption is if
+      // base level is not L1, levels from L1 to base_level - 1 is empty.
+      // This is ensured by having one compaction from L0 going on at the
+      // same time in level-based compaction. So that during the time, no
+      // compaction/flush can put files to those levels.
+      for (int l = c->start_level() + 1; l < c->output_level(); l++) {
+        if (vstorage->NumLevelFiles(l) != 0) {
+          return false;
+        }
+      }
+    }
+  }
+
+  for (size_t input = 0; input < c->num_input_levels(); ++input) {
+    int level = c->level(input);
+    for (size_t i = 0; i < c->num_input_files(input); ++i) {
+      uint64_t number = c->input(input, i)->fd.GetNumber();
+      bool found = false;
+      for (size_t j = 0; j < vstorage->files_[level].size(); j++) {
+        FileMetaData* f = vstorage->files_[level][j];
+        if (f->fd.GetNumber() == number) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return false;  // input files non existent in current version
+      }
+    }
+  }
+#else
+  (void)c;
+#endif
+  return true;     // everything good
+}
+
+// verify that the files listed in this  inter-cf compaction are present
+// in the current version
+bool VersionSet::VerifyCompactionFileConsistency(InterCFCompaction* c) {
 #ifndef NDEBUG
   Version* version = c->column_family_data()->current();
   const VersionStorageInfo* vstorage = version->storage_info();

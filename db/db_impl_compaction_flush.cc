@@ -1130,7 +1130,6 @@ Status DBImpl::ContinueBackgroundWork() {
   }
   return Status::OK();
 }
-
 void DBImpl::NotifyOnCompactionBegin(ColumnFamilyData* cfd, Compaction* c,
                                      const Status& st,
                                      const CompactionJobStats& job_stats,
@@ -1192,6 +1191,18 @@ void DBImpl::NotifyOnCompactionBegin(ColumnFamilyData* cfd, Compaction* c,
   (void)job_stats;
   (void)job_id;
 #endif  // ROCKSDB_LITE
+}
+
+void DBImpl::NotifyOnInterCFCompactionBegin(ColumnFamilyData* cfd, InterCFCompaction* c,
+                                     const Status& st,
+                                     const CompactionJobStats& job_stats,
+                                     int job_id) {
+
+  (void)cfd;
+  (void)c;
+  (void)st;
+  (void)job_stats;
+  (void)job_id;
 }
 
 void DBImpl::NotifyOnSplitBegin(ColumnFamilyData* cfd, Compaction* c,
@@ -1329,6 +1340,17 @@ void DBImpl::NotifyOnCompactionCompleted(
   (void)compaction_job_stats;
   (void)job_id;
 #endif  // ROCKSDB_LITE
+}
+
+void DBImpl::NotifyOnInterCFCompactionCompleted(
+    ColumnFamilyData* cfd, InterCFCompaction* c, const Status& st,
+    const CompactionJobStats& compaction_job_stats, const int job_id) {
+
+  (void)cfd;
+  (void)c;
+  (void)st;
+  (void)compaction_job_stats;
+  (void)job_id;
 }
 
 // REQUIREMENT: block all background work by calling PauseBackgroundWork()
@@ -3186,6 +3208,7 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
   // LCF: We skip manual L0 compaction.
   assert(is_manual == false);
   std::unique_ptr<Compaction> c;
+  std::unique_ptr<InterCFCompaction> inter_cf_c; //LCF: compaction from children node to root node.
   if (prepicked_compaction != nullptr &&
       prepicked_compaction->compaction != nullptr) {
     c.reset(prepicked_compaction->compaction);
@@ -3303,10 +3326,17 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
       // NOTE: try to avoid unnecessary copy of MutableCFOptions if
       // compaction is not necessary. Need to make sure mutex is held
       // until we make a copy in the following code
-      TEST_SYNC_POINT("DBImpl::BackgroundCompaction():BeforePickCompaction");
-      c.reset(cfd->PickCompaction(*mutable_cf_options, log_buffer));
-      TEST_SYNC_POINT("DBImpl::BackgroundCompaction():AfterPickCompaction");
+      TEST_SYNC_POINT("DBImpl::BackgroundCompaction():BeforePickL0Compaction");
+      // [LCF] first, check picking inter-cf compaction
+      inter_cf_c.reset(cfd->PickInterCFCompaction(*mutable_cf_options, log_buffer));
+      if (inter_cf_c == nullptr) {
+        // [LCF] if inter-cf compaction is empty, check picking compaction
+        c.reset(cfd->PickCompaction(*mutable_cf_options, log_buffer));
+      }
+      
+      TEST_SYNC_POINT("DBImpl::BackgroundCompaction():AfterPickL0Compaction");
 
+      // [LCF] we don't check enough room for inter-cf-c since we don't use sstfilemanager.
       if (c != nullptr) {
         bool enough_room = EnoughRoomForCompaction(
             cfd, *(c->inputs()), &sfm_reserved_compact_space, log_buffer);
@@ -3355,10 +3385,60 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
     }
   }
 
-  if (!c) {
+
+  
+  if (inter_cf_c) { // [LCF] inter cf compaction
+    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundL0Compaction:BeforeInterCFCompaction",
+        inter_cf_c->column_family_data());
+    int output_level __attribute__((__unused__));
+    output_level = inter_cf_c->output_level();
+    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundL0Compaction:NonTrivial",
+        &output_level);
+    std::vector<SequenceNumber> snapshot_seqs;
+    SequenceNumber earliest_write_conflict_snapshot;
+    SnapshotChecker* snapshot_checker;
+    GetSnapshotContext(job_context, &snapshot_seqs,
+        &earliest_write_conflict_snapshot, &snapshot_checker);
+    assert(is_snapshot_supported_ || snapshots_.empty());
+
+    InterCFCompactionJob inter_cf_compaction_job(
+        job_context->job_id, inter_cf_c.get(), immutable_db_options_,
+        env_options_for_compaction_, versions_.get(), &shutting_down_,
+        preserve_deletes_seqnum_.load(), log_buffer, directories_.GetDbDir(),
+        GetDataDir(inter_cf_c->column_family_data(), inter_cf_c->output_path_id()), stats_,
+        &mutex_, &error_handler_, snapshot_seqs,
+        earliest_write_conflict_snapshot, snapshot_checker, table_cache_,
+        &event_logger_, inter_cf_c->mutable_cf_options()->paranoid_file_checks,
+        inter_cf_c->mutable_cf_options()->report_bg_io_stats, dbname_,
+        &compaction_job_stats, thread_pri,
+        job_context->sst_split_files,
+        &job_context->cfd_to_split);
+    inter_cf_compaction_job.Prepare();
+
+    NotifyOnInterCFCompactionBegin(inter_cf_c->column_family_data(), inter_cf_c.get(), status,
+        compaction_job_stats, job_context->job_id);
+
+    mutex_.Unlock();
+    inter_cf_compaction_job.Run();
+    TEST_SYNC_POINT("DBImpl::BackgroundL0Compaction:NonTrivial:AfterRun");
+    mutex_.Lock();
+
+    status = inter_cf_compaction_job.Install(*inter_cf_c->mutable_cf_options());
+    if (status.ok()) {
+      InstallSuperVersionAndScheduleWork(inter_cf_c->column_family_data(),
+          &job_context->superversion_contexts[0],
+          *inter_cf_c->mutable_cf_options());
+    }
+    *made_progress = true;
+    TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundL0Compaction:AfterInterCFCompaction",
+        inter_cf_c->column_family_data());
+
+  }
+  else if (!c) {
     // Nothing to do
     ROCKS_LOG_BUFFER(log_buffer, "L0 Compaction nothing to do");
-  } else if (!trivial_move_disallowed && c->IsTrivialMove()) {
+  }
+  else if (!trivial_move_disallowed && c->IsTrivialMove()) {
     TEST_SYNC_POINT("DBImpl::BackgroundL0Compaction:TrivialMove");
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundL0Compaction:BeforeCompaction",
                              c->column_family_data());
@@ -3487,7 +3567,16 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCompaction:AfterCompaction",
                              c->column_family_data());
   }
-  if (c != nullptr) {
+
+
+  if (inter_cf_c != nullptr) {
+    inter_cf_c->ReleaseCompactionFiles(status);
+    *made_progress = true;
+
+    NotifyOnInterCFCompactionCompleted(inter_cf_c->column_family_data(), inter_cf_c.get(), status,
+                                compaction_job_stats, job_context->job_id);
+  }
+  else if (c != nullptr) {
     c->ReleaseCompactionFiles(status);
     *made_progress = true;
 
@@ -3509,6 +3598,7 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
   } else if (status.IsShutdownInProgress()) {
     // Ignore compaction errors found during shutting down
   } else {
+    // TODO: [LCF] we don't check inter cf compaction error cases
     ROCKS_LOG_WARN(immutable_db_options_.info_log, "Compaction error: %s",
                    status.ToString().c_str());
     error_handler_.SetBGError(status, BackgroundErrorReason::kCompaction);
@@ -3531,6 +3621,7 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
     }
   }
   // this will unref its input_version and column_family_data
+  inter_cf_c.reset();
   c.reset();
 
   if (is_manual) {

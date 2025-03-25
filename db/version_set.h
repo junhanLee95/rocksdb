@@ -31,6 +31,7 @@
 
 #include "db/column_family.h"
 #include "db/compaction.h"
+#include "db/inter_cf_compaction.h"
 #include "db/compaction_picker.h"
 #include "db/dbformat.h"
 #include "db/file_indexer.h"
@@ -993,6 +994,11 @@ class VersionSet {
       const Compaction* c, RangeDelAggregator* range_del_agg,
       const EnvOptions& env_options_compactions);
 
+  // LCF InterCFCompaction
+  InternalIterator* MakeInputIterator(
+    const InterCFCompaction* c, RangeDelAggregator* range_del_agg,
+    const EnvOptions& env_options_compactions);
+
   // Add all files listed in any live version to *live.
   void AddLiveFiles(std::vector<FileDescriptor>* live_list);
 
@@ -1010,6 +1016,7 @@ class VersionSet {
   // This ensures that a concurrent compaction did not erroneously
   // pick the same files to compact.
   bool VerifyCompactionFileConsistency(Compaction* c);
+  bool VerifyCompactionFileConsistency(InterCFCompaction* c);
 
   Status GetMetadataForFile(uint64_t number, int* filelevel,
                             FileMetaData** metadata, ColumnFamilyData** cfd);

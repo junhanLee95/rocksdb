@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <iostream>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -183,10 +184,13 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       last_batch_group_size_(0),
       unscheduled_flushes_(0),
       unscheduled_compactions_(0),
+      unscheduled_l0_compactions_(0),
       unscheduled_splits_(0),
       bg_bottom_compaction_scheduled_(0),
+      bg_l0_compaction_scheduled_(0),
       bg_compaction_scheduled_(0),
       num_running_compactions_(0),
+      num_running_l0_compactions_(0),
       bg_flush_scheduled_(0),
       num_running_flushes_(0),
       bg_split_scheduled_(0),
@@ -422,9 +426,11 @@ Status DBImpl::ResumeImpl() {
 void DBImpl::WaitForBackgroundWork() {
   // Wait for background work to finish
   while (bg_bottom_compaction_scheduled_ || bg_compaction_scheduled_ ||
-         bg_flush_scheduled_ ) {
+         bg_flush_scheduled_ || bg_l0_compaction_scheduled_) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "WaitForBackgroundWork : comp : %d", bg_compaction_scheduled_);
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "WaitForBackgroundWork : l0_comp : %d", bg_l0_compaction_scheduled_);
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "WaitForBackgroundWork : flu : %d", bg_flush_scheduled_);
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -508,12 +514,16 @@ Status DBImpl::CloseHelper() {
   int flushes_unscheduled = env_->UnSchedule(this, Env::Priority::HIGH);
   Status ret;
   mutex_.Lock();
+
+
   bg_bottom_compaction_scheduled_ -= bottom_compactions_unscheduled;
   bg_compaction_scheduled_ -= compactions_unscheduled;
   bg_flush_scheduled_ -= flushes_unscheduled;
 
+  
+
   // Wait for background work to finish
-  while (bg_bottom_compaction_scheduled_ || bg_compaction_scheduled_ ||
+  while (bg_bottom_compaction_scheduled_ || bg_compaction_scheduled_ || bg_l0_compaction_scheduled_ ||
          bg_flush_scheduled_ || bg_purge_scheduled_ ||
          pending_purge_obsolete_files_ ||
          error_handler_.IsRecoveryInProgress()) {
