@@ -3328,7 +3328,9 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
       // until we make a copy in the following code
       TEST_SYNC_POINT("DBImpl::BackgroundCompaction():BeforePickL0Compaction");
       // [LCF] first, check picking inter-cf compaction
-      inter_cf_c.reset(cfd->PickInterCFCompaction(*mutable_cf_options, log_buffer));
+      if (immutable_db_options_.allow_column_family_split) {
+        inter_cf_c.reset(cfd->PickInterCFCompaction(*mutable_cf_options, log_buffer));
+      }
       if (inter_cf_c == nullptr) {
         // [LCF] if inter-cf compaction is empty, check picking compaction
         c.reset(cfd->PickCompaction(*mutable_cf_options, log_buffer));
