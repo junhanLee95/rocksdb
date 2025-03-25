@@ -737,7 +737,7 @@ Status InterCFCompactionJob::Run() {
   return status;
 }
 
-Status InterCFCompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
+Status InterCFCompactionJob::Install(void) {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_INSTALL);
   db_mutex_->AssertHeld();
@@ -747,7 +747,7 @@ Status InterCFCompactionJob::Install(const MutableCFOptions& mutable_cf_options)
       compact_->inter_cf_compaction->output_level(), thread_pri_, compaction_stats_);
 
   if (status.ok()) {
-    status = InstallCompactionResults(mutable_cf_options);
+    status = InstallCompactionResults();
   }
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply(2)");
   VersionStorageInfo::LevelSummaryStorage tmp;
@@ -1476,8 +1476,7 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
   return s;
 }
 
-Status InterCFCompactionJob::InstallCompactionResults(
-    const MutableCFOptions& mutable_cf_options) {
+Status InterCFCompactionJob::InstallCompactionResults(void) {
   db_mutex_->AssertHeld();
 
   auto* compaction = compact_->inter_cf_compaction;
@@ -1503,18 +1502,57 @@ Status InterCFCompactionJob::InstallCompactionResults(
   }
 
   // Add compaction inputs
-  compaction->AddInputDeletions(compact_->inter_cf_compaction->edit());
+  //compaction->AddInputDeletions(compact_->inter_cf_compaction->edit());
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] AddInputDeletions");
 
+  autovector<ColumnFamilyData*> column_family_datas;
+  autovector<autovector<VersionEdit*>> edit_lists;
+  autovector<const MutableCFOptions*> mutable_cf_options_list;
+
+  // fill column_family_datas
+  ColumnFamilyData* cfd = compaction->column_family_data();
+  ColumnFamilyData* pcfd = compaction->parent_column_family_data();
+  column_family_datas.push_back(cfd);
+  column_family_datas.push_back(pcfd);
+  // fill mutable_cf_options
+  mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+  mutable_cf_options_list.push_back(pcfd->GetLatestMutableCFOptions());
+
+  // fill versionedits
+  autovector<VersionEdit*> edits;
+  autovector<VersionEdit*> pedits;
+  VersionEdit edit;
+  VersionEdit pedit;
+  edit.SetColumnFamily(cfd->GetID());
+  pedit.SetColumnFamily(pcfd->GetID());
+  // file deletions
+  compaction->AddInputDeletions(&edit);
+  // file adds
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
-      compaction->edit()->AddFile(compaction->output_level(), out.meta);
+      pedit.AddFile(compaction->output_level(), out.meta);
     }
   }
+  // mark atomic
+  edit.MarkAtomicGroup(1);
+  pedit.MarkAtomicGroup(0);
+
+  edits.push_back(&edit);
+  pedits.push_back(&pedit);
+  edit_lists.push_back(edits);
+  edit_lists.push_back(pedits);
+  
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply");
-  return versions_->LogAndApply(compaction->column_family_data(),
+  /*return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),
-                                db_mutex_, db_directory_);
+                                db_mutex_, db_directory_);*/
+  return versions_->LogAndApply(column_family_datas,
+                                mutable_cf_options_list,
+                                edit_lists,
+                                db_mutex_,
+                                db_directory_,
+                                false,
+                                nullptr);
 }
 
 void InterCFCompactionJob::RecordCompactionIOStats() {

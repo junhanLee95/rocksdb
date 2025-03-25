@@ -74,10 +74,6 @@ class InterCFCompaction {
   // Returns the number of input levels in this compaction.
   size_t num_input_levels() const { return inputs_.size(); }
 
-  // Return the object that holds the edits to the descriptor done
-  // by this compaction.
-  VersionEdit* edit() { return &edit_; }
-
   // Returns the number of input files associated to the specified
   // compaction input level.
   // The function will return 0 if when "compaction_input_level" < 0
@@ -94,6 +90,8 @@ class InterCFCompaction {
 
   // Returns the ColumnFamilyData associated with the compaction.
   ColumnFamilyData* column_family_data() const { return cfd_; }
+  // Returns the Parent ColumnFamilyData
+  ColumnFamilyData* parent_column_family_data() const { return parent_cfd_; }
 
   // Returns the file meta data of the 'i'th input file at the
   // specified compaction input level.
@@ -225,7 +223,7 @@ class InterCFCompaction {
   // is the sum of all input file sizes.
   uint64_t OutputFilePreallocationSize() const;
 
-  void SetInputVersion(Version* input_version);
+  void SetInputVersion(Version* input_version, Version* parent_input_version);
 
   struct InterCFInputLevelSummaryBuffer {
     char buffer[128];
@@ -315,9 +313,10 @@ class InterCFCompaction {
   const ImmutableCFOptions immutable_cf_options_;
   const MutableCFOptions mutable_cf_options_;
   Version* input_version_;
-  VersionEdit edit_;
+  Version* parent_input_version_;
   const int number_levels_;
   ColumnFamilyData* cfd_;
+  ColumnFamilyData* parent_cfd_; // cfd where output goes to 
   Arena arena_;          // Arena used to allocate space for file_levels_
 
   const uint32_t output_path_id_;

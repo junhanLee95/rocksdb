@@ -26,6 +26,7 @@ class UniversalCompactionPicker : public CompactionPicker {
   virtual InterCFCompaction* PickInterCFCompaction(const std::string& cf_name,
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
+                                     VersionStorageInfo* parent_vstorage,
                                      LogBuffer* log_buffer) override;
 
 

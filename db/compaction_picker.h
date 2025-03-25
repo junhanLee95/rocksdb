@@ -52,6 +52,7 @@ class CompactionPicker {
   virtual InterCFCompaction* PickInterCFCompaction(const std::string& cf_name,
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
+                                     VersionStorageInfo* parent_vstorage,
                                      LogBuffer* log_buffer) = 0;
 
   // Return a compaction object for compacting the range [begin,end] in
@@ -243,6 +244,7 @@ class LevelCompactionPicker : public CompactionPicker {
   virtual InterCFCompaction* PickInterCFCompaction(const std::string& cf_name,
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
+                                     VersionStorageInfo* parent_vstorage,
                                      LogBuffer* log_buffer) override;
 
   virtual bool NeedsCompaction(
@@ -268,6 +270,7 @@ class NullCompactionPicker : public CompactionPicker {
   InterCFCompaction* PickInterCFCompaction(const std::string& /*cf_name*/,
       const MutableCFOptions& /*mutable_cf_options*/,
       VersionStorageInfo* /*vstorage*/,
+      VersionStorageInfo* /* parent vstorage*/,
       LogBuffer* /*log_buffer*/) override {
     return nullptr;
   }

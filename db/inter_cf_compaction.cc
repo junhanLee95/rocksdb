@@ -28,13 +28,20 @@ const uint64_t kRangeTombstoneSentinel =
 
 
 
-void InterCFCompaction::SetInputVersion(Version* _input_version) {
+void InterCFCompaction::SetInputVersion(Version* _input_version, Version* _parent_input_version) {
   input_version_ = _input_version;
   cfd_ = input_version_->cfd();
 
   cfd_->Ref();
   input_version_->Ref();
-  edit_.SetColumnFamily(cfd_->GetID());
+
+  parent_input_version_ = _parent_input_version;
+  parent_cfd_ = parent_input_version_->cfd();
+
+  parent_cfd_->Ref();
+  parent_input_version_->Ref();
+
+
 }
 
 void InterCFCompaction::GetBoundaryKeys(
@@ -245,6 +252,15 @@ InterCFCompaction::~InterCFCompaction() {
       delete cfd_;
     }
   }
+  if (parent_input_version_ != nullptr) {
+    parent_input_version_->Unref();
+  }
+  if (parent_cfd_ != nullptr) {
+    if (parent_cfd_->Unref()) {
+      delete parent_cfd_;
+    }
+  }
+
 }
 
 bool InterCFCompaction::InputCompressionMatchesOutput() const {

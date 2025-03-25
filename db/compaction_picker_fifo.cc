@@ -213,10 +213,12 @@ Compaction* FIFOCompactionPicker::PickCompaction(
 InterCFCompaction* FIFOCompactionPicker::PickInterCFCompaction(const std::string& cf_name,
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
+                                     VersionStorageInfo* parent_vstorage,
                                      LogBuffer* log_buffer) {
   (void)cf_name;
   (void)mutable_cf_options;
   (void)vstorage;
+  (void)parent_vstorage;
   (void)log_buffer;
 
   // [LCF] NOT USED

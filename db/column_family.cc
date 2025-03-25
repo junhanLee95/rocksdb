@@ -1068,11 +1068,11 @@ Compaction* ColumnFamilyData::PickCompaction(
 
 InterCFCompaction* ColumnFamilyData::PickInterCFCompaction(
     const MutableCFOptions& mutable_options,
-    LogBuffer* log_buffer) {
+    LogBuffer* log_buffer, Version* parent_version_) {
   auto* result = compaction_picker_->PickInterCFCompaction(
-      GetName(), mutable_options, current_->storage_info(), log_buffer);
+      GetName(), mutable_options, current_->storage_info(), parent_version_->storage_info(), log_buffer);
   if (result != nullptr) {
-    result->SetInputVersion(current_);
+    result->SetInputVersion(current_, parent_version_);
   }
   return result;
 }

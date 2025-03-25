@@ -3329,7 +3329,11 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
       TEST_SYNC_POINT("DBImpl::BackgroundCompaction():BeforePickL0Compaction");
       // [LCF] first, check picking inter-cf compaction
       if (immutable_db_options_.allow_column_family_split) {
-        inter_cf_c.reset(cfd->PickInterCFCompaction(*mutable_cf_options, log_buffer));
+        ColumnFamilyHandle* cfh_default = DefaultColumnFamily();
+        ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh_default)->cfd();
+        Version* current_default = cfd_default->current();
+        std::cout<<cfd_default->GetName()<<std::endl;
+        inter_cf_c.reset(cfd->PickInterCFCompaction(*mutable_cf_options, log_buffer, current_default));
       }
       if (inter_cf_c == nullptr) {
         // [LCF] if inter-cf compaction is empty, check picking compaction
@@ -3425,7 +3429,7 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
     TEST_SYNC_POINT("DBImpl::BackgroundL0Compaction:NonTrivial:AfterRun");
     mutex_.Lock();
 
-    status = inter_cf_compaction_job.Install(*inter_cf_c->mutable_cf_options());
+    status = inter_cf_compaction_job.Install();
     if (status.ok()) {
       InstallSuperVersionAndScheduleWork(inter_cf_c->column_family_data(),
           &job_context->superversion_contexts[0],

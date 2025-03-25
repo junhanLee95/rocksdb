@@ -90,68 +90,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
     ASSERT_OK(db->Flush(FlushOptions())); 
   }
   dbfull(db)->TEST_WaitForCompact();
-  // Prepare #1 Level 1
-  for (int num = 0; num < 1;
-       num ++) {
-    for (int i=0; i<kCnt; i++) {
-      std::string k = "user" + std::to_string(i);
-      std::string v = "v" + std::to_string(i) ;
-    }
-    ASSERT_OK(db->Flush(FlushOptions())); 
-  }
-  
-  // Prepare Memtable
-  for (int i=0; i<kCnt; i++) {
-    std::string k = RandomString(&rnd, 8);
-    std::string v = RandomString(&rnd, 200);
-    db->Put(WriteOptions(), cfh, k, v);  
-  }
 
-  std::string val0;
-  dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level0", &val0);
-  int num_level0 = std::stoi(val0);
-  std::string val1;
-  dbfull(db)->GetProperty(cfh, "rocksdb.num-files-at-level1", &val1);
-  int num_level1 = std::stoi(val1);
-
-  fprintf(stdout, "Level 0 has : %d\n",num_level0);
-  fprintf(stdout, "Level 1 has : %d\n",num_level1);
-
-
-  
-  fprintf(stdout, "[LCFSingleLvlLevelTest] flush\n");
-  for (int num = 0; num < 1;
-       num ++) {
-    for (int i=0; i<kCnt; i++) {
-      std::string k = RandomString(&rnd, 9);
-      std::string v = RandomString(&rnd, 200);
-      db->Put(WriteOptions(), cfh, k, v);  
-    }
-    ASSERT_OK(db->Flush(FlushOptions())); 
-  }
-
-  // Prepare one Level 1 sstable file
-  // trigger L0 compaction
-  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
-       num ++) {
-    for (int i=0; i<kCnt; i++) {
-      std::string k = RandomString(&rnd, 8);
-      std::string v = RandomString(&rnd, 200);
-      db->Put(WriteOptions(), cfh, k, v);  
-    }
-    ASSERT_OK(db->Flush(FlushOptions())); 
-  }
-  dbfull(db)->TEST_WaitForCompact();
-  // Prepare #1 Level 1
-  for (int num = 0; num < 1;
-       num ++) {
-    for (int i=0; i<kCnt; i++) {
-      std::string k = RandomString(&rnd, 8);
-      std::string v = RandomString(&rnd, 200);
-      db->Put(WriteOptions(), cfh, k, v);  
-    }
-    ASSERT_OK(db->Flush(FlushOptions())); 
-  }
  
  
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");

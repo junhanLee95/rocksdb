@@ -107,7 +107,7 @@ class InterCFCompactionJob {
   Status Run();
 
   // REQUIRED: mutex held
-  Status Install(const MutableCFOptions& mutable_cf_options);
+  Status Install(void);
 
  private:
   struct SubInterCFcompactionState;
@@ -127,7 +127,7 @@ class InterCFCompactionJob {
       CompactionRangeDelAggregator* range_del_agg,
       CompactionIterationStats* range_del_out_stats,
       const Slice* next_table_min_key = nullptr);
-  Status InstallCompactionResults(const MutableCFOptions& mutable_cf_options);
+  Status InstallCompactionResults(void);
   void RecordCompactionIOStats();
   Status OpenCompactionOutputFile(SubInterCFcompactionState* sub_compact);
   void CleanupCompaction();

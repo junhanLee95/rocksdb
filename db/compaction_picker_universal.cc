@@ -254,11 +254,13 @@ UniversalCompactionPicker::CalculateSortedRuns(
 
 InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
-    VersionStorageInfo* vstorage, LogBuffer* log_buffer) {
+    VersionStorageInfo* vstorage, VersionStorageInfo* parent_vstorage, LogBuffer* log_buffer) {
   const int kLevel0 = 0;
   double score = vstorage->CompactionScore(kLevel0);
   std::vector<SortedRun> sorted_runs =
       CalculateSortedRuns(*vstorage, ioptions_, mutable_cf_options);
+
+  (void)parent_vstorage;
 
   if (sorted_runs.size() == 0 ||
       (vstorage->FilesMarkedForCompaction().empty() &&
