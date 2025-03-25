@@ -28,7 +28,8 @@ class FIFOCompactionPicker : public CompactionPicker {
       const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage,
       VersionStorageInfo* parent_vstorage,
-      LogBuffer* log_buffer) override;
+      LogBuffer* log_buffer,
+      CompactionPicker* parent_picker) override;
 
   virtual Compaction* CompactRange(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,

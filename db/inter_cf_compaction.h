@@ -8,18 +8,21 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#include "db/version_set.h"
 #include "db/compaction.h"
+#include "db/version_set.h"
 #include "options/cf_options.h"
 #include "util/arena.h"
 #include "util/autovector.h"
 
 namespace rocksdb {
 
+class Version;
+class ColumnFamilyData;
+class VersionStorageInfo;
+class CompactionFilter;
+class Compaction;
+
 struct AtomicCompactionUnitBoundary;
-
-
-
 
 // The structure that manages compaction input files associated
 // with the same physical level.
@@ -33,11 +36,6 @@ struct InterCFCompactionInputFiles {
   inline FileMetaData* operator[](size_t i) const { return files[i]; }
 };
 
-class Version;
-class ColumnFamilyData;
-class VersionStorageInfo;
-class CompactionFilter;
-class Compaction;
 
 // A InterCFCompaction encapsulates information about a inter-cf-compaction.
 class InterCFCompaction {
@@ -146,8 +144,8 @@ class InterCFCompaction {
   // If true, then the compaction can be done by simply deleting input files.
   bool deletion_compaction() const { return deletion_compaction_; }
 
-  // Add all inputs to this compaction as delete operations to *edit.
-  void AddInputDeletions(VersionEdit* edit);
+  // Add all inputs to this compaction as delete operations to *edit and *p_edit.
+  void AddInputDeletions(VersionEdit* edit, VersionEdit* p_edit);
 
   // Returns true if the available information we have guarantees that
   // the input "user_key" does not exist in any level beyond "output_level()".

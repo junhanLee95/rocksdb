@@ -4893,7 +4893,10 @@ bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
 bool VersionSet::VerifyCompactionFileConsistency(InterCFCompaction* c) {
 #ifndef NDEBUG
   Version* version = c->column_family_data()->current();
+  Version* parent_version = c->parent_column_family_data()->current();
   const VersionStorageInfo* vstorage = version->storage_info();
+  const VersionStorageInfo* parent_vstorage = parent_version->storage_info();
+
   if (c->input_version() != version) {
     ROCKS_LOG_INFO(
         db_options_->info_log,
@@ -4916,6 +4919,7 @@ bool VersionSet::VerifyCompactionFileConsistency(InterCFCompaction* c) {
     }
   }
 
+  // Inter-CF-Compaction: check files from vstorage and parent_vstorage both.
   for (size_t input = 0; input < c->num_input_levels(); ++input) {
     int level = c->level(input);
     for (size_t i = 0; i < c->num_input_files(input); ++i) {
@@ -4926,6 +4930,15 @@ bool VersionSet::VerifyCompactionFileConsistency(InterCFCompaction* c) {
         if (f->fd.GetNumber() == number) {
           found = true;
           break;
+        }
+      }
+      if (!found) {
+        for (size_t j = 0; j < parent_vstorage->files_[level].size(); j++) {
+          FileMetaData* f = parent_vstorage->files_[level][j];
+          if (f->fd.GetNumber() == number) {
+            found = true;
+            break;
+          }
         }
       }
       if (!found) {

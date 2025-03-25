@@ -172,6 +172,35 @@ void CompactionPicker::GetRange(const CompactionInputFiles& inputs,
   }
 }
 
+void CompactionPicker::GetRange(const InterCFCompactionInputFiles& inputs,
+                                InternalKey* smallest,
+                                InternalKey* largest) const {
+  const int level = inputs.level;
+  assert(!inputs.empty());
+  smallest->Clear();
+  largest->Clear();
+
+  if (level == 0) {
+    for (size_t i = 0; i < inputs.size(); i++) {
+      FileMetaData* f = inputs[i];
+      if (i == 0) {
+        *smallest = f->smallest;
+        *largest = f->largest;
+      } else {
+        if (icmp_->Compare(f->smallest, *smallest) < 0) {
+          *smallest = f->smallest;
+        }
+        if (icmp_->Compare(f->largest, *largest) > 0) {
+          *largest = f->largest;
+        }
+      }
+    }
+  } else {
+    *smallest = inputs[0]->smallest;
+    *largest = inputs[inputs.size() - 1]->largest;
+  }
+}
+
 void CompactionPicker::GetRange(const CompactionInputFiles& inputs1,
                                 const CompactionInputFiles& inputs2,
                                 InternalKey* smallest,
@@ -192,6 +221,32 @@ void CompactionPicker::GetRange(const CompactionInputFiles& inputs1,
 }
 
 void CompactionPicker::GetRange(const std::vector<CompactionInputFiles>& inputs,
+                                InternalKey* smallest,
+                                InternalKey* largest) const {
+  InternalKey current_smallest;
+  InternalKey current_largest;
+  bool initialized = false;
+  for (const auto& in : inputs) {
+    if (in.empty()) {
+      continue;
+    }
+    GetRange(in, &current_smallest, &current_largest);
+    if (!initialized) {
+      *smallest = current_smallest;
+      *largest = current_largest;
+      initialized = true;
+    } else {
+      if (icmp_->Compare(current_smallest, *smallest) < 0) {
+        *smallest = current_smallest;
+      }
+      if (icmp_->Compare(current_largest, *largest) > 0) {
+        *largest = current_largest;
+      }
+    }
+  }
+  assert(initialized);
+}
+void CompactionPicker::GetRange(const std::vector<InterCFCompactionInputFiles>& inputs,
                                 InternalKey* smallest,
                                 InternalKey* largest) const {
   InternalKey current_smallest;
@@ -278,6 +333,26 @@ bool CompactionPicker::RangeOverlapWithCompaction(
 
 bool CompactionPicker::FilesRangeOverlapWithCompaction(
     const std::vector<CompactionInputFiles>& inputs, int level) const {
+  bool is_empty = true;
+  for (auto& in : inputs) {
+    if (!in.empty()) {
+      is_empty = false;
+      break;
+    }
+  }
+  if (is_empty) {
+    // No files in inputs
+    return false;
+  }
+
+  InternalKey smallest, largest;
+  GetRange(inputs, &smallest, &largest);
+  return RangeOverlapWithCompaction(smallest.user_key(), largest.user_key(),
+                                    level);
+}
+
+bool CompactionPicker::FilesRangeOverlapWithCompaction(
+    const std::vector<InterCFCompactionInputFiles>& inputs, int level) const {
   bool is_empty = true;
   for (auto& in : inputs) {
     if (!in.empty()) {
@@ -1554,12 +1629,14 @@ InterCFCompaction* LevelCompactionPicker::PickInterCFCompaction(const std::strin
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
                                      VersionStorageInfo* parent_vstorage,
-                                     LogBuffer* log_buffer) {
+                                     LogBuffer* log_buffer,
+                                     CompactionPicker* parent_picker) {
   (void)cf_name;
   (void)mutable_cf_options;
   (void)vstorage;
   (void)parent_vstorage;
   (void)log_buffer;
+  (void)parent_picker;
   // [LCF] NOT USED
   return nullptr;
 }

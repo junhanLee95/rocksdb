@@ -285,7 +285,7 @@ class ColumnFamilyData {
                              LogBuffer* log_buffer);
   // [LCF] REQUIRES: DB mutex held
   InterCFCompaction* PickInterCFCompaction(const MutableCFOptions& mutable_options,
-                             LogBuffer* log_buffer, Version* parent_version_);
+                             LogBuffer* log_buffer, Version* parent_version_, CompactionPicker* parent_picker);
 
   // REQUIRES: DB mutex held
   bool NeedsSplit() const;

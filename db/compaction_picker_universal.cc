@@ -254,7 +254,8 @@ UniversalCompactionPicker::CalculateSortedRuns(
 
 InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
-    VersionStorageInfo* vstorage, VersionStorageInfo* parent_vstorage, LogBuffer* log_buffer) {
+    VersionStorageInfo* vstorage, VersionStorageInfo* parent_vstorage, LogBuffer* log_buffer,
+    CompactionPicker* parent_picker) {
   const int kLevel0 = 0;
   double score = vstorage->CompactionScore(kLevel0);
   std::vector<SortedRun> sorted_runs =
@@ -287,7 +288,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
     if (ioptions_.allow_column_family_split &&
         (c = PickInterCFCompactionToReduceTotalSize(cf_name, mutable_cf_options,
                                            vstorage, parent_vstorage, score, sorted_runs,
-                                           log_buffer)) != nullptr) {
+                                           log_buffer, parent_picker)) != nullptr) {
       ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: LCF compacting for size total\n",
                        cf_name.c_str());
     }
@@ -713,10 +714,10 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceSortedRuns(
 InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotalSize(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, VersionStorageInfo* parent_vstorage, double score,
-    const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer) {
-  (void)parent_vstorage;
+    const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer, CompactionPicker* parent_picker) {
   uint64_t max_bytes = mutable_cf_options.max_bytes_for_level_base; // total size should be less than $max_bytes$
   ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal:PickCompactionToReduceTotalsize max_bytes_for_level_base : %ld\n", cf_name.c_str(), max_bytes);
+  ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal:PickCompactionToReduceTotalsize parent picker's style : %ld\n", cf_name.c_str(), parent_picker->GetCompactionStyle());
 
   unsigned int candidate_count = 0;
   uint64_t candidate_size = 0;
@@ -831,17 +832,42 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
     output_level--;
   }
 
-  return new InterCFCompaction(
-      vstorage, ioptions_, mutable_cf_options, std::move(inputs), output_level,
-      MaxFileSizeForLevel(mutable_cf_options, output_level,
-                          kCompactionStyleUniversal),
-      /* max_grandparent_overlap_bytes */ LLONG_MAX, path_id,
-      GetCompressionType(ioptions_, vstorage, mutable_cf_options, output_level,
-                         1),
-      GetCompressionOptions(ioptions_, vstorage, output_level),
-      /* max_subcompactions */ 0, /* grandparents */ {}, /* is manual */ false,
-      score, false /* deletion_compaction */,
-      CompactionReason::kUniversalSizeTotal);
+  if (parent_picker->FilesRangeOverlapWithCompaction(inputs, output_level)) {
+    // there is compaction in progress in parent column family
+    inputs.clear();
+    return nullptr;
+  }
+  else {
+    // LCF: we now put inputs from parent_vstorage
+    InternalKey smallest, largest;
+    GetRange(inputs, &smallest, &largest);
+
+    InterCFCompactionInputFiles output_level_inputs;
+    output_level_inputs.level = output_level;
+
+    parent_vstorage->GetOverlappingInputs(output_level, &smallest, &largest,
+                                          &output_level_inputs.files, -1, nullptr);
+
+    if (AreFilesInCompaction(output_level_inputs.files)) {
+      inputs.clear();
+      return nullptr;
+    }
+    else {
+      inputs.push_back(output_level_inputs);
+
+      return new InterCFCompaction(
+          vstorage, ioptions_, mutable_cf_options, std::move(inputs), output_level,
+          MaxFileSizeForLevel(mutable_cf_options, output_level,
+            kCompactionStyleLevel),
+          /* max_grandparent_overlap_bytes */ LLONG_MAX, path_id,
+          GetCompressionType(ioptions_, vstorage, mutable_cf_options, output_level,
+            1),
+          GetCompressionOptions(ioptions_, vstorage, output_level),
+          /* max_subcompactions */ 0, /* grandparents */ {}, /* is manual */ false,
+          score, false /* deletion_compaction */,
+          CompactionReason::kUniversalSizeTotal);
+    }
+  }
 }
 // Look at overall size amplification. If size amplification
 // exceeeds the configured value, then do a compaction

@@ -1526,7 +1526,7 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   edit.SetColumnFamily(cfd->GetID());
   pedit.SetColumnFamily(pcfd->GetID());
   // file deletions
-  compaction->AddInputDeletions(&edit);
+  compaction->AddInputDeletions(&edit, &pedit);
   // file adds
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {

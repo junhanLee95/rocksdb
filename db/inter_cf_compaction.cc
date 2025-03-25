@@ -225,11 +225,6 @@ InterCFCompaction::InterCFCompaction(VersionStorageInfo* vstorage,
     output_compression_opts_.zstd_max_train_bytes = 0;
   }
 
-#ifndef NDEBUG
-  for (size_t i = 1; i < inputs_.size(); ++i) {
-    assert(inputs_[i].level > inputs_[i - 1].level);
-  }
-#endif
 
   // setup input_levels_
   {
@@ -329,11 +324,17 @@ bool InterCFCompaction::IsTrivialMove() const {
   return true;
 }
 
-void InterCFCompaction::AddInputDeletions(VersionEdit* out_edit) {
+void InterCFCompaction::AddInputDeletions(VersionEdit* out_edit, VersionEdit* p_out_edit) {
   for (size_t which = 0; which < num_input_levels(); which++) {
     for (size_t i = 0; i < inputs_[which].size(); i++) {
-      out_edit->DeleteFile(level(which), inputs_[which][i]->fd.GetNumber());
-      out_edit->SetSplitMove(false);
+      if (level(which) != output_level_) {
+        out_edit->DeleteFile(level(which), inputs_[which][i]->fd.GetNumber());
+        out_edit->SetSplitMove(false);
+      }
+      else {
+        p_out_edit->DeleteFile(level(which), inputs_[which][i]->fd.GetNumber());
+        p_out_edit->SetSplitMove(false);
+      }
     }
   }
 }

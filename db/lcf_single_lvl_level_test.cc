@@ -80,7 +80,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   Random rnd(301);
   // Prepare one Level 1 sstable file
   // trigger L0 compaction
-  for (int num = 0; num < options.level0_file_num_compaction_trigger + 1;
+  for (int num = 0; num < options.level0_file_num_compaction_trigger+1;
        num ++) {
     for (int i=0; i<kCnt; i++) {
       std::string k = "user" + std::to_string(i);
@@ -91,7 +91,17 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   }
   dbfull(db)->TEST_WaitForCompact();
 
- 
+  // second wave
+  for (int num = 0; num < options.level0_file_num_compaction_trigger+1;
+      num ++) {
+    for (int i=0; i<kCnt; i++) {
+      std::string k = "user" + std::to_string(i);
+      std::string v = "v" + std::to_string(i) ;
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
+  }
+  dbfull(db)->TEST_WaitForCompact();
  
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
   //dbfull(db)->DestroyLogicalColumnFamilies();

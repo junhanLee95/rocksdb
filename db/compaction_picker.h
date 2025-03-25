@@ -29,6 +29,7 @@ class LogBuffer;
 class Compaction;
 class VersionStorageInfo;
 struct CompactionInputFiles;
+struct InterCFCompactionInputFiles;
 
 class CompactionPicker {
  public:
@@ -53,7 +54,8 @@ class CompactionPicker {
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
                                      VersionStorageInfo* parent_vstorage,
-                                     LogBuffer* log_buffer) = 0;
+                                     LogBuffer* log_buffer,
+                                     CompactionPicker* parent_picker) = 0;
 
   // Return a compaction object for compacting the range [begin,end] in
   // the specified level.  Returns nullptr if there is nothing in that
@@ -135,6 +137,10 @@ class CompactionPicker {
   void GetRange(const CompactionInputFiles& inputs, InternalKey* smallest,
                 InternalKey* largest) const;
 
+  void GetRange(const InterCFCompactionInputFiles& inputs, InternalKey* smallest,
+                InternalKey* largest) const;
+
+
   // Stores the minimal range that covers all entries in inputs1 and inputs2
   // in *smallest, *largest.
   // REQUIRES: inputs is not empty
@@ -148,7 +154,12 @@ class CompactionPicker {
   void GetRange(const std::vector<CompactionInputFiles>& inputs,
                 InternalKey* smallest, InternalKey* largest) const;
 
+  void GetRange(const std::vector<InterCFCompactionInputFiles>& inputs,
+                InternalKey* smallest, InternalKey* largest) const;
+
   int NumberLevels() const { return ioptions_.num_levels; }
+
+  int GetCompactionStyle() const { return ioptions_.compaction_style; } //LCF
 
   // Add more files to the inputs on "level" to make sure that
   // no newer version of a key is compacted to "level+1" while leaving an older
@@ -174,6 +185,9 @@ class CompactionPicker {
   // key range of a currently running compaction.
   bool FilesRangeOverlapWithCompaction(
       const std::vector<CompactionInputFiles>& inputs, int level) const;
+
+  bool FilesRangeOverlapWithCompaction(
+      const std::vector<InterCFCompactionInputFiles>& inputs, int level) const; // LCF
 
   bool SetupOtherInputs(const std::string& cf_name,
                         const MutableCFOptions& mutable_cf_options,
@@ -245,7 +259,8 @@ class LevelCompactionPicker : public CompactionPicker {
                                      const MutableCFOptions& mutable_cf_options,
                                      VersionStorageInfo* vstorage,
                                      VersionStorageInfo* parent_vstorage,
-                                     LogBuffer* log_buffer) override;
+                                     LogBuffer* log_buffer,
+                                     CompactionPicker* parent_picker) override;
 
   virtual bool NeedsCompaction(
       const VersionStorageInfo* vstorage) const override;
@@ -271,7 +286,8 @@ class NullCompactionPicker : public CompactionPicker {
       const MutableCFOptions& /*mutable_cf_options*/,
       VersionStorageInfo* /*vstorage*/,
       VersionStorageInfo* /* parent vstorage*/,
-      LogBuffer* /*log_buffer*/) override {
+      LogBuffer* /*log_buffer*/,
+      CompactionPicker* /*parent_picker*/) override {
     return nullptr;
   }
 
