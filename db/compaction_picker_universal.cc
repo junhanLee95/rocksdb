@@ -260,7 +260,6 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
   std::vector<SortedRun> sorted_runs =
       CalculateSortedRuns(*vstorage, ioptions_, mutable_cf_options);
 
-  (void)parent_vstorage;
 
   ROCKS_LOG_BUFFER(log_buffer, "[%s] 250325 Universal inter-cf: base level : %d\n",
       cf_name.c_str(), mutable_cf_options.inter_cf_base_level);
@@ -287,7 +286,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
           mutable_cf_options.level0_file_num_compaction_trigger)) {
     if (ioptions_.allow_column_family_split &&
         (c = PickInterCFCompactionToReduceTotalSize(cf_name, mutable_cf_options,
-                                           vstorage, score, sorted_runs,
+                                           vstorage, parent_vstorage, score, sorted_runs,
                                            log_buffer)) != nullptr) {
       ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal: LCF compacting for size total\n",
                        cf_name.c_str());
@@ -302,6 +301,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompaction(
 
 
   vstorage->ComputeCompactionScore(ioptions_, mutable_cf_options);
+  parent_vstorage->ComputeCompactionScore(ioptions_, mutable_cf_options);
 
   TEST_SYNC_POINT_CALLBACK("UniversalCompactionPicker::PickInterCFCompaction:Return",
                            c);
@@ -712,9 +712,9 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceSortedRuns(
 //
 InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotalSize(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
-    VersionStorageInfo* vstorage, double score,
+    VersionStorageInfo* vstorage, VersionStorageInfo* parent_vstorage, double score,
     const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer) {
-
+  (void)parent_vstorage;
   uint64_t max_bytes = mutable_cf_options.max_bytes_for_level_base; // total size should be less than $max_bytes$
   ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal:PickCompactionToReduceTotalsize max_bytes_for_level_base : %ld\n", cf_name.c_str(), max_bytes);
 
@@ -823,8 +823,8 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
                      cf_name.c_str(), file_num_buf);
   }
 
-  // output files at the bottom most level, unless it's reserved
-  int output_level = vstorage->num_levels() - 1;
+  // output files at designated base level.
+  int output_level = mutable_cf_options.inter_cf_base_level;
   // last level is reserved for the files ingested behind
   if (ioptions_.allow_ingest_behind) {
     assert(output_level > 1);
