@@ -1074,13 +1074,14 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   column_families.push_back(
       ColumnFamilyDescriptor(kDefaultColumnFamilyName, cf_options));
   std::vector<ColumnFamilyHandle*> handles;
-  //std::cout << "OPEN\n";
+  std::cout << "OPEN\n";
   Status s = DB::Open(db_options, dbname, column_families, &handles, dbptr);
   if (s.ok()) {
     assert(handles.size() == 1);
     // i can delete the handle since DBImpl is always holding a reference to
     // default column family
     delete handles[0];
+
   }
   return s;
 }
@@ -1341,6 +1342,22 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
     handles->clear();
     delete impl;
     *dbptr = nullptr;
+  }
+  else {
+    if (impl->immutable_db_options_.allow_column_family_split) {
+      ColumnFamilyHandle* cfh_default = impl->DefaultColumnFamily();
+      ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh_default)->cfd();
+
+      std::vector<FileMetaData*> infos;
+      FileMetaData* f1 = new FileMetaData;
+      std::string s1 = "";
+      std::string l1 = "";
+      f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+      f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+      infos.push_back(f1);
+
+      impl->SplitColumnFamilyFromSstFiles(cfd_default, infos);
+    }
   }
   return s;
 }
