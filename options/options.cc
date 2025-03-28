@@ -133,6 +133,8 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
                    write_buffer_size);
   ROCKS_LOG_HEADER(log, " Options.max_write_buffer_number: %d",
                    max_write_buffer_number);
+  ROCKS_LOG_HEADER(log, " Options.inter_cf_base_level: %d",
+                   inter_cf_base_level);
   if (!compression_per_level.empty()) {
     for (unsigned int i = 0; i < compression_per_level.size(); i++) {
       ROCKS_LOG_HEADER(

@@ -40,6 +40,8 @@ uint64_t DBImpl::MinObsoleteSstNumberToKeep() {
 Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
                                              std::vector<FileMetaData*>& sst_split_files) {
   assert(!sst_split_files.empty());
+  assert(cfd->GetID() == 0); // must be called from default column family.
+
   Status s;
   Status persistent_options_status;
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
