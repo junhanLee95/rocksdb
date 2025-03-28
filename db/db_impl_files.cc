@@ -606,19 +606,41 @@ void DBImpl::DeleteObsoleteFileImpl(int job_id, const std::string& fname,
                                     const std::string& path_to_sync,
                                     FileType type, uint64_t number) {
   Status file_deletion_status;
-  if (type == kTableFile || type == kLogFile) {
-    file_deletion_status =
+  bool is_lcf_shared = false;
+  if (type == kTableFile) {
+    if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr &&
+        lcf_alive_file_map_manager_->Decrement(number) == false) {
+      // do not delete file.
+      is_lcf_shared = true;
+      file_deletion_status = Status::OK();
+    }
+    else {
+      file_deletion_status =
         DeleteDBFile(&immutable_db_options_, fname, path_to_sync);
+    }
+  } else if (type == kLogFile) {
+    file_deletion_status =
+      DeleteDBFile(&immutable_db_options_, fname, path_to_sync);
   } else {
     file_deletion_status = env_->DeleteFile(fname);
   }
   TEST_SYNC_POINT_CALLBACK("DBImpl::DeleteObsoleteFileImpl:AfterDeletion",
                            &file_deletion_status);
-  if (file_deletion_status.ok()) {
+  
+  if (is_lcf_shared) {
+    ROCKS_LOG_DEBUG(immutable_db_options_.info_log,
+        "[JOB %d] File is shared and should not delete %s type=%d #%" PRIu64 " -- %s\n", job_id,
+        fname.c_str(), type, number,
+        file_deletion_status.ToString().c_str());
+  }
+  else if (file_deletion_status.ok()) {
     ROCKS_LOG_DEBUG(immutable_db_options_.info_log,
                     "[JOB %d] Delete %s type=%d #%" PRIu64 " -- %s\n", job_id,
                     fname.c_str(), type, number,
                     file_deletion_status.ToString().c_str());
+    if (lcf_alive_file_map_manager_ != nullptr) {
+      lcf_alive_file_map_manager_->PrintAliveFiles("Delete");
+    }
   } else if (env_->FileExists(fname).IsNotFound()) {
     ROCKS_LOG_INFO(
         immutable_db_options_.info_log,

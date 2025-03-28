@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "db/column_family.h"
 #include "db/compaction_job.h"
@@ -60,6 +61,7 @@
 #include "util/stop_watch.h"
 #include "util/thread_local.h"
 #include "util/trace_replay.h"
+#include "util/mutexlock.h"
 
 namespace rocksdb {
 
@@ -73,10 +75,58 @@ class Version;
 class VersionEdit;
 class VersionSet;
 class WriteCallback;
+class LCFAliveFileMapManager;
 struct JobContext;
 struct ExternalSstFileInfo;
 struct MemTableInfo;
 
+// LCF: tracking alive flies across multiple column families
+class LCFAliveFileMapManager {
+  public:
+    LCFAliveFileMapManager() {
+      std::cout << "Init LCFAliveFileMapManager\n";
+    };
+
+    void PrintAliveFiles(std::string msg) {
+      ReadLock rl(&lcf_alive_file_mutex_);
+      std::cout <<">>>" << msg << ">>>" <<std::endl;
+      for (auto& files: lcf_alive_file_map_) {
+        std::cout << "file["<< files.first <<"] : " << files.second << std::endl;
+      }
+      std::cout <<"<<<" << msg << "<<<"<< std::endl;
+    }
+
+    void Increment(uint64_t file_num) {
+      WriteLock wl(&lcf_alive_file_mutex_);
+      if (lcf_alive_file_map_.find(file_num) == lcf_alive_file_map_.end()) {
+        lcf_alive_file_map_.insert(std::make_pair(file_num, 1));
+      }
+      else {
+        int file_cnt = lcf_alive_file_map_[file_num];
+        lcf_alive_file_map_[file_num] = file_cnt + 1;
+      }
+    }
+
+    bool Decrement(uint64_t file_num) {
+      WriteLock wl(&lcf_alive_file_mutex_);
+      if(lcf_alive_file_map_.find(file_num) == lcf_alive_file_map_.end()){
+        //error
+        return true;
+      }
+      int file_cnt = lcf_alive_file_map_[file_num];
+      if(file_cnt == 1) {
+        lcf_alive_file_map_.erase(file_num);
+        return true;
+      }
+      else {
+        lcf_alive_file_map_[file_num] = file_cnt - 1;
+        return false;
+      }
+    }
+
+    std::unordered_map<uint64_t, int> lcf_alive_file_map_;
+    port::RWMutex lcf_alive_file_mutex_;
+};
 class DBImpl : public DB {
  public:
   std::string trace_fn;
@@ -1468,6 +1518,9 @@ class DBImpl : public DB {
 
   Directories directories_;
 
+
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
+
   WriteBufferManager* write_buffer_manager_;
 
   WriteThread write_thread_;
@@ -1541,6 +1594,7 @@ class DBImpl : public DB {
 
   // LCF: compaction for partitioned l0 column famililies.
   std::deque<ColumnFamilyData*> l0_compaction_queue_;
+
 
   // TODO: Maybe I should add split_queue_
   std::deque<SplitRequest> split_queue_;

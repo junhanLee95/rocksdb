@@ -374,7 +374,7 @@ SplitJob::SplitJob(
     const SnapshotChecker* snapshot_checker, std::shared_ptr<Cache> table_cache,
     EventLogger* event_logger, bool paranoid_file_checks, bool measure_io_stats,
     const std::string& dbname, SplitJobStats* split_job_stats,
-    Env::Priority thread_pri)
+    Env::Priority thread_pri, std::shared_ptr<LCFAliveFileMapManager> manager)
     : job_id_(job_id),
       split_(new SplitState(compaction/*, metas*/)),
       children_cnt_(compaction->column_family_data()->GetChildrenNodes().size()),
@@ -404,7 +404,8 @@ SplitJob::SplitJob(
       paranoid_file_checks_(paranoid_file_checks),
       measure_io_stats_(measure_io_stats),
       write_hint_(Env::WLTH_NOT_SET),
-      thread_pri_(thread_pri) {
+      thread_pri_(thread_pri),
+      lcf_alive_file_map_manager_(manager) {
   assert(log_buffer_ != nullptr);
   const auto* cfd = split_->compaction->column_family_data();
   ThreadStatusUtil::SetColumnFamily(cfd, cfd->ioptions()->env,
@@ -1649,6 +1650,9 @@ Status SplitJob::InstallSplitResults() {
     for (const auto& out : sub_split.parent_outputs) {
       e_in.AddFile(compaction->output_level(), out.meta);
       e_in.SetSplitMove(true);
+      if (lcf_alive_file_map_manager_ != nullptr) {
+        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
+      }
     }
     for (const auto& out : sub_split.child_outputs) {
       int idx = out.child_idx;
@@ -1660,6 +1664,10 @@ Status SplitJob::InstallSplitResults() {
       column_family_datas.push_back(child_cfd);
       mutable_cf_options_list.push_back(child_cfd->GetLatestMutableCFOptions());
       edit_out[idx].push_back(&e_out[idx]);
+
+      if (lcf_alive_file_map_manager_ != nullptr) {
+        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
+      }
     }
   }
   edit_in.push_back(&e_in);

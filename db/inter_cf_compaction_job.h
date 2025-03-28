@@ -54,6 +54,7 @@ class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
+class LCFAliveFileMapManager;
 
 class InterCFCompactionJob {
  public:
@@ -92,7 +93,8 @@ class InterCFCompactionJob {
                 CompactionJobStats* compaction_job_stats,
                 Env::Priority thread_pri,
                 std::vector<FileMetaData*>& sst_split_files,
-                ColumnFamilyData** cfd_to_split);
+                ColumnFamilyData** cfd_to_split,
+                std::shared_ptr<LCFAliveFileMapManager> manager=nullptr);
 
   ~InterCFCompactionJob();
 
@@ -199,6 +201,8 @@ class InterCFCompactionJob {
   uint64_t prev_num_uniq_keys_;
   uint64_t prev_total_flush_cnt_;
   uint64_t prev_total_compaction_cnt_;
+
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
 };
 
 }  // namespace rocksdb

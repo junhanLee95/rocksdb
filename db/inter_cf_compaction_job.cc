@@ -331,7 +331,8 @@ InterCFCompactionJob::InterCFCompactionJob(
     const std::string& dbname, CompactionJobStats* compaction_job_stats,
     Env::Priority thread_pri,
     std::vector<FileMetaData*>& sst_split_files,
-    ColumnFamilyData** cfd_to_split
+    ColumnFamilyData** cfd_to_split,
+    std::shared_ptr<LCFAliveFileMapManager> manager
     )
     : job_id_(job_id),
       compact_(new InterCFCompactionState(inter_cf_compaction)),
@@ -366,7 +367,8 @@ InterCFCompactionJob::InterCFCompactionJob(
       cfd_to_split_(cfd_to_split),
       prev_num_uniq_keys_(0),
       prev_total_flush_cnt_(0),
-      prev_total_compaction_cnt_(0)
+      prev_total_compaction_cnt_(0),
+      lcf_alive_file_map_manager_(manager)
 {
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->inter_cf_compaction->column_family_data();
@@ -447,9 +449,29 @@ void InterCFCompactionJob::Prepare() {
     }
     assert(sizes_.size() == boundaries_.size() + 1);
 
+    Slice cfd_start = c->column_family_data()->GetSmallestKey();
+    Slice cfd_end = c->column_family_data()->GetLargestKey();
+
     for (size_t i = 0; i <= boundaries_.size(); i++) {
-      Slice* start = i == 0 ? nullptr : &boundaries_[i - 1];
-      Slice* end = i == boundaries_.size() ? nullptr : &boundaries_[i];
+      Slice* start = nullptr;
+      Slice* end = nullptr;
+
+      if (!cfd_start.empty()) {
+        start = &cfd_start;
+      }
+      else if(i != 0) {
+        start = &boundaries_[i-1];
+      }
+
+      if (!cfd_end.empty()) {
+        end = &cfd_end;
+      }
+      else if (i != boundaries_.size()) {
+        end = &boundaries_[i];
+      }
+
+      //Slice* start = i == 0 ? nullptr : &boundaries_[i - 1];
+      //Slice* end = i == boundaries_.size() ? nullptr : &boundaries_[i];
       compact_->sub_compact_states.emplace_back(c, start, end, sizes_[i]);
     }
     RecordInHistogram(stats_, NUM_SUBCOMPACTIONS_SCHEDULED,
@@ -1531,6 +1553,10 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
       pedit.AddFile(compaction->output_level(), out.meta);
+      if (lcf_alive_file_map_manager_ != nullptr) {
+        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
+        lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
+      }
     }
   }
   // mark atomic

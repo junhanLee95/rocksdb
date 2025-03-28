@@ -44,6 +44,7 @@
 namespace rocksdb {
 
 class DBImpl;
+class LCFAliveFileMapManager;
 class MemTable;
 class SnapshotChecker;
 class TableCache;
@@ -69,7 +70,8 @@ class FlushJob {
            Directory* output_file_directory, CompressionType output_compression,
            Statistics* stats, EventLogger* event_logger, bool measure_io_stats,
            const bool sync_output_directory, const bool write_manifest,
-           Env::Priority thread_pri/*, FlushJobStats *flush_job_stats*/);
+           Env::Priority thread_pri/*, FlushJobStats *flush_job_stats*/,
+           std::shared_ptr<LCFAliveFileMapManager> manager = nullptr);
 
   ~FlushJob();
 
@@ -168,6 +170,8 @@ class FlushJob {
   Version* base_;
   bool pick_memtable_called;
   Env::Priority thread_pri_;
+
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
 };
 
 }  // namespace rocksdb

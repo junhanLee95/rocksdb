@@ -371,7 +371,8 @@ CompactionJob::CompactionJob(
     const std::string& dbname, CompactionJobStats* compaction_job_stats,
     Env::Priority thread_pri,
     std::vector<FileMetaData*>& sst_split_files,
-    ColumnFamilyData** cfd_to_split
+    ColumnFamilyData** cfd_to_split,
+    std::shared_ptr<LCFAliveFileMapManager> manager
     )
     : job_id_(job_id),
       compact_(new CompactionState(compaction)),
@@ -406,7 +407,8 @@ CompactionJob::CompactionJob(
       cfd_to_split_(cfd_to_split),
       prev_num_uniq_keys_(0),
       prev_total_flush_cnt_(0),
-      prev_total_compaction_cnt_(0)
+      prev_total_compaction_cnt_(0),
+      lcf_alive_file_map_manager_(manager)
 {
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->compaction->column_family_data();
@@ -1620,6 +1622,10 @@ Status CompactionJob::InstallCompactionResults(
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
+      if (lcf_alive_file_map_manager_ != nullptr) {
+        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
+        lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
+      }
     }
   }
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply");

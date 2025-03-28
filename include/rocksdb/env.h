@@ -872,6 +872,7 @@ class Directory {
   // DirectoryWrapper too.
 };
 
+
 enum InfoLogLevel : unsigned char {
   DEBUG_LEVEL = 0,
   INFO_LEVEL,

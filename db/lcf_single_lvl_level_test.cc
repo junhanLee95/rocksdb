@@ -23,6 +23,7 @@
 
 namespace rocksdb {
 
+
 class LCFSingleLvlLevelTest : public testing::Test {
  public:
   LCFSingleLvlLevelTest() {
@@ -50,18 +51,43 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   options.column_family_min_key_range = 0; // set no limit of splitting
   //options.atomic_flush = true;
 
-  int kCnt = 280000;
+  int key_size = 100;
+  int val_size = 900;
+  Random rnd(301);
+
+  int kCnt = 40000;
 
   std::string db_name = test::PerThreadDBPath("test_db_one_two");
   DB* db;
   ASSERT_OK(DB::Open(options, db_name, &db));
 
   ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
-  ColumnFamilyData* cfd =
-      static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+ /* ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+
+  std::vector<FileMetaData*> infos;
+  FileMetaData* f1 = new FileMetaData;
+  FileMetaData* f2 = new FileMetaData;
+
+  std::string s1 = "";
+  std::string l1 =  RandomString(&rnd, key_size);
+  std::string s2 = l1;
+  std::string l2 = "";
+
+  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
+  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
+
+  f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
+  f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
+
+  infos.push_back(f1);
+  infos.push_back(f2);
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_default, infos); */
+
+  //ColumnFamilyData* cfd =
+  //    static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
 
   // FIRST Split
-  std::vector<FileMetaData*> infos;
+  /*std::vector<FileMetaData*> infos;
 
   FileMetaData* f1 = new FileMetaData;
   std::string s1 = "";
@@ -75,16 +101,15 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   fprintf(stdout, "[LCFSingleLvlLevelTest] First Split Finish \n");
   infos.clear();
  
-  dbfull(db)->TEST_WaitForSplit();
+  dbfull(db)->TEST_WaitForSplit(); */
 
-  Random rnd(301);
   // Prepare one Level 1 sstable file
   // trigger L0 compaction
   for (int num = 0; num < options.level0_file_num_compaction_trigger+1;
        num ++) {
     for (int i=0; i<kCnt; i++) {
-      std::string k = "user" + std::to_string(i);
-      std::string v = "v" + std::to_string(i) ;
+      std::string k =  RandomString(&rnd, key_size);
+      std::string v =  RandomString(&rnd, val_size);
       db->Put(WriteOptions(), cfh, k, v);  
     }
     ASSERT_OK(db->Flush(FlushOptions())); 
@@ -95,8 +120,8 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   for (int num = 0; num < options.level0_file_num_compaction_trigger+1;
       num ++) {
     for (int i=0; i<kCnt; i++) {
-      std::string k = "user" + std::to_string(i);
-      std::string v = "v" + std::to_string(i) ;
+      std::string k =  RandomString(&rnd, key_size );
+      std::string v =  RandomString(&rnd, val_size );
       db->Put(WriteOptions(), cfh, k, v);  
     }
     ASSERT_OK(db->Flush(FlushOptions())); 

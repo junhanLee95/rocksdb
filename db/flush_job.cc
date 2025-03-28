@@ -195,7 +195,8 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
                    CompressionType output_compression, Statistics* stats,
                    EventLogger* event_logger, bool measure_io_stats,
                    const bool sync_output_directory, const bool write_manifest,
-                   Env::Priority thread_pri)
+                   Env::Priority thread_pri,
+                   std::shared_ptr<LCFAliveFileMapManager> manager)
     : dbname_(dbname),
       cfd_(cfd),
       db_options_(db_options),
@@ -222,7 +223,8 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       edit_(nullptr),
       base_(nullptr),
       pick_memtable_called(false),
-      thread_pri_(thread_pri) {
+      thread_pri_(thread_pri),
+      lcf_alive_file_map_manager_(manager) {
       //flush_job_stats_ (flush_job_stats) {
   // Update the thread status to indicate flush.
   ReportStartedFlush();
@@ -808,6 +810,10 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.fd.GetFileSize(), meta_.smallest, meta_.largest,
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction);
+    if (lcf_alive_file_map_manager_ != nullptr) {
+      lcf_alive_file_map_manager_->Increment(meta_.fd.GetNumber());
+      lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
+    }
   }
 
   // Note that here we treat flush as level 0 compaction in internal stats
@@ -985,6 +991,10 @@ Status FlushJob::WriteLevel0Tables() {
                    meta_.fd.GetFileSize(), meta_.smallest, meta_.largest,
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction);
+    if (lcf_alive_file_map_manager_ != nullptr) {
+      lcf_alive_file_map_manager_->Increment(meta_.fd.GetNumber());
+    }
+
   }
   // we also add files to version edits for children nodes
   for (size_t i = 0; i < target_metas_.size(); i++) {
@@ -1002,8 +1012,16 @@ Status FlushJob::WriteLevel0Tables() {
                                   target_metas_[i].fd.smallest_seqno,
                                   target_metas_[i].fd.largest_seqno,
                                   target_metas_[i].marked_for_compaction);
+      if (lcf_alive_file_map_manager_ != nullptr) {
+        lcf_alive_file_map_manager_->Increment(target_metas_[i].fd.GetNumber());
+      }
+
       //fprintf(stdout, "[c]%s\n", children_edits_[i].DebugString().c_str());
     }
+  }
+
+  if(lcf_alive_file_map_manager_ != nullptr) {
+    lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
   }
   
 
@@ -1193,6 +1211,13 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
         meta->fd.GetFileSize(), meta->smallest, meta->largest,
         meta->fd.smallest_seqno, meta->fd.largest_seqno,
         meta->marked_for_compaction);
+    if (lcf_alive_file_map_manager_ != nullptr) {
+      lcf_alive_file_map_manager_->Increment(meta->fd.GetNumber());
+    }
+  }
+
+  if (lcf_alive_file_map_manager_ != nullptr) {
+    lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
   }
 
   sub_flush->status = status;

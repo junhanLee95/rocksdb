@@ -150,7 +150,8 @@ Status DBImpl::FlushMemTableToOutputFile(
       GetDataDir(cfd, 0U),
       GetCompressionFlush(*cfd->ioptions(), mutable_cf_options), stats_,
       &event_logger_, mutable_cf_options.report_bg_io_stats,
-      true /* sync_output_directory */, true /* write_manifest */, thread_pri);  
+      true /* sync_output_directory */, true /* write_manifest */, thread_pri,
+      lcf_alive_file_map_manager_);  
 
   if (immutable_db_options_.allow_column_family_split) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -379,7 +380,8 @@ Status DBImpl::AtomicFlushMemTablesToOutputFiles(
         data_dir, GetCompressionFlush(*cfd->ioptions(), mutable_cf_options),
         stats_, &event_logger_, mutable_cf_options.report_bg_io_stats,
         false /* sync_output_directory */, false /* write_manifest */,
-        thread_pri);
+        thread_pri,
+        lcf_alive_file_map_manager_);
     jobs.back().PickMemTable();
   }
 
@@ -3419,7 +3421,7 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
         inter_cf_c->mutable_cf_options()->report_bg_io_stats, dbname_,
         &compaction_job_stats, thread_pri,
         job_context->sst_split_files,
-        &job_context->cfd_to_split);
+        &job_context->cfd_to_split, lcf_alive_file_map_manager_);
     inter_cf_compaction_job.Prepare();
 
     NotifyOnInterCFCompactionBegin(inter_cf_c->column_family_data(), inter_cf_c.get(), status,
@@ -3549,7 +3551,7 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
         c->mutable_cf_options()->report_bg_io_stats, dbname_,
         &compaction_job_stats, thread_pri,
         job_context->sst_split_files,
-        &job_context->cfd_to_split);
+        &job_context->cfd_to_split, lcf_alive_file_map_manager_);
     compaction_job.Prepare();
 
     NotifyOnCompactionBegin(c->column_family_data(), c.get(), status,
@@ -4022,7 +4024,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
         c->mutable_cf_options()->report_bg_io_stats, dbname_,
         &compaction_job_stats, thread_pri,
         job_context->sst_split_files,
-        &job_context->cfd_to_split);
+        &job_context->cfd_to_split, lcf_alive_file_map_manager_);
     compaction_job.Prepare();
 
     NotifyOnCompactionBegin(c->column_family_data(), c.get(), status,

@@ -363,6 +363,7 @@ class InterCFCompaction {
 
   // Reason for compaction
   CompactionReason compaction_reason_;
+
 };
 
 

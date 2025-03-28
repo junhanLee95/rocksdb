@@ -54,6 +54,7 @@ class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
+class LCFAliveFileMapManager;
 
 class SplitJob {
  public:
@@ -72,7 +73,8 @@ class SplitJob {
                 bool paranoid_file_checks, bool measure_io_stats,
                 const std::string& dbname,
                 SplitJobStats* compaction_job_stats,
-                Env::Priority thread_pri);
+                Env::Priority thread_pri,
+                std::shared_ptr<LCFAliveFileMapManager> manager=nullptr);
 
   ~SplitJob();
 
@@ -176,6 +178,8 @@ class SplitJob {
   std::vector<uint64_t> sizes_;
   Env::WriteLifeTimeHint write_hint_;
   Env::Priority thread_pri_;
+
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
 };
 
 }  // namespace rocksdb
