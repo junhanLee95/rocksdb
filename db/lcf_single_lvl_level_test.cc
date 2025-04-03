@@ -127,6 +127,8 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
     ASSERT_OK(db->Flush(FlushOptions())); 
   }
   dbfull(db)->TEST_WaitForCompact();
+
+  sleep (10);
  
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
   //dbfull(db)->DestroyLogicalColumnFamilies();

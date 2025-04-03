@@ -1348,13 +1348,13 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       ColumnFamilyHandle* cfh_default = impl->DefaultColumnFamily();
       ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh_default)->cfd();
 
-      std::vector<FileMetaData*> infos;
+      std::vector<SplitFileInfo> infos;
       FileMetaData* f1 = new FileMetaData;
       std::string s1 = "";
       std::string l1 = "";
       f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
       f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-      infos.push_back(f1);
+      infos.push_back(SplitFileInfo(f1, cfd_default, 1, 256*1024*1024, true));
 
       // [LCF] init alive file map manage
       impl->lcf_alive_file_map_manager_ = std::make_shared<LCFAliveFileMapManager>();

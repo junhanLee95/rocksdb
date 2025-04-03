@@ -3934,7 +3934,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     } else {
       s = DB::Open(options, db_name, &db->db);
 			// prepare static lcf if necessary
-			if (FLAGS_allow_column_family_split && FLAGS_static_lcf_num > 0) {
+		/*	if (FLAGS_allow_column_family_split && FLAGS_static_lcf_num > 0) {
 				int32_t num_cf = FLAGS_static_lcf_num;
 				int64_t keyrange =  FLAGS_num;
 				int64_t unit = keyrange / num_cf;
@@ -3965,7 +3965,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 					delete f1;
 					infos.clear();
 				}
-			}
+			}*/
     }
     if (!s.ok()) {
       fprintf(stderr, "open error: %s\n", s.ToString().c_str());

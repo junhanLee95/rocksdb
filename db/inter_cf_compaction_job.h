@@ -92,7 +92,7 @@ class InterCFCompactionJob {
                 const std::string& dbname,
                 CompactionJobStats* compaction_job_stats,
                 Env::Priority thread_pri,
-                std::vector<FileMetaData*>& sst_split_files,
+                std::vector<SplitFileInfo>& sst_split_files,
                 ColumnFamilyData** cfd_to_split,
                 std::shared_ptr<LCFAliveFileMapManager> manager=nullptr);
 
@@ -196,13 +196,16 @@ class InterCFCompactionJob {
   Env::WriteLifeTimeHint write_hint_;
   Env::Priority thread_pri_;
   // JH: [LCF] for passing key ranges to split
-  std::vector<FileMetaData*>& sst_split_files_;
+  std::vector<SplitFileInfo>& sst_split_files_;
   ColumnFamilyData** cfd_to_split_;
   uint64_t prev_num_uniq_keys_;
   uint64_t prev_total_flush_cnt_;
   uint64_t prev_total_compaction_cnt_;
 
   std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
+  int table_creation_number_;
+  int last_table_creation_number_to_split_;
+  int num_key_range_to_split_;
 };
 
 }  // namespace rocksdb

@@ -731,10 +731,21 @@ class Version {
 struct SplitFileInfo {
   FileMetaData* metadata;
   ColumnFamilyData* cfd;
+  int inter_cf_base_level;
+  uint64_t inter_cf_max_bytes_for_level_base;
+  bool is_split;
 
   SplitFileInfo() noexcept : metadata(nullptr), cfd(nullptr) {}
   SplitFileInfo(FileMetaData* f, ColumnFamilyData* c)
-      : metadata(f), cfd(c) {}
+      : metadata(f), cfd(c), inter_cf_base_level(1),
+        inter_cf_max_bytes_for_level_base(0),
+        is_split(true){}
+
+  SplitFileInfo(FileMetaData* f, ColumnFamilyData* c, int base_level, uint64_t level_byte, bool split)
+      : metadata(f), cfd(c), inter_cf_base_level(base_level),
+        inter_cf_max_bytes_for_level_base(level_byte),
+        is_split(split){}
+
 
   SplitFileInfo(const SplitFileInfo&) = delete;
   SplitFileInfo& operator=(const SplitFileInfo&) = delete;
@@ -749,6 +760,9 @@ struct SplitFileInfo {
     cfd = std::move(rhs.cfd);
     rhs.metadata = nullptr;
     rhs.cfd = nullptr;
+    inter_cf_base_level = rhs.inter_cf_base_level;
+    inter_cf_max_bytes_for_level_base = rhs.inter_cf_max_bytes_for_level_base;
+    is_split = rhs.is_split;
 
     return *this;
   }
@@ -758,6 +772,20 @@ struct SplitFileInfo {
     //delete cfd;
     metadata = nullptr;
     //cfd = nullptr;
+  }
+
+  std::string DebugString(void) {
+    std::string debug_str = "";
+    debug_str += std::string("\n- SplitFileInfo -\n");
+    debug_str += std::string("cf[") + cfd->GetName() + std::string("]\n");
+    debug_str += std::string("fd#[") + std::to_string(metadata->fd.GetNumber()) + std::string("]\n");
+    debug_str += std::string("range[") + metadata->smallest.user_key().ToString() + std::string(", ") + metadata->largest.user_key().ToString() + std::string("]\n");
+    debug_str += std::string("base level : ") + std::to_string(inter_cf_base_level) + std::string("\n");
+    debug_str += std::string("base bytes : ") + std::to_string(inter_cf_max_bytes_for_level_base) + std::string("\n");
+    debug_str += std::string("is_split  : ") + std::to_string(is_split) + std::string("\n");
+    debug_str += std::string("-----------------\n");
+
+    return debug_str;
   }
 };
 

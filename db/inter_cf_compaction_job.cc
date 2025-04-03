@@ -7,7 +7,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "db/compaction_job.h"
+#include "db/inter_cf_compaction_job.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -330,7 +330,7 @@ InterCFCompactionJob::InterCFCompactionJob(
     EventLogger* event_logger, bool paranoid_file_checks, bool measure_io_stats,
     const std::string& dbname, CompactionJobStats* compaction_job_stats,
     Env::Priority thread_pri,
-    std::vector<FileMetaData*>& sst_split_files,
+    std::vector<SplitFileInfo>& sst_split_files,
     ColumnFamilyData** cfd_to_split,
     std::shared_ptr<LCFAliveFileMapManager> manager
     )
@@ -368,7 +368,10 @@ InterCFCompactionJob::InterCFCompactionJob(
       prev_num_uniq_keys_(0),
       prev_total_flush_cnt_(0),
       prev_total_compaction_cnt_(0),
-      lcf_alive_file_map_manager_(manager)
+      lcf_alive_file_map_manager_(manager),
+      table_creation_number_(0),
+      last_table_creation_number_to_split_(-1),
+      num_key_range_to_split_(0)
 {
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->inter_cf_compaction->column_family_data();
@@ -1445,6 +1448,7 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
     prev_total_flush_cnt_ = cur_total_flush_cnt;
     prev_total_compaction_cnt_ = cur_total_compaction_cnt;
     float density = (float)file_total_flush_cnt/current_entries;
+    float s_amp = (float)current_input_entries/current_entries;
 
     // Output to event logger and fire events.
     float efficiency = (float)current_entries/current_input_entries;
@@ -1459,6 +1463,60 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
                    file_total_flush_cnt,
                    file_total_compaction_cnt,
                    density);
+
+    if (db_options_.allow_column_family_split) {
+      bool is_split = false;
+      int input_num = 0;
+
+      if (s_amp < 1.1) {
+        // create new column family
+        for(size_t i=0; i<sub_compact->compaction->num_input_levels(); i++) {
+          input_num += int(sub_compact->compaction->num_input_files(i));
+        }
+
+        float alpha = s_amp - 1;
+        float p = 2 * alpha / (input_num - 1);
+
+
+        if (p <= 0.02) {
+          is_split = true;
+          
+        }
+      }
+
+      FileMetaData* f = new FileMetaData;
+      f->fd = meta->fd;
+      if(last_table_creation_number_to_split_ == -1) {
+        f->smallest = InternalKey(cfd->GetSmallestKey(),
+            meta->fd.smallest_seqno, kTypeValue);
+      }
+      else {
+        f->smallest = InternalKey(meta->smallest.user_key(),
+            meta->fd.smallest_seqno, kTypeValue);
+      }
+      f->largest = InternalKey(meta->largest.user_key(),
+          meta->fd.largest_seqno, kTypeValue);
+
+      int base_level = compact_->inter_cf_compaction->mutable_cf_options()->inter_cf_base_level;
+      uint64_t level_byte = compact_->inter_cf_compaction->mutable_cf_options()->max_bytes_for_level_base;
+
+      if(is_split) {
+        base_level ++;
+        level_byte *= 10;
+        num_key_range_to_split_ ++;
+      }
+
+      sst_split_files_.push_back(SplitFileInfo(f, cfd, base_level, level_byte, is_split));
+      *cfd_to_split_ = cfd;
+      last_table_creation_number_to_split_ = table_creation_number_;
+
+      ROCKS_LOG_INFO(db_options_.info_log,
+          "[%s] [JOB %d] Split[%d] table #%" PRIu64 ": (s_amp %f) %d input",
+          cfd->GetName().c_str(), job_id_, is_split, output_number,
+          s_amp, input_num);
+
+    }
+    table_creation_number_++;
   }
   std::string fname;
   FileDescriptor output_fd;
@@ -1502,6 +1560,12 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   db_mutex_->AssertHeld();
 
   auto* compaction = compact_->inter_cf_compaction;
+
+  // clear sst split file if there is no key range to split
+  if (db_options_.allow_column_family_split && num_key_range_to_split_ == 0) {
+    sst_split_files_.clear();
+  }
+
   // paranoia: verify that the files that we started with
   // still exist in the current version and in the same original level.
   // This ensures that a concurrent compaction did not erroneously

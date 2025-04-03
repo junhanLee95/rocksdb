@@ -1572,7 +1572,7 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
                      InstrumentedMutex* db_mutex,
                      uint64_t logfile_number,
                      ColumnFamilyData* cfd,
-                     std::vector<FileMetaData*>& sst_split_files,
+                     std::vector<SplitFileInfo>& sst_split_files,
                      autovector<autovector<VersionEdit*>>& edit_lists,
                      std::vector<VersionEdit>& edit_out,
                      autovector<std::string>& cf_name_list,
@@ -1603,17 +1603,17 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: cnodes are empty");
     for (size_t i = 0; i < sst_split_files.size(); i++) {
-      if (!is_key_range_narrow(sst_split_files[i]->smallest.user_key(),
-                               sst_split_files[i]->largest.user_key(),
+      if (!is_key_range_narrow(sst_split_files[i].metadata->smallest.user_key(),
+                               sst_split_files[i].metadata->largest.user_key(),
                                db_options_->column_family_min_key_range)) {
-        new_smallests.emplace_back(sst_split_files[i]->smallest.user_key());
-        new_largests.emplace_back(sst_split_files[i]->largest.user_key());
+        new_smallests.emplace_back(sst_split_files[i].metadata->smallest.user_key());
+        new_largests.emplace_back(sst_split_files[i].metadata->largest.user_key());
         *new_cf_cnt = *new_cf_cnt+1;  
       } else {
         ROCKS_LOG_INFO(db_options_->info_log.get(),
                        "Key Range [%s,%s] is narrow and we skip",
-                       sst_split_files[i]->smallest.user_key().ToString(false).c_str(),
-                       sst_split_files[i]->largest.user_key().ToString(false).c_str());
+                       sst_split_files[i].metadata->smallest.user_key().ToString(false).c_str(),
+                       sst_split_files[i].metadata->largest.user_key().ToString(false).c_str());
       }
     }
   } else { // measure overlapping key ranges before putting sst_split_files to children
@@ -1622,8 +1622,8 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     Slice s_largest; // sst_split_files' largest key
 
     for (size_t s_i = 0; s_i < sst_split_files.size(); s_i ++) {
-      s_smallest = sst_split_files[s_i]->smallest.user_key();
-      s_largest = sst_split_files[s_i]->largest.user_key(); 
+      s_smallest = sst_split_files[s_i].metadata->smallest.user_key();
+      s_largest = sst_split_files[s_i].metadata->largest.user_key(); 
       ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: sst_split_file [%s, %s]", 
                    s_smallest.ToString().c_str(),

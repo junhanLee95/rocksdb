@@ -2832,8 +2832,8 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
       if (job_context.HaveSomethingToSplit()) {
         fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
         for (size_t i = 0; i < job_context.sst_split_files.size(); i++) {
-          fprintf(stdout, "[JH] file s : %s\n", job_context.sst_split_files[i]->smallest.user_key().ToString(false).c_str());
-          fprintf(stdout, "[JH] file l : %s\n", job_context.sst_split_files[i]->largest.user_key().ToString(false).c_str());
+          fprintf(stdout, "[JH] file s : %s\n", job_context.sst_split_files[i].metadata->smallest.user_key().ToString(false).c_str());
+          fprintf(stdout, "[JH] file l : %s\n", job_context.sst_split_files[i].metadata->largest.user_key().ToString(false).c_str());
         }
         mutex_.Unlock();
         assert(job_context.cfd_to_split != nullptr);
@@ -2953,6 +2953,29 @@ void DBImpl::BackgroundCallL0Compaction(PrepickedCompaction* prepicked_compactio
 
     ReleaseFileNumberFromPendingOutputs(pending_outputs_inserted_elem);
 
+    // split column family if necessary, this is done outside the mutex
+    if (immutable_db_options_.allow_column_family_split) {
+      TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+          "[JH] sst_split_files size(2) : %ld",
+          job_context.sst_split_files.size());
+
+      if (job_context.HaveSomethingToSplit()) {
+        fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
+        for (size_t i = 0; i < job_context.sst_split_files.size(); i++) {
+          fprintf(stdout, "[JH] file s : %s\n", job_context.sst_split_files[i].metadata->smallest.user_key().ToString(false).c_str());
+          fprintf(stdout, "[JH] file l : %s\n", job_context.sst_split_files[i].metadata->largest.user_key().ToString(false).c_str());
+        }
+        mutex_.Unlock();
+        assert(job_context.cfd_to_split != nullptr);
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+            "[JH]Have Something to Split [%s]",
+            job_context.cfd_to_split->GetName().c_str());
+        SplitColumnFamilyFromSstFiles(job_context.cfd_to_split,
+            job_context.sst_split_files);
+        mutex_.Lock();
+      }
+    }
     // If compaction failed, we want to delete all temporary files that we might
     // have created (they might not be all recorded in job_context in case of a
     // failure). Thus, we force full scan in FindObsoleteFiles()

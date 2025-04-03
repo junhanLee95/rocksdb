@@ -13,7 +13,8 @@ do_expr_thread.sh
 sst_dump_all.sh
 mytrace
 cscope.files
-
+disk_lcf
+result_lcf
 *.sh
 *.py
 *.a

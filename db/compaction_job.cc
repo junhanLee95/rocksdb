@@ -370,7 +370,7 @@ CompactionJob::CompactionJob(
     EventLogger* event_logger, bool paranoid_file_checks, bool measure_io_stats,
     const std::string& dbname, CompactionJobStats* compaction_job_stats,
     Env::Priority thread_pri,
-    std::vector<FileMetaData*>& sst_split_files,
+    std::vector<SplitFileInfo>& sst_split_files,
     ColumnFamilyData** cfd_to_split,
     std::shared_ptr<LCFAliveFileMapManager> manager
     )

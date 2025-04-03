@@ -579,7 +579,7 @@ class DBImpl : public DB {
   // Split Column Family From sst split files
   // This is called from BackgroundCallCompaction()
   Status SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
-                                       std::vector<FileMetaData*>& sst_split_files);
+                                       std::vector<SplitFileInfo>& sst_split_files);
 
   // Returns the list of live files in 'live' and the list
   // of all files in the filesystem in 'candidate_files'.

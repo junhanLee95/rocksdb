@@ -150,7 +150,7 @@ struct JobContext {
   std::vector<ObsoleteFileInfo> sst_delete_files;
 
   // a list of sst files that we need to split
-  std::vector<FileMetaData*> sst_split_files;
+  std::vector<SplitFileInfo> sst_split_files;
   // cfd to be splitted
   ColumnFamilyData* cfd_to_split;
 
