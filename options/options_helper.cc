@@ -208,6 +208,9 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
   // TODO(yhchiang): find some way to handle the following derived options
   // * max_file_size
 
+  cf_opts.inter_cf_base_level = mutable_cf_options.inter_cf_base_level;
+  cf_opts.target_file_size_base = mutable_cf_options.target_file_size_base;
+
   return cf_opts;
 }
 
