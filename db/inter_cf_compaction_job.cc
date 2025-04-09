@@ -1494,8 +1494,17 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
         f->smallest = InternalKey(meta->smallest.user_key(),
             meta->fd.smallest_seqno, kTypeValue);
       }
-      f->largest = InternalKey(meta->largest.user_key(),
-          meta->fd.largest_seqno, kTypeValue);
+
+      if (next_table_min_key != nullptr) {
+        f->largest = InternalKey(meta->largest.user_key(),
+            meta->fd.largest_seqno, kTypeValue);
+      }
+      else { // last table
+        f->largest = InternalKey(cfd->GetLargestKey(),
+            meta->fd.largest_seqno, kTypeValue);
+      }
+
+      
 
       int base_level = compact_->inter_cf_compaction->mutable_cf_options()->inter_cf_base_level;
       uint64_t level_byte = compact_->inter_cf_compaction->mutable_cf_options()->max_bytes_for_level_base;

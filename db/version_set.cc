@@ -3266,18 +3266,17 @@ Status VersionSet::ProcessManifestWrites(
       for(auto writer: writers) {
         if (!create_cf) {
           create_cf = true;
-          continue;
-        }
-        else if (writer.edit_list.front()->is_column_family_keyrange_update_) {
-          // JH : update key range to the corresponding column family
-          Slice smallest = writer.edit_list.front()->smallest_user_key_;
-          Slice largest = writer.edit_list.front()->largest_user_key_;
-          ColumnFamilyData* w_cfd = writer.cfd;
-          if (!smallest.empty()) {
-            w_cfd->UpdateSmallestKey(smallest);
-          }
-          if (!largest.empty()) {
-            w_cfd->UpdateLargestKey(largest);
+          if (writer.edit_list.front()->is_column_family_keyrange_update_) {
+            // JH : update key range to the corresponding column family
+            Slice smallest = writer.edit_list.front()->smallest_user_key_;
+            Slice largest = writer.edit_list.front()->largest_user_key_;
+            ColumnFamilyData* w_cfd = writer.cfd;
+            if (!smallest.empty()) {
+              w_cfd->UpdateSmallestKey(smallest);
+            }
+            if (!largest.empty()) {
+              w_cfd->UpdateLargestKey(largest);
+            }
           }
         }
         else {

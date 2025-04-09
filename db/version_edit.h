@@ -323,7 +323,6 @@ class VersionEdit {
   void UpdateKeyRangeColumnFamily(const std::string& name) {
     assert(!is_column_family_drop_);
     assert(!is_column_family_add_);
-    assert(!is_column_family_split_);
     is_column_family_keyrange_update_ = true;
     column_family_name_ = name;
   }

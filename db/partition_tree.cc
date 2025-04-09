@@ -116,6 +116,7 @@ PartitionTree::~PartitionTree() {
 Status PartitionTree::InsertSplittedColumnFamily (
     ColumnFamilyData *base_cfd, 
     const std::vector<ColumnFamilyData*> &new_cfds) {
+  (void)base_cfd;
   StopWatch sw(ioptions_->env, ioptions_->statistics, DB_PTREELOCK_I);
   /*fprintf(stdout, "[InsertSplittedColumnFamily] base CFD[%d] %s - [%s, %s]\n",  
             base_cfd->GetID(),
@@ -138,7 +139,8 @@ Status PartitionTree::InsertSplittedColumnFamily (
     }
   }
 
-  auto base_node = base_cfd->GetPartitionTreeNode();
+  //auto base_node = base_cfd->GetPartitionTreeNode();
+  auto base_node = root_;
   {
     WriteLock wl(&base_node->rwlock_);
     // TODO: check violation 1. 
