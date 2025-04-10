@@ -557,6 +557,8 @@ Status MemTableList::InstallMemtableSplitThenFlushResults(
       "[%s] Install Memtables Split-then-flush",
       parent_cfd->GetName().c_str());
 
+  parent_cfd->SetLogNumber(m.back()->GetNextLogNumber());
+
   for (size_t i = 0; i < cfds.size(); i++) {
     ROCKS_LOG_BUFFER(log_buffer,
         "[%s] Install Memtables Split-then-flush results : %s",
