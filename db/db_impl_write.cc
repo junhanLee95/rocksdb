@@ -1476,7 +1476,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
   mutex_.AssertHeld();
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "SplitMemtables: [%s] start", from_cfd->GetName().c_str());
-  LogFlush(immutable_db_options_.info_log);
+  //LogFlush(immutable_db_options_.info_log);
   // set from_cfd imms to be splitted.
   // these will be removed after be splitted, by calling ClearSplittedMemtables
   from_cfd->imm()->SetSplitInProgress();
@@ -1492,7 +1492,7 @@ Status DBImpl::SplitMemtables(ColumnFamilyData* from_cfd) {
     if (from_imm->IsFlushInProgress()) {
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "SplitMemtables: [%s] imm is flush in progress", from_cfd->GetName().c_str());
-      LogFlush(immutable_db_options_.info_log);
+      //LogFlush(immutable_db_options_.info_log);
       continue;
     }
     

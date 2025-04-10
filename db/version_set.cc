@@ -3222,7 +3222,7 @@ Status VersionSet::ProcessManifestWrites(
     }
 
     //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(1L)");
-    LogFlush(db_options_->info_log);
+    //LogFlush(db_options_->info_log);
     //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(2L)");
     TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifestDone");
     mu->Lock();
@@ -3686,7 +3686,7 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
     assert(builder != builders.end());
     builder->second->version_builder()->Apply(&edit);
   }
-  LogFlush(db_options_->info_log);
+  //LogFlush(db_options_->info_log);
 
   return ExtractInfoFromVersionEdit(
       cfd, edit, have_log_number, log_number, have_prev_log_number,
@@ -4465,8 +4465,8 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
     std::vector<PartitionTreeNode*> cnodes;
 
     if (partition_tree != nullptr) {
-      fprintf(stdout, "root exist? :%d\n", partition_tree->root_!=nullptr);
-      fprintf(stdout, "root id? :%d\n", partition_tree->root_->cfd_->GetID());
+      //fprintf(stdout, "root exist? :%d\n", partition_tree->root_!=nullptr);
+      //fprintf(stdout, "root id? :%d\n", partition_tree->root_->cfd_->GetID());
 
       cnodes.push_back(partition_tree->root_);
       ColumnFamilyData* default_cfd = partition_tree->root_->cfd_;

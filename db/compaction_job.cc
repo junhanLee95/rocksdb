@@ -773,7 +773,7 @@ Status CompactionJob::Run() {
   AggregateStatistics();
   UpdateCompactionStats();
   RecordCompactionIOStats();
-  LogFlush(db_options_.info_log);
+  //LogFlush(db_options_.info_log);
   TEST_SYNC_POINT("CompactionJob::Run():End");
   compact_->status = status;
   return status;
@@ -1624,7 +1624,7 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
       if (lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
+        //lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
       }
     }
   }
@@ -1676,7 +1676,7 @@ Status CompactionJob::OpenCompactionOutputFile(
         " fails at NewWritableFile with status %s",
         sub_compact->compaction->column_family_data()->GetName().c_str(),
         job_id_, file_number, s.ToString().c_str());
-    LogFlush(db_options_.info_log);
+    //LogFlush(db_options_.info_log);
     EventHelpers::LogAndNotifyTableFileCreationFinished(
         event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(),
         fname, job_id_, FileDescriptor(), TableProperties(),
@@ -1737,7 +1737,7 @@ Status CompactionJob::OpenCompactionOutputFile(
       sub_compact->compaction->output_level(), skip_filters,
       output_file_creation_time, 0 /* oldest_key_time */,
       sub_compact->compaction->max_output_file_size()));
-  LogFlush(db_options_.info_log);
+  //LogFlush(db_options_.info_log);
   return s;
 }
 

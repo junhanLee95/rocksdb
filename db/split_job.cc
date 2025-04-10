@@ -652,7 +652,7 @@ Status SplitJob::Run() {
   AggregateStatistics();
   UpdateSplitStats();
   RecordSplitIOStats();
-  LogFlush(db_options_.info_log);
+  //LogFlush(db_options_.info_log);
   TEST_SYNC_POINT("SplitJob::Run():End");
   split_->status = status;
   return status;
@@ -872,7 +872,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
           "ProcessKeyValueSplit: key -> %s, value -> %s\n",
           key.ToString().c_str(),
           value.ToString().c_str());
-    LogFlush(db_options_.info_log);*/
+    //LogFlush(db_options_.info_log);*/
 
     bool is_child = false; // determine whether we should add items to child cfd or not
 
@@ -966,7 +966,7 @@ void SplitJob::ProcessKeyValueSplit(SubsplitState* sub_split) {
           sub_split->child_idx,
           sub_split->children_nodes[sub_split->child_idx]->cfd_->GetName().c_str()
         );
-        LogFlush(db_options_.info_log);
+        //LogFlush(db_options_.info_log);
         // user key is larger than child's largest
         // finish the current child builder
         const Slice* next_key = nullptr;

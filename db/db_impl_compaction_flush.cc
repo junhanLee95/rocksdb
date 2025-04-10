@@ -157,11 +157,11 @@ Status DBImpl::FlushMemTableToOutputFile(
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "FlushJob w/ column family split");
     flush_job.SetTargetNodes();
-    LogFlush(immutable_db_options_.info_log);
+    //LogFlush(immutable_db_options_.info_log);
   } else {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                    "FlushJob w/o column family split");
-    LogFlush(immutable_db_options_.info_log);
+    //LogFlush(immutable_db_options_.info_log);
   }
 
   FileMetaData file_meta;
@@ -835,7 +835,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     }
     ContinueBackgroundWork();
   }
-  LogFlush(immutable_db_options_.info_log);
+  //LogFlush(immutable_db_options_.info_log);
 
   {
     InstrumentedMutexLock l(&mutex_);
@@ -2064,7 +2064,7 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   if (immutable_db_options_.allow_column_family_split &&
       unscheduled_l0_compactions_ > 0 &&
       bg_l0_compaction_scheduled_ < bg_job_limits.max_l0_compactions) {
-      fprintf(stdout, "schedule l0 compaction\n");
+      //fprintf(stdout, "schedule l0 compaction\n");
       bg_l0_compaction_scheduled_++;
       CompactionArg* ca = new CompactionArg;
       ca->db = this;
@@ -2125,8 +2125,9 @@ DBImpl::BGJobLimits DBImpl::GetBGJobLimits(int max_background_flushes,
     // for our first stab implementing max_background_jobs, simply allocate a
     // quarter of the threads to flushes.
     if (allow_column_family_split) {
-      res.max_flushes = std::max(1, max_background_jobs / 4);
-      res.max_l0_compactions = std::max(1, max_background_jobs / 4);
+      //res.max_flushes = std::max(1, max_background_jobs / 4);
+      res.max_flushes = 1;
+      res.max_l0_compactions = std::max(1, max_background_jobs / 2);
       res.max_compactions = std::max(1, max_background_jobs - res.max_flushes - res.max_l0_compactions);
     } else {
       res.max_flushes = std::max(1, max_background_jobs / 4);
@@ -2214,7 +2215,7 @@ void DBImpl::AddToSplitQueue(const SplitRequest& req) {
   ROCKS_LOG_INFO(
       immutable_db_options_.info_log, "AddToSplitQueue: cf [%s] key range [%s]",
       cfd->GetName().c_str(), meta_info_str.c_str());
-  LogFlush(immutable_db_options_.info_log);
+  //LogFlush(immutable_db_options_.info_log);
 
   split_queue_.push_back(req);
   cfd->set_queued_for_split(true);
@@ -2239,7 +2240,7 @@ DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   ROCKS_LOG_INFO(
       immutable_db_options_.info_log, "PopFirstFromSplitQueue: cf [%s] meta [%s]",
       cfd->GetName().c_str(), meta_info_str.c_str());
-  LogFlush(immutable_db_options_.info_log);
+  //LogFlush(immutable_db_options_.info_log);
 
   cfd->set_queued_for_split(false);
   // TODO: need to unset split reason?
@@ -2338,6 +2339,18 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   }
   else { // LCF
     if (cfd->GetID() == 0) { // root column family
+      ROCKS_LOG_INFO(
+          immutable_db_options_.info_log,
+          "SchedulePendingCompaction cfd[%s] queued %d", cfd->GetName().c_str(), cfd->queued_for_compaction());
+      ROCKS_LOG_INFO(
+          immutable_db_options_.info_log,
+          "SchedulePendingCompaction cfd[%s] needs %d", cfd->GetName().c_str(), cfd->NeedsCompaction());
+      ROCKS_LOG_INFO(
+          immutable_db_options_.info_log,
+          "SchedulePendingCompaction cfd[%s] needs s%d", cfd->GetName().c_str(), cfd->NeedsSplit());
+
+
+
       if (!cfd->queued_for_compaction() && cfd->NeedsCompaction()
           && !cfd->NeedsSplit()) {
         AddToCompactionQueue(cfd);
@@ -2345,6 +2358,17 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
       }
     }
     else { // child column family
+ROCKS_LOG_INFO(
+    immutable_db_options_.info_log,
+    "SchedulePendingCompaction cfd[%s] queued %d", cfd->GetName().c_str(), cfd->queued_for_l0_compaction());
+ROCKS_LOG_INFO(
+    immutable_db_options_.info_log,
+    "SchedulePendingCompaction cfd[%s] needs %d", cfd->GetName().c_str(), cfd->NeedsCompaction());
+ROCKS_LOG_INFO(
+    immutable_db_options_.info_log,
+    "SchedulePendingCompaction cfd[%s] needs s%d", cfd->GetName().c_str(), cfd->NeedsSplit());
+
+
       if (!cfd->queued_for_l0_compaction() && cfd->NeedsCompaction()
           && !cfd->NeedsSplit()) {
         AddToL0CompactionQueue(cfd);
@@ -2620,7 +2644,7 @@ void DBImpl::BackgroundCallSplit(Env::Priority thread_pri) {
                       "Waiting after background split error: %s, "
                       "Accumulated background error counts: %" PRIu64,
                       s.ToString().c_str(), error_cnt);
-      LogFlush(immutable_db_options_.info_log);
+      //LogFlush(immutable_db_options_.info_log);
       env_->SleepForMicroseconds(1000000);
       mutex_.Lock();
     }
@@ -2716,7 +2740,7 @@ void DBImpl::BackgroundCallFlush(Env::Priority thread_pri) {
                       "Accumulated background error counts: %" PRIu64,
                       s.ToString().c_str(), error_cnt);
       log_buffer.FlushBufferToLog();
-      LogFlush(immutable_db_options_.info_log);
+      //LogFlush(immutable_db_options_.info_log);
       env_->SleepForMicroseconds(1000000);
       mutex_.Lock();
     }
@@ -2815,7 +2839,7 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
                       "Waiting after background compaction error: %s, "
                       "Accumulated background error counts: %" PRIu64,
                       s.ToString().c_str(), error_cnt);
-      LogFlush(immutable_db_options_.info_log);
+      //LogFlush(immutable_db_options_.info_log);
       env_->SleepForMicroseconds(1000000);
       mutex_.Lock();
     }
@@ -2830,11 +2854,11 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
           job_context.sst_split_files.size());
 
       if (job_context.HaveSomethingToSplit()) {
-        fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
+       /* fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
         for (size_t i = 0; i < job_context.sst_split_files.size(); i++) {
           fprintf(stdout, "[JH] file s : %s\n", job_context.sst_split_files[i].metadata->smallest.user_key().ToString(false).c_str());
           fprintf(stdout, "[JH] file l : %s\n", job_context.sst_split_files[i].metadata->largest.user_key().ToString(false).c_str());
-        }
+        }*/
         mutex_.Unlock();
         assert(job_context.cfd_to_split != nullptr);
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -2946,7 +2970,7 @@ void DBImpl::BackgroundCallL0Compaction(PrepickedCompaction* prepicked_compactio
                       "Waiting after background l0 compaction error: %s, "
                       "Accumulated l0 background error counts: %" PRIu64,
                       s.ToString().c_str(), error_cnt);
-      LogFlush(immutable_db_options_.info_log);
+      //LogFlush(immutable_db_options_.info_log);
       env_->SleepForMicroseconds(1000000);
       mutex_.Lock();
     }
@@ -2961,11 +2985,11 @@ void DBImpl::BackgroundCallL0Compaction(PrepickedCompaction* prepicked_compactio
           job_context.sst_split_files.size());
 
       if (job_context.HaveSomethingToSplit()) {
-        fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
+        /*fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
         for (size_t i = 0; i < job_context.sst_split_files.size(); i++) {
           fprintf(stdout, "[JH] file s : %s\n", job_context.sst_split_files[i].metadata->smallest.user_key().ToString(false).c_str());
           fprintf(stdout, "[JH] file l : %s\n", job_context.sst_split_files[i].metadata->largest.user_key().ToString(false).c_str());
-        }
+        }*/
         mutex_.Unlock();
         assert(job_context.cfd_to_split != nullptr);
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
@@ -3358,7 +3382,7 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
         ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh_default)->cfd();
         CompactionPicker* picker_default = cfd_default->compaction_picker();
         Version* current_default = cfd_default->current();
-        std::cout<<cfd_default->GetName()<<std::endl;
+        //std::cout<<cfd_default->GetName()<<std::endl;
         inter_cf_c.reset(cfd->PickInterCFCompaction(*mutable_cf_options, log_buffer, current_default, picker_default));
       }
       if (inter_cf_c == nullptr) {

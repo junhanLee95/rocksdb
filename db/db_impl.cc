@@ -427,7 +427,7 @@ void DBImpl::WaitForBackgroundWork() {
   // Wait for background work to finish
   while (bg_bottom_compaction_scheduled_ || bg_compaction_scheduled_ ||
          bg_flush_scheduled_ || bg_l0_compaction_scheduled_) {
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "WaitForBackgroundWork : comp : %d", bg_compaction_scheduled_);
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "WaitForBackgroundWork : l0_comp : %d", bg_l0_compaction_scheduled_);
@@ -435,7 +435,7 @@ void DBImpl::WaitForBackgroundWork() {
                  "WaitForBackgroundWork : flu : %d", bg_flush_scheduled_);
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "WaitForBackgroundWork : sp : %d", bg_split_scheduled_);
-    LogFlush(immutable_db_options_.info_log);
+    LogFlush(immutable_db_options_.info_log);*/
 
     bg_cv_.Wait();
   }

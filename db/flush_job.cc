@@ -357,7 +357,9 @@ void FlushJob::Prepare() {
   for (int idx = 0; idx < target_num; idx++) {
     FileMetaData sub_meta;
     VersionEdit* sub_edit = new VersionEdit();
+
 		sub_edit->SetPrevLogNumber(0);
+		sub_edit->SetMinLogNumberToKeep(mems_.back()->GetNextLogNumber());
 		// SetLogNumber(log_num) indicates logs with number smaller than log_num
 		// will no longer be picked up for recovery.
 		sub_edit->SetLogNumber(mems_.back()->GetNextLogNumber());
@@ -367,7 +369,11 @@ void FlushJob::Prepare() {
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     Slice start_key = get_lmost_key(target_nodes_[idx]);
-    Slice end_key = get_rmost_key(target_nodes_[idx]);
+    //Slice end_key = get_rmost_key(target_nodes_[idx]);
+    Slice end_key("");
+    if(idx != target_num-1) {
+      end_key = get_lmost_key(target_nodes_[idx+1]);
+    }
     // prepare skipping key ranges
     std::vector<Slice> skip_starts;
     std::vector<Slice> skip_ends;
@@ -779,7 +785,7 @@ Status FlushJob::WriteLevel0Table() {
           TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
           Env::IO_HIGH, &table_properties_, 0 /* level */, current_time,
           oldest_key_time, write_hint);
-      LogFlush(db_options_.info_log);
+      //LogFlush(db_options_.info_log);
     }
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
@@ -812,7 +818,7 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.marked_for_compaction);
     if (lcf_alive_file_map_manager_ != nullptr) {
       lcf_alive_file_map_manager_->Increment(meta_.fd.GetNumber());
-      lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
+      //lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
     }
   }
 
@@ -947,7 +953,7 @@ Status FlushJob::WriteLevel0Tables() {
             oldest_key_time, write_hint);  
       }
       
-      LogFlush(db_options_.info_log);
+      //LogFlush(db_options_.info_log);
     }
 
     ROCKS_LOG_INFO(db_options_.info_log,
@@ -1020,9 +1026,9 @@ Status FlushJob::WriteLevel0Tables() {
     }
   }
 
-  if(lcf_alive_file_map_manager_ != nullptr) {
+  /*if(lcf_alive_file_map_manager_ != nullptr) {
     lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
-  }
+  }*/
   
 
   // Note that here we treat flush as level 0 compaction in internal stats
@@ -1216,9 +1222,9 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
     }
   }
 
-  if (lcf_alive_file_map_manager_ != nullptr) {
+  /*if (lcf_alive_file_map_manager_ != nullptr) {
     lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
-  }
+  }*/
 
   sub_flush->status = status;
 }

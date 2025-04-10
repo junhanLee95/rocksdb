@@ -55,7 +55,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   ROCKS_LOG_INFO(immutable_db_options_.info_log, 
       "SplitColumnFamilyFromSstFiles: start cf [%s], meta : %s",
       cfd->GetName().c_str(), meta_str.c_str());
-  LogFlush(immutable_db_options_.info_log);
+  //LogFlush(immutable_db_options_.info_log);
 
   // fprintf(stdout, "split_cnt : %ld\n", split_cnt);
   s = CheckCompressionSupported(cf_options);
@@ -236,7 +236,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 
 	  }
   } // InstrumentedMutexLock l(&mutex_)
-  LogFlush(immutable_db_options_.info_log);
+  //LogFlush(immutable_db_options_.info_log);
 
   // Clean SuperVersionContext
   for (auto& sv: superversion_contexts) {
@@ -518,9 +518,9 @@ void DBImpl::DeleteObsoleteFileImpl(int job_id, const std::string& fname,
                     "[JOB %d] Delete %s type=%d #%" PRIu64 " -- %s\n", job_id,
                     fname.c_str(), type, number,
                     file_deletion_status.ToString().c_str());
-    if (lcf_alive_file_map_manager_ != nullptr) {
+    /*if (lcf_alive_file_map_manager_ != nullptr) {
       lcf_alive_file_map_manager_->PrintAliveFiles("Delete");
-    }
+    }*/
   } else if (env_->FileExists(fname).IsNotFound()) {
     ROCKS_LOG_INFO(
         immutable_db_options_.info_log,
@@ -792,7 +792,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
 #ifndef ROCKSDB_LITE
   wal_manager_.PurgeObsoleteWALFiles();
 #endif  // ROCKSDB_LITE
-  LogFlush(immutable_db_options_.info_log);
+  //LogFlush(immutable_db_options_.info_log);
   InstrumentedMutexLock l(&mutex_);
   --pending_purge_obsolete_files_;
   assert(pending_purge_obsolete_files_ >= 0);

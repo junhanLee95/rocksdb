@@ -756,7 +756,7 @@ Status InterCFCompactionJob::Run() {
   AggregateStatistics();
   UpdateCompactionStats();
   RecordCompactionIOStats();
-  LogFlush(db_options_.info_log);
+  //LogFlush(db_options_.info_log);
   TEST_SYNC_POINT("InterCFCompactionJob::Run():End");
   compact_->status = status;
   return status;
@@ -1571,7 +1571,7 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   auto* compaction = compact_->inter_cf_compaction;
 
   // clear sst split file if there is no key range to split
-  if (db_options_.allow_column_family_split && num_key_range_to_split_ == 0) {
+  if (db_options_.allow_column_family_split && (num_key_range_to_split_ == 0 || versions_->GetColumnFamilySet()->GetDefault()->GetChildrenNodes().size() >= 4)) {
     sst_split_files_.clear();
   }
 
@@ -1628,7 +1628,7 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
       pedit.AddFile(compaction->output_level(), out.meta);
       if (lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
+        //lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
       }
     }
   }
@@ -1757,7 +1757,7 @@ Status InterCFCompactionJob::OpenCompactionOutputFile(
       sub_compact->compaction->output_level(), skip_filters,
       output_file_creation_time, 0 /* oldest_key_time */,
       sub_compact->compaction->max_output_file_size()));
-  LogFlush(db_options_.info_log);
+  //LogFlush(db_options_.info_log);
   return s;
 }
 

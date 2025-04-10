@@ -77,7 +77,7 @@ class CompactionOptionsUniversal {
       : size_ratio(1),
         min_merge_width(2),
         max_merge_width(UINT_MAX),
-        max_size_amplification_percent(200),
+        max_size_amplification_percent(UINT_MAX),
         compression_size_percent(-1),
         stop_style(kCompactionStopStyleTotalSize),
         allow_trivial_move(false) {}

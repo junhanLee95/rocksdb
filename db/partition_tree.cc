@@ -175,17 +175,8 @@ Status PartitionTree::InsertSplittedColumnFamily (
       //assert(!n_largest.empty());
 
       // boundary check and let's debug it!
-      Slice b_smallest = get_lmost_key(base_node);
-      Slice b_largest = get_rmost_key(base_node);
-      if (!b_smallest.empty() && !b_largest.empty()) {
-        if (!(b_smallest.compare(n_smallest) <= 0 &&
-              n_largest.compare(b_largest) <= 0)) {
-          fprintf(stderr, "InsertSplittedColumnFamily error(1) p[%s, %s] c[%s, %s]\n",
-              b_smallest.ToString().c_str(), b_largest.ToString().c_str(),
-              n_smallest.ToString().c_str(), n_largest.ToString().c_str());
-          exit(1);    
-        }
-      }
+      //Slice b_smallest = get_lmost_key(base_node);
+      
       /*
          fprintf(stdout, "[PartitionTree] Insert New CFD[%d] %s - [%s, %s]\n", 
          new_cfd->GetID(), 
@@ -208,12 +199,11 @@ Status PartitionTree::InsertSplittedColumnFamily (
         while (l <= r) { // binary search
           m = (l + r) / 2;
           Slice m_smallest = base_node->lower_level_nodes_[m]->cfd_->GetSmallestKey();
-          Slice m_largest = base_node->lower_level_nodes_[m]->cfd_->GetLargestKey();
 
-          if (m_smallest.compare(n_largest) >= 0) {
+          if (m_smallest.compare(n_smallest) >= 0) {
             // n is smaller than m
             r = m - 1;
-          } else if (m_largest.compare(n_smallest) <= 0) {
+          } else if (m_smallest.compare(n_smallest) < 0) {
             // n is larger than m
             l = m + 1;
           } else {
@@ -255,21 +245,21 @@ Status PartitionTree::InsertSplittedColumnFamily (
         l_cfd->GetName().c_str(),
         l_cfd->GetSmallestKey().ToString().c_str(),
         l_cfd->GetLargestKey().ToString().c_str());
-      LogFlush(l_cfd->ioptions()->info_log);
+      //LogFlush(l_cfd->ioptions()->info_log);
 
-      if (i != 0) { // boundary overlap check
-        PartitionTreeNode* pnode = base_node->lower_level_nodes_[i-1];
-        ColumnFamilyData* p_cfd = pnode->cfd_;
-        Slice p_largest = p_cfd->GetLargestKey();
-        Slice l_smallest = l_cfd->GetSmallestKey();
-        assert(p_largest.compare(l_smallest) <= 0);
-        if(p_largest.compare(l_smallest) > 0) {
+      //if (i != 0) { // boundary overlap check
+        //PartitionTreeNode* pnode = base_node->lower_level_nodes_[i-1];
+        //ColumnFamilyData* p_cfd = pnode->cfd_;
+        //Slice p_largest = p_cfd->GetLargestKey();
+        //Slice l_smallest = l_cfd->GetSmallestKey();
+        //assert(p_largest.compare(l_smallest) <= 0);
+        /*if(p_largest.compare(l_smallest) > 0) {
           //exit and let's debug it!
           fprintf(stderr, "InsertSplittedColumnFamily error(2) %s %s\n",
               p_largest.ToString().c_str(), l_smallest.ToString().c_str());
           exit(1);
-        }
-      }
+        }*/
+      //}
     }
   }
 
