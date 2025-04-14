@@ -982,7 +982,7 @@ DEFINE_double(keyrange_dist_d, 0.0,
 DEFINE_int64(keyrange_num, 1,
              "The number of key ranges that are in the same prefix "
              "group, each prefix range will have its key access distribution");
-DEFINE_bool(uni_prefix_dist, false, "non-spatial version of prefix_dist");
+DEFINE_bool(ksl, false, "non-spatial version of prefix_dist");
 DEFINE_double(key_dist_a, 0.0,
               "The parameter 'a' of key access distribution model "
               "f(x)=a*x^b");
@@ -4980,6 +4980,44 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     }
 
     // Generate the Key ID according to the input ini_rand and key distribution
+    int64_t DistGetKeyIDKSL(int64_t ini_rand, double key_dist_a,
+                         double key_dist_b, bool is_ksl) {
+      int64_t keyrange_rand = ini_rand % keyrange_rand_max_;
+      int64_t keyrange_set_size =static_cast<int64_t>(keyrange_set_.size()); 
+
+      // Calculate and select one key-range that contains the new key
+      int64_t start = 0, end = static_cast<int64_t>(keyrange_set_.size());
+      while (start + 1 < end) {
+        int64_t mid = start + (end - start) / 2;
+        assert(mid >= 0 && mid < static_cast<int64_t>(keyrange_set_.size()));
+        if (keyrange_rand < keyrange_set_[mid].keyrange_start) {
+          end = mid;
+        } else {
+          start = mid;
+        }
+      }
+      int64_t keyrange_id = start;
+
+      // Select one key in the key-range and compose the keyID
+      int64_t key_offset = 0, key_seed;
+      if (key_dist_a == 0.0 || key_dist_b == 0.0) {
+        key_offset = ini_rand % keyrange_size_;
+      } else {
+        double u =
+            static_cast<double>(ini_rand % keyrange_size_) / keyrange_size_;
+        key_seed = static_cast<int64_t>(
+            ceil(std::pow((u / key_dist_a), (1 / key_dist_b))));
+        Random64 rand_key(key_seed);
+        key_offset = rand_key.Next() % keyrange_size_;
+      }
+      if (is_ksl){
+        return keyrange_size_ * keyrange_id + key_offset;
+      }
+      else {
+        return keyrange_set_size * key_offset + keyrange_id;
+      }
+    }
+    // Generate the Key ID according to the input ini_rand and key distribution
     int64_t DistGetKeyID(int64_t ini_rand, double key_dist_a,
                          double key_dist_b) {
       int64_t keyrange_rand = ini_rand % keyrange_rand_max_;
@@ -5089,7 +5127,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       // Generate the keyID based on the key hotness and prefix hotness
       if (use_prefix_modeling) {
         key_rand =
-            gen_exp.DistGetKeyID(ini_rand, FLAGS_key_dist_a, FLAGS_key_dist_b);
+            gen_exp.DistGetKeyIDKSL(ini_rand, FLAGS_key_dist_a, FLAGS_key_dist_b, FLAGS_ksl);
 				/*key_seed = gen_exp.DistGetKeyID(ini_rand, FLAGS_key_dist_a, FLAGS_key_dist_b);
 				Random64 rand(key_seed);
         key_rand = static_cast<int64_t>(rand.Next()) % FLAGS_num;*/

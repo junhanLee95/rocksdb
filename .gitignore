@@ -1,5 +1,4 @@
 make_config.mk
-
 db/LOCK
 db/LOG
 db/CURRENT
@@ -20,6 +19,7 @@ result_lcf
 *.a
 *.arc
 *.d
+*.txt
 *.dylib*
 *.gcda
 *.gcno
