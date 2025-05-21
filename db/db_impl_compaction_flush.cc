@@ -1783,6 +1783,8 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
     // DB is being deleted; no more background compactions
     return;
   }
+  
+
   auto bg_job_limits = GetBGJobLimits();
   bool is_flush_pool_empty =
       env_->GetBackgroundThreads(Env::Priority::HIGH) == 0;
@@ -1894,6 +1896,10 @@ DBImpl::FlushRequest DBImpl::PopFirstFromFlushQueue() {
   assert(unscheduled_flushes_ >= static_cast<int>(flush_req.size()));
   unscheduled_flushes_ -= static_cast<int>(flush_req.size());
   flush_queue_.pop_front();
+  ROCKS_LOG_INFO(
+      immutable_db_options_.info_log,
+      "[JH] fpop flush qd %zu, comp qd %zu",
+      flush_queue_.size(), compaction_queue_.size());
   // TODO: need to unset flush reason?
   return flush_req;
 }
@@ -1907,6 +1913,11 @@ ColumnFamilyData* DBImpl::PickCompactionFromQueue(
   while (!compaction_queue_.empty()) {
     auto first_cfd = *compaction_queue_.begin();
     compaction_queue_.pop_front();
+    ROCKS_LOG_INFO(
+        immutable_db_options_.info_log,
+        "[JH]cpop flush qd %zu, comp qd %zu",
+        flush_queue_.size(), compaction_queue_.size());
+
     assert(first_cfd->queued_for_compaction());
     if (!RequestCompactionToken(first_cfd, false, token, log_buffer)) {
       throttled_candidates.push_back(first_cfd);
@@ -1936,12 +1947,20 @@ void DBImpl::SchedulePendingFlush(const FlushRequest& flush_req,
   }
   unscheduled_flushes_ += static_cast<int>(flush_req.size());
   flush_queue_.push_back(flush_req);
+  ROCKS_LOG_INFO(
+      immutable_db_options_.info_log,
+      "[JH] (%s) fpush flush qd %zu, comp qd %zu",
+      cfd->GetName().c_str(), flush_queue_.size(), compaction_queue_.size());
 }
 
 void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   if (!cfd->queued_for_compaction() && cfd->NeedsCompaction()) {
     AddToCompactionQueue(cfd);
     ++unscheduled_compactions_;
+    ROCKS_LOG_INFO(
+        immutable_db_options_.info_log,
+        "[JH] (%s) cpush flush qd %zu, comp qd %zu",
+        cfd->GetName().c_str(), flush_queue_.size(), compaction_queue_.size());
   }
 }
 
@@ -2037,6 +2056,7 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
   while (!flush_queue_.empty()) {
     // This cfd is already referenced
     const FlushRequest& flush_req = PopFirstFromFlushQueue();
+    
     superversion_contexts.clear();
     superversion_contexts.reserve(flush_req.size());
 

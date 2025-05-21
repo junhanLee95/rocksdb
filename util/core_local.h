@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "port/likely.h"
-#include "port/port.h"
+#include "port/port_posix.h"
 #include "util/random.h"
 
 namespace rocksdb {
