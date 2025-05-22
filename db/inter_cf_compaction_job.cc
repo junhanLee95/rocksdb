@@ -1628,7 +1628,7 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
       pedit.AddFile(compaction->output_level(), out.meta);
       if (lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        //lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
+        lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
       }
     }
   }

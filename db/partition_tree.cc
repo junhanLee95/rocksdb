@@ -4,6 +4,7 @@
 // Note: add rw mutex to partition tree node for the synchronization.
 
 #include "db/partition_tree.h"
+#include "db/version_set.h"
 #include "util/stop_watch.h"
 #include <assert.h>
 
@@ -72,6 +73,10 @@ void PartitionTreeNode::Print(
                  "%-6s LCF[%d] %s => [%s, %s]\n", 
                  TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 
                  cfd_->GetSmallestKey().ToString().c_str(), cfd_->GetLargestKey().ToString().c_str());
+  VersionStorageInfo::LevelSummaryStorage tmp;
+  ROCKS_LOG_INFO(cfd_->ioptions()->info_log, "[%s] SplitColumnFamilyFromSstFiles Level summary: %s\n",
+      cfd_->GetName().c_str(),
+      cfd_->current()->storage_info()->LevelSummary(&tmp));
   /*
   fprintf(stdout, "%-6s LCF[%d] %s => [%s, %s]\n", 
     TreeID.c_str(), cfd_->GetID(), cfd_->GetName().c_str(), 

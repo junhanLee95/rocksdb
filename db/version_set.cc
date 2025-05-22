@@ -21,6 +21,7 @@
 #include <set>
 #include <string>
 #include <fstream>
+#include <iostream>
 #include <unordered_map>
 #include <vector>
 #include "db/compaction.h"
@@ -730,6 +731,7 @@ class BaseReferencedVersionBuilder {
         version_(cfd->current()) {
     version_->Ref();
   }
+
   ~BaseReferencedVersionBuilder() {
     version_->Unref();
   }
@@ -2883,7 +2885,10 @@ VersionSet::~VersionSet() {
   Cache* table_cache = column_family_set_->get_table_cache();
   table_cache->ApplyToAllCacheEntries(&CloseTables, false /* thread_safe */);
   column_family_set_.reset();
+  int i = 0;
   for (auto& file : obsolete_files_) {
+    i ++;
+    printf("delete obsolete file #%d\n", i);
     if (file.metadata->table_reader_handle) {
       table_cache->Release(file.metadata->table_reader_handle);
       TableCache::Evict(table_cache, file.metadata->fd.GetNumber());
@@ -3427,9 +3432,9 @@ Status VersionSet::LogAndApply(
     }
 #endif /* ! NDEBUG */
   }
-  
-  //fprintf(stdout, "split_column_family : %d\n", is_split_column_family);
-  /*for (const auto& edit_list: edit_lists) {
+  /*
+  fprintf(stdout, "split_column_family : %d\n", is_split_column_family);
+  for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
       fprintf(stdout, "%s\n", edit->DebugString().c_str());
     }
@@ -3561,7 +3566,8 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   (void)cfd;
 #endif
   mu->AssertHeld();
-  assert(!edit->IsColumnFamilyManipulation());
+  // JH: if lcf is enabled, creating cf involves adding files.
+  // assert(!edit->IsColumnFamilyManipulation());
 
   if (edit->has_log_number_) {
     assert(edit->log_number_ >= cfd->GetLogNumber());
@@ -5100,8 +5106,23 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
 
   // Fill level target base information.
   v->storage_info()->CalculateBaseBytes(*new_cfd->ioptions(),
-                                        *new_cfd->GetLatestMutableCFOptions());
+      *new_cfd->GetLatestMutableCFOptions());
+
+  ///// Share Virtual SSTables across LCF /////
+  if (!edit->GetNewFiles().empty()) {
+    for (auto& level_file: edit->GetNewFiles()) {
+      int level = level_file.first;
+      FileMetaData* f = new FileMetaData(level_file.second);
+      f->refs = 1;
+      v->storage_info()->AddFile(level, f, v->info_log());
+    }
+    v->PrepareApply(*new_cfd->GetLatestMutableCFOptions(),true);
+  }
+  std::cout<<new_cfd->GetName()<<v->DebugString(false,true)<<std::endl;
+  ////////////////////////////////////////////
+
   AppendVersion(new_cfd, v);
+  
   // GetLatestMutableCFOptions() is safe here without mutex since the
   // cfd is not available to client
   new_cfd->CreateNewMemtable(*new_cfd->GetLatestMutableCFOptions(),

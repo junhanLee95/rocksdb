@@ -664,6 +664,8 @@ class Version {
 
   MutableCFOptions GetMutableCFOptions() { return mutable_cf_options_; }
 
+  Logger* info_log() {return info_log_;}
+
  private:
   Env* env_;
   friend class ReactiveVersionSet;

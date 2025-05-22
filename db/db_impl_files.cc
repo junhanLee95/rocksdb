@@ -42,6 +42,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   assert(!sst_split_files.empty());
   assert(cfd != nullptr);
 
+  StopWatchNano timer(env_, true);
+
   Status s;
   Status persistent_options_status;
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
@@ -134,6 +136,16 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
         dummy_edit[i].AddColumnFamily(cf_name);
         dummy_edit[i].SetLogNumber(logfile_number_);
         dummy_edit[i].SetColumnFamilyKeyRange(f->smallest.user_key(), f->largest.user_key());
+
+        // If there are level-0 files to split from the first column family, add them.
+        auto level0_files = cfd->current()->storage_info()->LevelFiles(0);
+        for (const FileMetaData* file: level0_files) {
+          ROCKS_LOG_INFO(immutable_db_options_.info_log,
+              "SplitColumnFamilyFromSstFiles[%s] level-0 file : %" PRIu64 "",
+              cf_name.c_str(),
+              file->fd.GetNumber());
+          dummy_edit[i].AddFile(0, *file);
+        }
       }
       cf_name_list.push_back(cf_name);
 
@@ -176,6 +188,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 	  // ColumnFamilyData object
     // Apply to Manifest file only if new children is necessary
     if (sst_split_files.size() > 0) {
+      StopWatchNano timer_manifest(env_, true);
 		  WriteThread::Writer w;
 		  write_thread_.EnterUnbatched(&w, &mutex_);
 
@@ -183,6 +196,11 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 				  edit_lists, &mutex_, directories_.GetDbDir(), false,
 				  &cf_options);
 		  write_thread_.ExitUnbatched(&w);
+
+      uint64_t elapsed_nanos_manifest = timer_manifest.ElapsedNanos();
+      ROCKS_LOG_INFO(immutable_db_options_.info_log, 
+          "SplitColumnFamilyFromSstFiles: write manifest [%s] with elapsed time %" PRIu64 " (ns)",
+          cfd->GetName().c_str(), elapsed_nanos_manifest);
 	  } else {
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
 			  "SplitColumnFamilyFromSstFiles[%s]: skip writing manifest file since children is not cessary to be created",
@@ -252,9 +270,12 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 
   PrintLogicalColumnFamily();
 
+  uint64_t elapsed_nanos = timer.ElapsedNanos();
   ROCKS_LOG_INFO(immutable_db_options_.info_log, 
-      "SplitColumnFamilyFromSstFiles: finish cf [%s]",
-      cfd->GetName().c_str());
+      "SplitColumnFamilyFromSstFiles: finish cf [%s] with elapsed time %" PRIu64 " (ns)",
+      cfd->GetName().c_str(), elapsed_nanos);
+
+  
   return Status::OK();
 }
 

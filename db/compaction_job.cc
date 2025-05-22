@@ -1624,7 +1624,7 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
       if (lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        //lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
+        lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
       }
     }
   }

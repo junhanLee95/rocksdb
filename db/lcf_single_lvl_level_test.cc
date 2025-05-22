@@ -45,69 +45,34 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   Options options;
   options.create_if_missing = true;
   options.max_background_jobs =32;
-  options.max_write_buffer_number =3;
+  options.max_write_buffer_number =2;
   options.max_bytes_for_level_base = 256 * 1024 * 1024 / 4 * 3;
   options.compression = kNoCompression;
   options.allow_column_family_split = true;
   options.column_family_min_key_range = 0; // set no limit of splitting
   //options.atomic_flush = true;
 
-  int key_size = 100;
-  int val_size = 900;
-  Random rnd(301);
-
-  int kCnt = 40000;
+  
 
   std::string db_name = test::PerThreadDBPath("test_db_one_two");
   DB* db;
   ASSERT_OK(DB::Open(options, db_name, &db));
 
   ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
- /* ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+  ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+  ColumnFamilyData* cfd_default1= cfd_default->GetChildrenNodes()[0]->cfd_;
 
-  std::vector<FileMetaData*> infos;
-  FileMetaData* f1 = new FileMetaData;
-  FileMetaData* f2 = new FileMetaData;
+  const auto opt = cfd_default->GetLatestCFOptions();
+  for (auto& cf_path: opt.cf_paths) {
+    std::cout <<"cf path : " << cf_path.path<< std::endl;
+  }
 
-  std::string s1 = "";
-  std::string l1 =  RandomString(&rnd, key_size);
-  std::string s2 = l1;
-  std::string l2 = "";
 
-  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
-  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-
-  f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
-  f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
-
-  infos.push_back(f1);
-  infos.push_back(f2);
-  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_default, infos); */
-
-  //ColumnFamilyData* cfd =
-  //    static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
-
-  // FIRST Split
-  /*std::vector<FileMetaData*> infos;
-
-  FileMetaData* f1 = new FileMetaData;
-  std::string s1 = "";
-  std::string l1 = "";
-  f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
-  f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-  infos.push_back(f1);
-
-  fprintf(stdout, "[LCFSingleLvlLevelTest] First Split Start [%s, %s] \n", s1.c_str(), l1.c_str());
-  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd, infos);
-  fprintf(stdout, "[LCFSingleLvlLevelTest] First Split Finish \n");
-  infos.clear();
- 
-  dbfull(db)->TEST_WaitForSplit(); */
-
-  // Prepare one Level 1 sstable file
-  // trigger L0 compaction
-  for (int num = 0; num < options.level0_file_num_compaction_trigger+1;
-       num ++) {
+  int key_size = 3;
+  int val_size = 100;
+  Random rnd(301);
+  int kCnt = 40000;
+  for (int num = 0; num < 2; num ++) {
     for (int i=0; i<kCnt; i++) {
       std::string k =  RandomString(&rnd, key_size);
       std::string v =  RandomString(&rnd, val_size);
@@ -115,21 +80,33 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
     }
     ASSERT_OK(db->Flush(FlushOptions())); 
   }
-  dbfull(db)->TEST_WaitForCompact();
 
-  // second wave
-  for (int num = 0; num < options.level0_file_num_compaction_trigger+1;
-      num ++) {
-    for (int i=0; i<kCnt; i++) {
-      std::string k =  RandomString(&rnd, key_size );
-      std::string v =  RandomString(&rnd, val_size );
-      db->Put(WriteOptions(), cfh, k, v);  
+  std::cout <<"cfd name : " << cfd_default1->GetName()<< std::endl;
+
+  std::vector<SplitFileInfo> infos;
+  for (int i = 0; i < 4; i++) {
+    FileMetaData* f = new FileMetaData;
+    std::string str_s = "";
+    std::string str_l = "";
+
+    if (i != 0) {
+      str_s = std::to_string(i) + "00";
     }
-    ASSERT_OK(db->Flush(FlushOptions())); 
-  }
-  dbfull(db)->TEST_WaitForCompact();
+    if (i != 3) {
+      str_l = std::to_string(i+1) + "00";
+    }
 
-  sleep (10);
+    f->smallest = InternalKey(Slice(str_s), 0, kTypeValue);
+    f->largest = InternalKey(Slice(str_l), 0, kTypeValue);
+    int base_level = 1;
+    uint64_t level_byte = 64*1024*1024;
+
+    infos.push_back(SplitFileInfo(f, cfd_default1, base_level, level_byte, true));
+  }
+
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_default1, infos);
+
+  sleep(5);
  
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
   //dbfull(db)->DestroyLogicalColumnFamilies();
