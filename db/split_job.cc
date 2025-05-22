@@ -47,6 +47,7 @@
 #include "rocksdb/env.h"
 #include "rocksdb/statistics.h"
 #include "rocksdb/status.h"
+#include "rocksdb/lcf_alive_file_map_manager.h"
 #include "rocksdb/table.h"
 #include "table/block.h"
 #include "table/block_based_table_factory.h"

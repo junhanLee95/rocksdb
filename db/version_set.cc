@@ -5115,6 +5115,9 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
       FileMetaData* f = new FileMetaData(level_file.second);
       f->refs = 1;
       v->storage_info()->AddFile(level, f, v->info_log());
+      // Update LCF Alive File Map
+      cf_options.lcf_alive_file_map_manager->Increment(f->fd.GetNumber());
+      cf_options.lcf_alive_file_map_manager->PrintAliveFiles("Split job");
     }
     v->PrepareApply(*new_cfd->GetLatestMutableCFOptions(),true);
   }

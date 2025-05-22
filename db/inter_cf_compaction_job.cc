@@ -45,6 +45,7 @@
 #include "monitoring/thread_status_util.h"
 #include "port/port.h"
 #include "rocksdb/db.h"
+#include "rocksdb/lcf_alive_file_map_manager.h"
 #include "rocksdb/env.h"
 #include "rocksdb/statistics.h"
 #include "rocksdb/status.h"

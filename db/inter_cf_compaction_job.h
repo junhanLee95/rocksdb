@@ -34,6 +34,7 @@
 #include "port/port.h"
 #include "rocksdb/compaction_filter.h"
 #include "rocksdb/compaction_job_stats.h"
+#include "rocksdb/lcf_alive_file_map_manager.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/memtablerep.h"

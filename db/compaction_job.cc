@@ -47,6 +47,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/statistics.h"
+#include "rocksdb/lcf_alive_file_map_manager.h"
 #include "rocksdb/status.h"
 #include "rocksdb/table.h"
 #include "table/block.h"
@@ -497,7 +498,8 @@ void CompactionJob::Prepare() {
     RecordInHistogram(stats_, NUM_SUBCOMPACTIONS_SCHEDULED,
                       compact_->sub_compact_states.size());
   } else {
-    compact_->sub_compact_states.emplace_back(c, nullptr, nullptr);
+    ColumnFamilyData* cfd = c->column_family_data();
+    compact_->sub_compact_states.emplace_back(c, &cfd->GetSmallestKey(), &cfd->GetLargestKey());
   }
 }
 
@@ -994,6 +996,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     input->SeekToFirst();
   }
 
+  ROCKS_LOG_INFO(db_options_.info_log,
+      "[%s] [JOB %d] JH- start %s, end %s", cfd->GetName().c_str(), job_id_,
+      start==nullptr? "": start->ToString().c_str(),
+      end==nullptr? "": end->ToString().c_str());
+
+
   Status status;
   sub_compact->c_iter.reset(new CompactionIterator(
       input.get(), cfd->user_comparator(), &merge, versions_->LastSequence(),
@@ -1021,14 +1029,14 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     ParsedInternalKey uikey;
     ParseInternalKey(key, &uikey);
     Slice value(c_iter->value());
-    //std::cout << "[c]add key : " << uikey.DebugString() << std::endl;
     //std::cout << "[c]add value : " << value.ToString() << std::endl;
     std::string key_str_copy = key.ToString();
 		//std::cout << "[c]key : " << uikey.DebugString() << std::endl;
 
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
-    if (end != nullptr &&
+    // JH: if end key is empty, keep scanning until the end of the file.
+    if (end != nullptr && !end->empty() &&
         cfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0) {
       break;
     }
@@ -1618,6 +1626,11 @@ Status CompactionJob::InstallCompactionResults(
   // Add compaction inputs
   compaction->AddInputDeletions(compact_->compaction->edit());
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] AddInputDeletions");
+
+  for (auto& delete_file: compact_->compaction->edit()->GetDeletedFiles()) {
+    ROCKS_LOG_INFO(db_options_.info_log, "[JH] delete file %d %" PRIu64 "", delete_file.first, delete_file.second);
+    lcf_alive_file_map_manager_->Decrement(delete_file.second);
+  }
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {

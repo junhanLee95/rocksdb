@@ -12,6 +12,7 @@
 #include "options/db_options.h"
 #include "rocksdb/options.h"
 #include "util/compression.h"
+#include "rocksdb/lcf_alive_file_map_manager.h"
 
 namespace rocksdb {
 
@@ -125,6 +126,8 @@ struct ImmutableCFOptions {
   std::vector<DbPath> cf_paths;
 
   std::shared_ptr<ConcurrentTaskLimiter> compaction_thread_limiter;
+
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager;
 };
 
 struct MutableCFOptions {

@@ -18,6 +18,7 @@
 #include "db/error_handler.h"
 #include "options/options_helper.h"
 #include "rocksdb/wal_filter.h"
+#include "rocksdb/lcf_alive_file_map_manager.h"
 #include "table/block_based_table_factory.h"
 #include "util/rate_limiter.h"
 #include "util/sst_file_manager_impl.h"

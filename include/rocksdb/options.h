@@ -23,6 +23,7 @@
 #include "rocksdb/universal_compaction.h"
 #include "rocksdb/version.h"
 #include "rocksdb/write_buffer_manager.h"
+#include "rocksdb/lcf_alive_file_map_manager.h"
 
 #ifdef max
 #undef max
@@ -48,6 +49,7 @@ class Slice;
 class Statistics;
 class InternalKeyComparator;
 class WalFilter;
+class LCFAliveFileMapManager;
 
 // DB contents are stored in a set of blocks, each of which holds a
 // sequence of key,value pairs.  Each block may be compressed before
@@ -302,6 +304,10 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   //
   // Default: nullptr
   std::shared_ptr<ConcurrentTaskLimiter> compaction_thread_limiter = nullptr;
+
+  // JH: lcf alive file map manager
+  // Default: nullptr
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager = nullptr;
 
   // Create ColumnFamilyOptions with default values for all fields
   ColumnFamilyOptions();

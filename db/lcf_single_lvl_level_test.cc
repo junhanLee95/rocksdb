@@ -68,7 +68,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   }
 
 
-  int key_size = 3;
+  int key_size = 7;
   int val_size = 100;
   Random rnd(301);
   int kCnt = 40000;
@@ -90,10 +90,10 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
     std::string str_l = "";
 
     if (i != 0) {
-      str_s = std::to_string(i) + "00";
+      str_s = "user"+ std::to_string(i) + "00";
     }
     if (i != 3) {
-      str_l = std::to_string(i+1) + "00";
+      str_l = "user"+std::to_string(i+1) + "00";
     }
 
     f->smallest = InternalKey(Slice(str_s), 0, kTypeValue);
@@ -106,7 +106,24 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
 
   dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_default1, infos);
 
-  sleep(5);
+  sleep(3);
+
+  // Compact second column family only.
+  ColumnFamilyHandle* cfh1= dbfull(db)->GetColumnFamilyHandle(1);
+  //ColumnFamilyHandle* cfh2= dbfull(db)->GetColumnFamilyHandle(2);
+  //ColumnFamilyHandle* cfh3= dbfull(db)->GetColumnFamilyHandle(3);
+  //ColumnFamilyHandle* cfh4= dbfull(db)->GetColumnFamilyHandle(4);
+
+  CompactRangeOptions cr_options;
+  cr_options.change_level = true;
+  cr_options.target_level = 1;
+
+  dbfull(db)->CompactRange(cr_options, cfh1, nullptr, nullptr);
+  //dbfull(db)->CompactRange(cr_options, cfh2, nullptr, nullptr);
+  //dbfull(db)->CompactRange(cr_options, cfh3, nullptr, nullptr);
+  //dbfull(db)->CompactRange(cr_options, cfh4, nullptr, nullptr);
+
+  sleep(3);
  
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
   //dbfull(db)->DestroyLogicalColumnFamilies();
