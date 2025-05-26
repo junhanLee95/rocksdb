@@ -230,6 +230,8 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
   // Update the thread status to indicate flush.
   ReportStartedFlush();
   TEST_SYNC_POINT("FlushJob::FlushJob()");
+  ROCKS_LOG_INFO(db_options_.info_log, "[JH] FlushJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
+  lcf_alive_file_map_manager_->PrintAliveFiles("flush job init");
 }
 
 FlushJob::~FlushJob() {

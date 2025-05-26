@@ -417,6 +417,10 @@ CompactionJob::CompactionJob(
                                     db_options_.enable_thread_tracking);
   ThreadStatusUtil::SetThreadOperation(ThreadStatus::OP_COMPACTION);
   ReportStartedCompaction(compaction);
+
+  ROCKS_LOG_INFO(db_options_.info_log, "[JH] CompactionJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
+
+  lcf_alive_file_map_manager_->PrintAliveFiles("compaction job init");
 }
 
 CompactionJob::~CompactionJob() {

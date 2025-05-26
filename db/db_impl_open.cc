@@ -1364,10 +1364,8 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
       infos.push_back(SplitFileInfo(f1, cfd_default, 2, 256*1024*1024/4*3, true));
 
-
       // [LCF] init alive file map manage
       impl->lcf_alive_file_map_manager_ = std::make_shared<LCFAliveFileMapManager>();
-
       impl->SplitColumnFamilyFromSstFiles(cfd_default, infos);
     }
   }

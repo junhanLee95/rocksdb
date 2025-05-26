@@ -24,6 +24,7 @@ class LCFAliveFileMapManager {
 
     void PrintAliveFiles(std::string msg) {
       ReadLock rl(&lcf_alive_file_mutex_);
+      std::cout <<"[pointer]" << this << std::endl;
       std::cout <<">>>" << msg << ">>>" <<std::endl;
       for (auto& files: lcf_alive_file_map_) {
         std::cout << "file["<< files.first <<"] : " << files.second << std::endl;
@@ -32,6 +33,7 @@ class LCFAliveFileMapManager {
     }
 
     void Increment(uint64_t file_num) {
+      std::cout <<"[Increment]" << file_num << std::endl;
       WriteLock wl(&lcf_alive_file_mutex_);
       if (lcf_alive_file_map_.find(file_num) == lcf_alive_file_map_.end()) {
         lcf_alive_file_map_.insert(std::make_pair(file_num, 1));
@@ -43,6 +45,7 @@ class LCFAliveFileMapManager {
     }
 
     bool Decrement(uint64_t file_num) {
+      std::cout <<"[Decrement]" << file_num << std::endl;
       WriteLock wl(&lcf_alive_file_mutex_);
       if(lcf_alive_file_map_.find(file_num) == lcf_alive_file_map_.end()){
         //error
@@ -57,6 +60,11 @@ class LCFAliveFileMapManager {
         lcf_alive_file_map_[file_num] = file_cnt - 1;
         return false;
       }
+    }
+
+    int Get(uint64_t file_num) {
+      ReadLock wl(&lcf_alive_file_mutex_);
+      return lcf_alive_file_map_[file_num];
     }
 
     std::unordered_map<uint64_t, int> lcf_alive_file_map_;

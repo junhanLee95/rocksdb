@@ -954,6 +954,8 @@ void DumpManifestFile(Options options, std::string file, bool verbose, bool hex,
   // SanitizeOptions(), we need to initialize it manually.
   options.db_paths.emplace_back("dummy", 0);
   options.num_levels = 64;
+  // LCF
+  options.lcf_alive_file_map_manager = std::make_shared<LCFAliveFileMapManager>();
   WriteController wc(options.delayed_write_rate);
   WriteBufferManager wb(options.db_write_buffer_size);
   ImmutableDBOptions immutable_db_options(options);

@@ -511,7 +511,7 @@ void DBImpl::DeleteObsoleteFileImpl(int job_id, const std::string& fname,
   bool is_lcf_shared = false;
   if (type == kTableFile) {
     if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr &&
-        lcf_alive_file_map_manager_->Decrement(number) == false) {
+        lcf_alive_file_map_manager_->Get(number) > 0) {
       // do not delete file.
       is_lcf_shared = true;
       file_deletion_status = Status::OK();
@@ -596,7 +596,14 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
         MakeTableFileName(kDumbDbName, file.metadata->fd.GetNumber()),
         file.path);
 
-    if (file.metadata->table_reader_handle) {
+    // [JH] release table reader handle if only the file is not shared by multiply LCFs
+    uint64_t file_num = file.metadata->fd.packed_number_and_path_id;
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[JOB %d] lcf_manager[%" PRIu64 "] = %d\n", state.job_id,
+        file_num,
+        lcf_alive_file_map_manager_->Get(file_num));
+    if (lcf_alive_file_map_manager_->Get(file_num) == 0 &&
+      file.metadata->table_reader_handle) {
       table_cache_->Release(file.metadata->table_reader_handle);
     }
 

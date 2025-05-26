@@ -2888,7 +2888,7 @@ VersionSet::~VersionSet() {
   int i = 0;
   for (auto& file : obsolete_files_) {
     i ++;
-    printf("delete obsolete file #%d\n", i);
+    printf("delete obsolete file[%d] #%" PRIu64 "\n", i, file.metadata->fd.GetNumber());
     if (file.metadata->table_reader_handle) {
       table_cache->Release(file.metadata->table_reader_handle);
       TableCache::Evict(table_cache, file.metadata->fd.GetNumber());
@@ -5113,7 +5113,7 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
     for (auto& level_file: edit->GetNewFiles()) {
       int level = level_file.first;
       FileMetaData* f = new FileMetaData(level_file.second);
-      f->refs = 1;
+      f->refs = 0;
       v->storage_info()->AddFile(level, f, v->info_log());
       // Update LCF Alive File Map
       cf_options.lcf_alive_file_map_manager->Increment(f->fd.GetNumber());

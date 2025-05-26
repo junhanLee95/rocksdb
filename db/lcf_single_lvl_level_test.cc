@@ -109,21 +109,20 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   sleep(3);
 
   // Compact second column family only.
-  ColumnFamilyHandle* cfh1= dbfull(db)->GetColumnFamilyHandle(1);
-  //ColumnFamilyHandle* cfh2= dbfull(db)->GetColumnFamilyHandle(2);
-  //ColumnFamilyHandle* cfh3= dbfull(db)->GetColumnFamilyHandle(3);
-  //ColumnFamilyHandle* cfh4= dbfull(db)->GetColumnFamilyHandle(4);
+  for (auto& node: cfd_default->GetChildrenNodes()) {
+    ColumnFamilyData* cfd = node->cfd_;
+    ColumnFamilyHandle* cfdh = dbfull(db)->GetColumnFamilyHandle(cfd->GetID());
+    std::cout<< "cfh name : " << cfdh->GetName()<< std::endl;
+    
+    CompactRangeOptions cr_options;
+    cr_options.change_level = true;
+    cr_options.target_level = 1;
+    dbfull(db)->CompactRange(cr_options, cfdh, nullptr, nullptr);
+    sleep(3);
+  }
+  
 
-  CompactRangeOptions cr_options;
-  cr_options.change_level = true;
-  cr_options.target_level = 1;
-
-  dbfull(db)->CompactRange(cr_options, cfh1, nullptr, nullptr);
-  //dbfull(db)->CompactRange(cr_options, cfh2, nullptr, nullptr);
-  //dbfull(db)->CompactRange(cr_options, cfh3, nullptr, nullptr);
-  //dbfull(db)->CompactRange(cr_options, cfh4, nullptr, nullptr);
-
-  sleep(3);
+  
  
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
   //dbfull(db)->DestroyLogicalColumnFamilies();

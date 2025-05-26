@@ -1029,7 +1029,8 @@ Status DBImpl::CompactFilesImpl(
       c->mutable_cf_options()->report_bg_io_stats, dbname_,
       &compaction_job_stats, Env::Priority::USER,
       job_context->sst_split_files,
-      &job_context->cfd_to_split);
+      &job_context->cfd_to_split,
+      lcf_alive_file_map_manager_);
 
   // Creating a compaction influences the compaction score because the score
   // takes running compactions into account (by skipping files that are already
