@@ -33,38 +33,32 @@ class LCFAliveFileMapManager {
     }
 
     void Increment(uint64_t file_num) {
-      std::cout <<"[Increment]" << file_num << std::endl;
+      //std::cout <<"[Increment]" << file_num << std::endl;
       WriteLock wl(&lcf_alive_file_mutex_);
-      if (lcf_alive_file_map_.find(file_num) == lcf_alive_file_map_.end()) {
-        lcf_alive_file_map_.insert(std::make_pair(file_num, 1));
-      }
-      else {
-        int file_cnt = lcf_alive_file_map_[file_num];
-        lcf_alive_file_map_[file_num] = file_cnt + 1;
-      }
+      ++lcf_alive_file_map_[file_num];
     }
 
     bool Decrement(uint64_t file_num) {
-      std::cout <<"[Decrement]" << file_num << std::endl;
+      //std::cout <<"[Decrement]" << file_num << std::endl;
       WriteLock wl(&lcf_alive_file_mutex_);
-      if(lcf_alive_file_map_.find(file_num) == lcf_alive_file_map_.end()){
-        //error
+      auto it = lcf_alive_file_map_.find(file_num);
+      if (it == lcf_alive_file_map_.end()) {
         return true;
       }
-      int file_cnt = lcf_alive_file_map_[file_num];
-      if(file_cnt == 1) {
-        lcf_alive_file_map_.erase(file_num);
+      if (it->second == 1) {
+        lcf_alive_file_map_.erase(it);
         return true;
       }
       else {
-        lcf_alive_file_map_[file_num] = file_cnt - 1;
+        it->second --;
         return false;
       }
     }
 
     int Get(uint64_t file_num) {
       ReadLock wl(&lcf_alive_file_mutex_);
-      return lcf_alive_file_map_[file_num];
+      auto it = lcf_alive_file_map_.find(file_num);
+      return (it != lcf_alive_file_map_.end()) ? it->second : 0;
     }
 
     std::unordered_map<uint64_t, int> lcf_alive_file_map_;

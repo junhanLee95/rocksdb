@@ -2129,6 +2129,7 @@ DBImpl::BGJobLimits DBImpl::GetBGJobLimits(int max_background_flushes,
       //res.max_flushes = std::max(1, max_background_jobs / 4);
       res.max_flushes = 1;
       res.max_l0_compactions = std::max(1, max_background_jobs / 2);
+      //res.max_l0_compactions = std::max(1, max_background_jobs - res.max_flushes);
       res.max_compactions = std::max(1, max_background_jobs - res.max_flushes - res.max_l0_compactions);
     } else {
       res.max_flushes = std::max(1, max_background_jobs / 4);

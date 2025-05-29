@@ -1469,9 +1469,9 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
       bool is_split = false;
       int input_num = 0;
 
-      if (s_amp < 1.1) {
+      if (s_amp < 1.2) {
         // create new column family
-        for(size_t i=0; i<sub_compact->compaction->num_input_levels(); i++) {
+        /*for(size_t i=0; i<sub_compact->compaction->num_input_levels(); i++) {
           input_num += int(sub_compact->compaction->num_input_files(i));
         }
 
@@ -1482,7 +1482,8 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
         if (p <= 0.02) {
           is_split = true;
           
-        }
+        }*/
+        is_split=true;
       }
 
       FileMetaData* f = new FileMetaData;
@@ -1508,12 +1509,20 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
       
 
       int base_level = compact_->inter_cf_compaction->mutable_cf_options()->inter_cf_base_level;
-      uint64_t level_byte = compact_->inter_cf_compaction->mutable_cf_options()->max_bytes_for_level_base;
+      //uint64_t level_byte = compact_->inter_cf_compaction->mutable_cf_options()->max_bytes_for_level_base;
+      uint64_t level_byte = f->fd.GetFileSize();
 
       if(is_split) {
         base_level ++;
         level_byte *= 10;
         num_key_range_to_split_ ++;
+      }
+
+      // If is_split is consecutive with end of sst_split_files_; merge this with the end of sst_split_files_
+      if (!sst_split_files_.empty() && sst_split_files_.back().is_split == is_split) {
+        ROCKS_LOG_INFO(db_options_.info_log, "[%d] it has to be merged #%" PRIu64 " with #%" PRIu64 "\n",
+            job_id_,  f->fd.packed_number_and_path_id,
+            sst_split_files_.back().metadata->fd.packed_number_and_path_id);
       }
 
       sst_split_files_.push_back(SplitFileInfo(f, cfd, base_level, level_byte, is_split));
@@ -1572,7 +1581,7 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   auto* compaction = compact_->inter_cf_compaction;
 
   // clear sst split file if there is no key range to split
-  if (db_options_.allow_column_family_split && (num_key_range_to_split_ == 0 || versions_->GetColumnFamilySet()->GetDefault()->GetChildrenNodes().size() >= 4)) {
+  if (db_options_.allow_column_family_split && (num_key_range_to_split_ == 0 || versions_->GetColumnFamilySet()->GetDefault()->GetChildrenNodes().size() >= 16 /*4*/)) {
     sst_split_files_.clear();
   }
 
@@ -1629,7 +1638,7 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
       pedit.AddFile(compaction->output_level(), out.meta);
       if (lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
+        //lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
       }
     }
   }

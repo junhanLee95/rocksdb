@@ -1804,7 +1804,6 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     //uint64_t old_target_file_size_base = old_options->target_file_size_base;
     Options options;
     options.compaction_style = kCompactionStyleUniversal;
-    options.max_bytes_for_level_base = 1024*1024; // 250325 for debugging
 
     ROCKS_LOG_INFO(db_options_->info_log.get(),
         "PrepareVersionEditsToSplit: new target file size base : %ld", 
@@ -1834,7 +1833,8 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     edits_out.clear();
 
     Options options;
-    options.compaction_style = kCompactionStyleUniversal;
+    //options.compaction_style = kCompactionStyleUniversal;
+    options.compaction_style = kCompactionStyleLevel;
 
     cf_options.push_back(new MutableCFOptions(options));
   }

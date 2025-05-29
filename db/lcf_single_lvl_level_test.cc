@@ -46,7 +46,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   options.create_if_missing = true;
   options.max_background_jobs =32;
   options.max_write_buffer_number =2;
-  options.max_bytes_for_level_base = 256 * 1024 * 1024 / 4 * 3;
+  options.max_bytes_for_level_base = 256 * 1024 * 1024 / 4;
   options.compression = kNoCompression;
   options.allow_column_family_split = true;
   options.column_family_min_key_range = 0; // set no limit of splitting
@@ -116,7 +116,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
     
     CompactRangeOptions cr_options;
     cr_options.change_level = true;
-    cr_options.target_level = 1;
+    cr_options.target_level = 6;
     dbfull(db)->CompactRange(cr_options, cfdh, nullptr, nullptr);
     sleep(3);
   }

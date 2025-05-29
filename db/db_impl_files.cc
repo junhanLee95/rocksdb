@@ -48,6 +48,8 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   Status persistent_options_status;
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
   cf_options.compaction_style = kCompactionStyleUniversal;
+  //cf_options.compaction_style = kCompactionStyleLevel;
+  cf_options.target_file_size_base = 64*1024*1024;
   cf_options.lcf_alive_file_map_manager = lcf_alive_file_map_manager_;
   size_t split_cnt = sst_split_files.size();
 
@@ -157,8 +159,10 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
       // update cf options
       Options options;
       options.compaction_style = kCompactionStyleUniversal;
+      options.compression = kNoCompression;
       options.max_bytes_for_level_base = inter_cf_max_bytes_for_level_base;
       options.inter_cf_base_level = inter_cf_base_level;
+      options.target_file_size_base = 1024*1024*64;
       mutable_cf_options_list.push_back(new MutableCFOptions(options));
     }
 

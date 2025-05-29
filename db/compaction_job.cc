@@ -420,7 +420,7 @@ CompactionJob::CompactionJob(
 
   ROCKS_LOG_INFO(db_options_.info_log, "[JH] CompactionJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
 
-  lcf_alive_file_map_manager_->PrintAliveFiles("compaction job init");
+  //lcf_alive_file_map_manager_->PrintAliveFiles("compaction job init");
 }
 
 CompactionJob::~CompactionJob() {
@@ -1641,7 +1641,7 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
       if (lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
+        //lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
       }
     }
   }

@@ -231,7 +231,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
   ReportStartedFlush();
   TEST_SYNC_POINT("FlushJob::FlushJob()");
   ROCKS_LOG_INFO(db_options_.info_log, "[JH] FlushJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
-  lcf_alive_file_map_manager_->PrintAliveFiles("flush job init");
+  //lcf_alive_file_map_manager_->PrintAliveFiles("flush job init");
 }
 
 FlushJob::~FlushJob() {
@@ -821,7 +821,7 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.marked_for_compaction);
     if (lcf_alive_file_map_manager_ != nullptr) {
       lcf_alive_file_map_manager_->Increment(meta_.fd.GetNumber());
-      lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
+      //lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
     }
   }
 
@@ -1029,9 +1029,9 @@ Status FlushJob::WriteLevel0Tables() {
     }
   }
 
-  if(lcf_alive_file_map_manager_ != nullptr) {
+  /*if(lcf_alive_file_map_manager_ != nullptr) {
     lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
-  }
+  }*/
   
 
   // Note that here we treat flush as level 0 compaction in internal stats
@@ -1225,9 +1225,9 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
     }
   }
 
-  if (lcf_alive_file_map_manager_ != nullptr) {
+  /*if (lcf_alive_file_map_manager_ != nullptr) {
     lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
-  }
+  }*/
 
   sub_flush->status = status;
 }
