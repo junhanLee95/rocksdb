@@ -27,6 +27,7 @@ struct AtomicCompactionUnitBoundary;
 // The structure that manages compaction input files associated
 // with the same physical level.
 struct InterCFCompactionInputFiles {
+  std::string cf_name; // name of column family where input file belongs to
   int level;
   std::vector<FileMetaData*> files;
   std::vector<AtomicCompactionUnitBoundary> atomic_compaction_unit_boundaries;
@@ -145,7 +146,7 @@ class InterCFCompaction {
   bool deletion_compaction() const { return deletion_compaction_; }
 
   // Add all inputs to this compaction as delete operations to *edit and *p_edit.
-  void AddInputDeletions(VersionEdit* edit, VersionEdit* p_edit);
+  void AddInputDeletions(const std::shared_ptr<Logger>& log, VersionEdit* edit, VersionEdit* p_edit);
 
   // Returns true if the available information we have guarantees that
   // the input "user_key" does not exist in any level beyond "output_level()".

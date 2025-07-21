@@ -34,6 +34,22 @@ Slice RandomStringUserInt(Random* rnd, int len, std::string* dst) {
   }
   return Slice(*dst);
 }
+// JH for test
+Slice RandomStringUserIntWithPrefix(Random* rnd, int len, std::string* dst, char p) {
+  dst->resize(len);
+  (*dst)[0] = 'u';
+  (*dst)[1] = 's';
+  (*dst)[2] = 'e';
+  (*dst)[3] = 'r';
+
+  (*dst)[4] = p;
+
+  for (int i = 5; i < len; i++) {
+    (*dst)[i] = static_cast<char>('0') + static_cast<char>(rnd->Uniform(10));
+  }
+  return Slice(*dst);
+}
+
 Slice RandomString(Random* rnd, int len, std::string* dst) {
   dst->resize(len);
   for (int i = 0; i < len; i++) {

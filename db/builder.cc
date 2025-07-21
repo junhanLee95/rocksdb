@@ -1142,18 +1142,17 @@ Status BuildsubTable(
 
     // Finish and check for builder errors
     tp = builder->GetTableProperties();
-    // JH: apply smallest/largest key to tp
-    tp.smallest_user_key = meta->smallest.user_key().ToString();
-    tp.largest_user_key = meta->largest.user_key().ToString();
 
     bool empty = builder->NumEntries() == 0 && tp.num_range_deletions == 0;
     s = c_iter.status();
     if (!s.ok() || empty) {
       builder->Abandon();
     } else {
+      // JH: apply smallest/largest key to tp if only table is not empty
+      tp.smallest_user_key = meta->smallest.user_key().ToString();
+      tp.largest_user_key = meta->largest.user_key().ToString();
       s = builder->Finish();
     }
-
 
     if (s.ok() && !empty) {
       uint64_t file_size = builder->FileSize();

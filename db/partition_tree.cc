@@ -234,6 +234,8 @@ Status PartitionTree::InsertSplittedColumnFamily (
         new_cfd->GetName().c_str(), 
         l
         );*/
+      ROCKS_LOG_INFO(base_node->cfd_->ioptions()->info_log,
+                     "[InsertSplittedColumnFamily] l : %d\n", l);
       base_node->lower_level_nodes_.insert(base_node->lower_level_nodes_.begin() + l,
           node);
       //JH: Set parent node

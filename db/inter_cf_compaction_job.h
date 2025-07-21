@@ -207,6 +207,8 @@ class InterCFCompactionJob {
   int table_creation_number_;
   int last_table_creation_number_to_split_;
   int num_key_range_to_split_;
+  Slice start_; // cfd->GetSmallestKey()
+  Slice end_; // cfd->GetLargestKey()
 };
 
 }  // namespace rocksdb

@@ -39,6 +39,12 @@ class LCFSingleLvlLevelTest : public testing::Test {
     test::RandomStringUserInt(rnd, len, &r);
     return r; 
   }
+
+  std::string RandomStringP(Random* rnd, int len, char p ) {
+    std::string r;
+    test::RandomStringUserIntWithPrefix(rnd, len, &r, p);
+    return r; 
+  }
 };
 
 TEST_F(LCFSingleLvlLevelTest, Basic) {
@@ -46,14 +52,17 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   options.create_if_missing = true;
   options.max_background_jobs =32;
   options.max_write_buffer_number =2;
-  options.max_bytes_for_level_base = 256 * 1024 * 1024 / 4;
+  options.max_bytes_for_level_base = 200000;
+  options.target_file_size_base = 1024*1024*64;
   options.compression = kNoCompression;
   options.allow_column_family_split = true;
   options.column_family_min_key_range = 0; // set no limit of splitting
+  static class std::shared_ptr<rocksdb::Statistics> dbstats;
+  dbstats = rocksdb::CreateDBStatistics();
+  dbstats->set_stats_level(static_cast<StatsLevel>(rocksdb::StatsLevel::kExceptDetailedTimers));
+  options.statistics = dbstats;
   //options.atomic_flush = true;
-
-  
-
+ 
   std::string db_name = test::PerThreadDBPath("test_db_one_two");
   DB* db;
   ASSERT_OK(DB::Open(options, db_name, &db));
@@ -68,23 +77,98 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   }
 
 
-  int key_size = 7;
-  int val_size = 100;
-  Random rnd(301);
-  int kCnt = 40000;
-  for (int num = 0; num < 2; num ++) {
-    for (int i=0; i<kCnt; i++) {
-      std::string k =  RandomString(&rnd, key_size);
-      std::string v =  RandomString(&rnd, val_size);
-      db->Put(WriteOptions(), cfh, k, v);  
-    }
-    ASSERT_OK(db->Flush(FlushOptions())); 
-  }
+  //int key_size = 7;
+  //int val_size = 100;
+  //Random rnd(301);
+  //int kCnt = 40000;
 
+  //ColumnFamilyHandle* cfdh = dbfull(db)->GetColumnFamilyHandle(cfd_default->GetID());
   std::cout <<"cfd name : " << cfd_default1->GetName()<< std::endl;
 
+  for (int t=0; t<4; t++) {
+    for (int num = 0; num < 4; num ++) {
+      for (int i=0; i<10000; i++) {
+        int rand_n = i % 10000;
+        std::string rand_s = std::to_string(rand_n);
+        std::string pad = "";
+        if(rand_s.size() < 4) {
+          pad = std::string(4 - rand_s.size(), '0');
+        }
+        std::string k = "user00000" + pad + rand_s;
+        std::string v = "x" + std::to_string(i) ;
+        db->Put(WriteOptions(), cfh, k, v);  
+      }
+      ASSERT_OK(db->Flush(FlushOptions())); 
+    }
+    sleep (5);
+  }
+  
+  /*
+  // First split
   std::vector<SplitFileInfo> infos;
-  for (int i = 0; i < 4; i++) {
+  std::vector<SplitFileInfo> infos2;
+  std::vector<FileMetaData*> fs;
+  std::vector<FileMetaData*> fs2;
+  // First splitfileinfo
+  FileMetaData* f = new FileMetaData;
+  std::string str_s = "";
+  std::string str_l = "user000003999";
+  f->smallest = InternalKey(Slice(str_s), 0, kTypeValue);
+  f->largest = InternalKey(Slice(str_l), 0, kTypeValue);
+  uint64_t level_byte = 200000;
+  int base_level = 1;
+  fs.push_back(f);
+  infos.push_back(SplitFileInfo(fs, cfd_default1, base_level, level_byte, true, false, InternalKey(str_s, 0, kTypeValue), InternalKey(str_l, 0, kTypeValue)));
+
+
+  
+  fs.clear();
+  // Second splitfileinfo
+  FileMetaData* f2 = new FileMetaData;
+  std::string str_s2 = "user000004000";
+  std::string str_l2 = "";
+  f2->smallest = InternalKey(Slice(str_s2), 0, kTypeValue);
+  f2->largest = InternalKey(Slice(str_l2), 0, kTypeValue);
+  base_level = 2;
+  level_byte = 200000;
+  fs.push_back(f2);
+  infos.push_back(SplitFileInfo(fs, cfd_default1, base_level, level_byte, false, false, InternalKey(str_s2, 0, kTypeValue), InternalKey(str_l2, 0, kTypeValue)));
+
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_default1, infos, 0);
+
+  ColumnFamilyData* cfd_default2= cfd_default->GetChildrenNodes()[1]->cfd_;
+
+  std::cout <<"cfd["<<cfd_default2->GetName() <<"] range : ["<<cfd_default2->GetSmallestKey().ToString()<<", "<<"(pointer : " << (void*)(&cfd_default2->GetSmallestKey()) <<"), data ptr: "<< (void*)(&cfd_default2->GetSmallestKey().data_)<<std::endl;
+  // Second split
+  // First splitfileinfo
+  FileMetaData* f3 = new FileMetaData;
+  std::string str_s3 = "";
+  std::string str_l3 = "user000001999";
+  f3->smallest = InternalKey(Slice(str_s3), 0, kTypeValue);
+  f3->largest = InternalKey(Slice(str_l3), 0, kTypeValue);
+  level_byte = 200000;
+  base_level = 3;
+  fs2.push_back(f3);
+  infos2.push_back(SplitFileInfo(fs, cfd_default1, base_level, level_byte, true, false, InternalKey(str_s3, 0, kTypeValue), InternalKey(str_l3, 0, kTypeValue)));
+  std::cout <<"cfd["<<cfd_default2->GetName() <<"] range : ["<<cfd_default2->GetSmallestKey().ToString()<<", "<<"(pointer : " << (void*)(&cfd_default2->GetSmallestKey()) <<"), data ptr: "<< (void*)(&cfd_default2->GetSmallestKey().data_)<<std::endl;
+
+  fs.clear();
+  // Second splitfileinfo
+  FileMetaData* f4 = new FileMetaData;
+  std::string str_s4 = "user000002000";
+  std::string str_l4 = "user000003999";
+  f4->smallest = InternalKey(Slice(str_s4), 0, kTypeValue);
+  f4->largest = InternalKey(Slice(str_l4), 0, kTypeValue);
+  base_level = 1;
+  level_byte = 200000;
+  fs2.push_back(f4);
+  infos2.push_back(SplitFileInfo(fs2, cfd_default1, base_level, level_byte, false, false, InternalKey(str_s4, 0, kTypeValue), InternalKey(str_l4, 0, kTypeValue)));
+  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_default1, infos2, 0);
+
+  std::cout <<"cfd["<<cfd_default2->GetName() <<"] range : ["<<cfd_default2->GetSmallestKey().ToString()<<", "<<"(pointer : " << (void*)(&cfd_default2->GetSmallestKey()) <<"), data ptr: "<< (void*)(&cfd_default2->GetSmallestKey().data_)<<std::endl;*/
+
+  /*for (int i = 0; i < 4; i++) {
+    std::vector<FileMetaData*> fs;
     FileMetaData* f = new FileMetaData;
     std::string str_s = "";
     std::string str_l = "";
@@ -101,31 +185,52 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
     int base_level = 1;
     uint64_t level_byte = 64*1024*1024;
 
-    infos.push_back(SplitFileInfo(f, cfd_default1, base_level, level_byte, true));
+    fs.push_back(f);
+
+    infos.push_back(SplitFileInfo(fs, cfd_default1, base_level, level_byte, true, true, InternalKey(str_s, 0, kTypeValue), InternalKey(str_l, 0, kTypeValue)));
+  }*/
+
+  //std::srand(1234);
+  /*for (int num = 0; num < 4; num ++) {
+    for (int i=0; i<10000; i++) {
+      int rand_n = i % 10000;
+      std::string rand_s = std::to_string(rand_n);
+      std::string pad = "";
+      if(rand_s.size() < 4) {
+        pad = std::string(4 - rand_s.size(), '0');
+      }
+      std::string k = "user00000" + pad + rand_s;
+      std::string v = "v" + std::to_string(i) ;
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
   }
 
-  dbfull(db)->SplitColumnFamilyFromSstFiles(cfd_default1, infos);
+  sleep (5);
 
-  sleep(3);
+  db->CompactRange(CompactRangeOptions(), cfh, nullptr, nullptr);
 
-  // Compact second column family only.
-  for (auto& node: cfd_default->GetChildrenNodes()) {
-    ColumnFamilyData* cfd = node->cfd_;
-    ColumnFamilyHandle* cfdh = dbfull(db)->GetColumnFamilyHandle(cfd->GetID());
-    std::cout<< "cfh name : " << cfdh->GetName()<< std::endl;
-    
-    CompactRangeOptions cr_options;
-    cr_options.change_level = true;
-    cr_options.target_level = 6;
-    dbfull(db)->CompactRange(cr_options, cfdh, nullptr, nullptr);
-    sleep(3);
+  sleep(5);*/
+  
+  /*for (int num = 0; num < 1; num ++) {
+    for (int i=0; i<10000; i++) {
+      int rand_n = i % 10000;
+      std::string rand_s = std::to_string(rand_n);
+      std::string pad = "";
+      if(rand_s.size() < 4) {
+        pad = std::string(4 - rand_s.size(), '0');
+      }
+      std::string k = "user00000" + pad + rand_s;
+      std::string v = "w" + std::to_string(i) ;
+      db->Put(WriteOptions(), cfh, k, v);  
+    }
+    ASSERT_OK(db->Flush(FlushOptions())); 
   }
-  
-
-  
- 
+  sleep (5);*/
   fprintf(stdout, "[LCFSingleLvlLevelTest] now shutdown db\n");
   //dbfull(db)->DestroyLogicalColumnFamilies();
+  //
+  fprintf(stdout, "STATISTICS:\n%s\n", dbstats->ToString().c_str());
 
   delete db;
   db = nullptr;

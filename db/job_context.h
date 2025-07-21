@@ -153,6 +153,8 @@ struct JobContext {
   std::vector<SplitFileInfo> sst_split_files;
   // cfd to be splitted
   ColumnFamilyData* cfd_to_split;
+  // output level of inter_cf_compaction job
+  int inter_cf_output_level = 0;
 
   // a list of log files that we need to delete
   std::vector<uint64_t> log_delete_files;

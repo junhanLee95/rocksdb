@@ -376,6 +376,11 @@ InterCFCompactionJob::InterCFCompactionJob(
 {
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->inter_cf_compaction->column_family_data();
+  start_ = compact_->inter_cf_compaction->column_family_data()->GetSmallestKey();
+  end_ = compact_->inter_cf_compaction->column_family_data()->GetLargestKey();
+  /*ROCKS_LOG_INFO(
+      db_options_.info_log, "[%s] [JOB %d] Compaction Constructor [%s,%s]",
+      cfd->GetName().c_str(), job_id_, start_.ToString().c_str(), end_.ToString().c_str());*/
   ThreadStatusUtil::SetColumnFamily(cfd, cfd->ioptions()->env,
                                     db_options_.enable_thread_tracking);
   ThreadStatusUtil::SetThreadOperation(ThreadStatus::OP_COMPACTION);
@@ -445,7 +450,7 @@ void InterCFCompactionJob::Prepare() {
       c->column_family_data()->CalculateSSTWriteHint(c->output_level());
   // Is this compaction producing files at the bottommost level?
   bottommost_level_ = c->bottommost_level();
-
+  /*
   if (c->ShouldFormSubcompactions()) {
     {
       StopWatch sw(env_, stats_, SUBCOMPACTION_SETUP_TIME);
@@ -480,9 +485,10 @@ void InterCFCompactionJob::Prepare() {
     }
     RecordInHistogram(stats_, NUM_SUBCOMPACTIONS_SCHEDULED,
                       compact_->sub_compact_states.size());
-  } else {
-    compact_->sub_compact_states.emplace_back(c, nullptr, nullptr);
-  }
+  } else {*/
+
+  compact_->sub_compact_states.emplace_back(c, start_.empty() ? nullptr: &start_, end_.empty() ? nullptr: &end_);
+  //}
 }
 
 struct RangeWithSize {
@@ -1014,6 +1020,14 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
     c_cnt_arr[3] = ((ui_compaction_cnt & mask4)>>48) + ((ex_compaction_cnt & mask4)>>48);
 
     int output_level = sub_compact->compaction->output_level();
+
+    if(output_level > 3) {
+      c_cnt_arr[3] ++;
+    }
+    else {
+      c_cnt_arr[output_level] ++;
+    }
+    /*
     if(output_level==0){
       c_cnt_arr[3] ++;
     }
@@ -1021,7 +1035,7 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
       //JH: 1227 use dynawmic leveled compaction
       //c_cnt_arr[output_level-4] ++;
       c_cnt_arr[output_level-1] ++;
-    }
+    }*/
 
     uint64_t cur_key_compaction_cnt = (c_cnt_arr[0]) | (c_cnt_arr[1] << 16) | (c_cnt_arr[2] << 32) | (c_cnt_arr[3] << 48);
 
@@ -1467,9 +1481,10 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
 
     if (db_options_.allow_column_family_split) {
       bool is_split = false;
+      bool is_file_move = false;
       int input_num = 0;
 
-      if (s_amp < 1.2) {
+      if (s_amp < 1.20) {
         // create new column family
         /*for(size_t i=0; i<sub_compact->compaction->num_input_levels(); i++) {
           input_num += int(sub_compact->compaction->num_input_files(i));
@@ -1486,46 +1501,77 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
         is_split=true;
       }
 
-      FileMetaData* f = new FileMetaData;
-      f->fd = meta->fd;
-      if(last_table_creation_number_to_split_ == -1) {
-        f->smallest = InternalKey(cfd->GetSmallestKey(),
-            meta->fd.smallest_seqno, kTypeValue);
-      }
-      else {
-        f->smallest = InternalKey(meta->smallest.user_key(),
-            meta->fd.smallest_seqno, kTypeValue);
-      }
-
-      if (next_table_min_key != nullptr) {
-        f->largest = InternalKey(meta->largest.user_key(),
-            meta->fd.largest_seqno, kTypeValue);
-      }
-      else { // last table
-        f->largest = InternalKey(cfd->GetLargestKey(),
-            meta->fd.largest_seqno, kTypeValue);
-      }
-
-      
-
       int base_level = compact_->inter_cf_compaction->mutable_cf_options()->inter_cf_base_level;
-      //uint64_t level_byte = compact_->inter_cf_compaction->mutable_cf_options()->max_bytes_for_level_base;
-      uint64_t level_byte = f->fd.GetFileSize();
-
-      if(is_split) {
+      uint64_t level_byte = meta->fd.GetFileSize();
+      if (is_split) { // cold key range for increased base_level and level_base
         base_level ++;
         level_byte *= 10;
-        num_key_range_to_split_ ++;
       }
 
-      // If is_split is consecutive with end of sst_split_files_; merge this with the end of sst_split_files_
       if (!sst_split_files_.empty() && sst_split_files_.back().is_split == is_split) {
-        ROCKS_LOG_INFO(db_options_.info_log, "[%d] it has to be merged #%" PRIu64 " with #%" PRIu64 "\n",
-            job_id_,  f->fd.packed_number_and_path_id,
-            sst_split_files_.back().metadata->fd.packed_number_and_path_id);
+        // overlapping ranges, merge it.
+        assert(!sst_split_files_.back().metadatas.empty());
+        /*ROCKS_LOG_INFO(db_options_.info_log, "[%d] it has to be merged #%" PRIu64 " with #%" PRIu64 "\n",
+            job_id_,  meta->fd.packed_number_and_path_id,
+            sst_split_files_.back().metadatas.back()->fd.packed_number_and_path_id);*/
+
+        FileMetaData* f = new FileMetaData;
+        f->fd = meta->fd;
+        f->smallest.Clear();
+        f->largest.Clear();
+        f->smallest = InternalKey(meta->smallest.user_key(), meta->fd.smallest_seqno, kTypeValue);
+        f->largest = InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
+        // update last entry's metadatas
+        sst_split_files_.back().metadatas.push_back(f);
+        // update last entry's largest
+        if (next_table_min_key != nullptr) {
+          sst_split_files_.back().largest = InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
+        }
+        else { // last table
+          sst_split_files_.back().largest = InternalKey(cfd->GetLargestKey(), meta->fd.largest_seqno, kTypeValue);
+        }
+      }
+      else {
+        // create new SplitFileInfo and push to the sst_split_files_
+        if(is_split) {
+          num_key_range_to_split_ ++;
+          is_file_move = true;
+        }
+
+        std::vector<FileMetaData*> fs;
+        FileMetaData* f = new FileMetaData;
+        InternalKey smallest;
+        InternalKey largest;
+        f->fd = meta->fd;
+        f->smallest.Clear();
+        f->largest.Clear();
+        f->smallest = InternalKey(meta->smallest.user_key(), meta->fd.smallest_seqno, kTypeValue);
+        f->largest = InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
+        f->marked_for_compaction = meta->marked_for_compaction;
+
+        if (last_table_creation_number_to_split_ == -1) {
+          smallest = InternalKey(cfd->GetSmallestKey(),
+              meta->fd.smallest_seqno, kTypeValue);
+        }
+        else {
+          smallest = InternalKey(meta->smallest.user_key(),
+              meta->fd.smallest_seqno, kTypeValue);
+        }
+
+        if (next_table_min_key != nullptr) {
+          largest = InternalKey(meta->largest.user_key(),
+              meta->fd.largest_seqno, kTypeValue);
+        }
+        else { // last table
+          largest = InternalKey(cfd->GetLargestKey(),
+              meta->fd.largest_seqno, kTypeValue);
+        }
+        fs.push_back(f);
+
+        sst_split_files_.push_back(SplitFileInfo(fs, cfd, base_level, level_byte, is_split, is_file_move,
+                                                 std::move(smallest), std::move(largest)));
       }
 
-      sst_split_files_.push_back(SplitFileInfo(f, cfd, base_level, level_byte, is_split));
       *cfd_to_split_ = cfd;
       last_table_creation_number_to_split_ = table_creation_number_;
 
@@ -1533,7 +1579,6 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
           "[%s] [JOB %d] Split[%d] table #%" PRIu64 ": (s_amp %f) %d input",
           cfd->GetName().c_str(), job_id_, is_split, output_number,
           s_amp, input_num);
-
     }
     table_creation_number_++;
   }
@@ -1631,17 +1676,35 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   edit.SetColumnFamily(cfd->GetID());
   pedit.SetColumnFamily(pcfd->GetID());
   // file deletions
-  compaction->AddInputDeletions(&edit, &pedit);
+  compaction->AddInputDeletions(db_options_.info_log, &edit, &pedit);
+  /*for (auto& delete_file: edit.GetDeletedFiles()) {
+    //ROCKS_LOG_INFO(db_options_.info_log, "[JH] ic_comp[%s] delete file %d %" PRIu64 "", cfd->GetName().c_str(), delete_file.first, delete_file.second);
+    if (lcf_alive_file_map_manager_->Decrement(db_options_.info_log, job_id_, delete_file.second) == true) {
+      ROCKS_LOG_INFO(db_options_.info_log, "[JH] ic_comp[%s] delete file from lcf_alive_file_map_manager_ %d %" PRIu64 "", cfd->GetName().c_str(), delete_file.first, delete_file.second);
+    }
+  }*/
+  /*for (auto& delete_file: pedit.GetDeletedFiles()) {
+    ROCKS_LOG_INFO(db_options_.info_log, "[JH] ic_comp[%s] delete file %d %" PRIu64 "", pcfd->GetName().c_str(), delete_file.first, delete_file.second);
+    if (lcf_alive_file_map_manager_->Decrement(db_options_.info_log, job_id_, delete_file.second) == true) {
+      ROCKS_LOG_INFO(db_options_.info_log, "[JH] ic_comp[%s] delete file from lcf_alive_file_map_manager_ %d %" PRIu64 "", pcfd->GetName().c_str(), delete_file.first, delete_file.second);
+    }
+  }*/
   // file adds
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
-      pedit.AddFile(compaction->output_level(), out.meta);
+      //pedit.AddFile(compaction->output_level(), out.meta);
+      pedit.AddFile(compaction->output_level(), out.meta.fd.GetNumber(),
+          out.meta.fd.GetPathId(), out.meta.fd.GetFileSize(), out.meta.smallest,
+          out.meta.largest, out.meta.fd.smallest_seqno, out.meta.fd.largest_seqno,
+          out.meta.marked_for_compaction);
       if (lcf_alive_file_map_manager_ != nullptr) {
-        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        //lcf_alive_file_map_manager_->PrintAliveFiles("inter cf compaction job");
+        lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_id_, out.meta.fd.GetNumber());
       }
     }
   }
+  /*if (lcf_alive_file_map_manager_ != nullptr) {
+    lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_id_,"inter cf compaction job");
+  }*/
   // mark atomic
   edit.MarkAtomicGroup(1);
   pedit.MarkAtomicGroup(0);
@@ -1724,10 +1787,10 @@ Status InterCFCompactionJob::OpenCompactionOutputFile(
   writable_file->SetWriteLifeTimeHint(write_hint_);
   writable_file->SetPreallocationBlockSize(static_cast<size_t>(
       sub_compact->compaction->OutputFilePreallocationSize()));
-  ROCKS_LOG_INFO(
+  /*ROCKS_LOG_INFO(
           db_options_.info_log,
           " OpenCompactionOutputFiles block size : %lu ",
-          sub_compact->compaction->OutputFilePreallocationSize());
+          sub_compact->compaction->OutputFilePreallocationSize());*/
 
   const auto& listeners =
       sub_compact->compaction->immutable_cf_options()->listeners;

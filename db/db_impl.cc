@@ -172,6 +172,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       log_sync_cv_(&mutex_),
       total_log_size_(0),
       is_snapshot_supported_(true),
+      lcf_alive_file_map_manager_(std::make_shared<LCFAliveFileMapManager>())/* [LCF] init alive file map manager */,
       write_buffer_manager_(immutable_db_options_.write_buffer_manager.get()),
       write_thread_(immutable_db_options_),
       nonmem_write_thread_(immutable_db_options_),
@@ -252,7 +253,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
 
   versions_.reset(new VersionSet(dbname_, &immutable_db_options_, env_options_,
                                  table_cache_.get(), write_buffer_manager_,
-                                 &write_controller_));
+                                 &write_controller_, lcf_alive_file_map_manager_));
   column_family_memtables_.reset(
       new ColumnFamilyMemTablesImpl(versions_->GetColumnFamilySet()));
 
@@ -2346,7 +2347,7 @@ Status DBImpl::SplitColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
 
 void DBImpl::PrintLogicalColumnFamily(void) {
   {
-    InstrumentedMutexLock l(&mutex_);
+   // InstrumentedMutexLock l(&mutex_);
     auto column_family_set = versions_->GetColumnFamilySet();
     column_family_set->PrintLogicalColumnFamily();
   }

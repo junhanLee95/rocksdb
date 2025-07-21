@@ -806,11 +806,11 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
   if (!s.ok()) {
     return s;
   }
-  if (!BlockBasedTableSupportedVersion(footer.version())) {
+  /*if (!BlockBasedTableSupportedVersion(footer.version())) {
     return Status::Corruption(
         "Unknown Footer version. Maybe this file was created with newer "
         "version of RocksDB?");
-  }
+  }*/ // JH temporarily 250630
 
   // We've successfully read the footer. We are ready to serve requests.
   // Better not mutate rep_ after the creation. eg. internal_prefix_transform

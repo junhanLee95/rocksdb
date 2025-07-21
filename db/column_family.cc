@@ -408,8 +408,6 @@ ColumnFamilyData::ColumnFamilyData(
     const EnvOptions& env_options, ColumnFamilySet* column_family_set)
     : id_(id),
       name_(name),
-      smallest_user_key_(smallest_user_key),
-      largest_user_key_(largest_user_key),
       dummy_versions_(_dummy_versions),
       current_(nullptr),
       refs_(0),
@@ -443,6 +441,11 @@ ColumnFamilyData::ColumnFamilyData(
       last_memtable_id_(0) {
   Ref();
 
+  owned_smallest_user_key_.assign(smallest_user_key.data(), smallest_user_key.size());
+  owned_largest_user_key_.assign(largest_user_key.data(), largest_user_key.size());
+  smallest_user_key_ = Slice(owned_smallest_user_key_);
+  largest_user_key_ = Slice(owned_largest_user_key_);
+  
   // Convert user defined table properties collector factories to internal ones.
   GetIntTblPropCollectorFactory(ioptions_, &int_tbl_prop_collector_factories_);
 
@@ -1605,17 +1608,17 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: cnodes are empty");
     for (size_t i = 0; i < sst_split_files.size(); i++) {
-      if (!is_key_range_narrow(sst_split_files[i].metadata->smallest.user_key(),
-                               sst_split_files[i].metadata->largest.user_key(),
+      if (!is_key_range_narrow(sst_split_files[i].smallest.user_key(),
+                               sst_split_files[i].largest.user_key(),
                                db_options_->column_family_min_key_range)) {
-        new_smallests.emplace_back(sst_split_files[i].metadata->smallest.user_key());
-        new_largests.emplace_back(sst_split_files[i].metadata->largest.user_key());
+        new_smallests.emplace_back(sst_split_files[i].smallest.user_key());
+        new_largests.emplace_back(sst_split_files[i].largest.user_key());
         *new_cf_cnt = *new_cf_cnt+1;  
       } else {
         ROCKS_LOG_INFO(db_options_->info_log.get(),
                        "Key Range [%s,%s] is narrow and we skip",
-                       sst_split_files[i].metadata->smallest.user_key().ToString(false).c_str(),
-                       sst_split_files[i].metadata->largest.user_key().ToString(false).c_str());
+                       sst_split_files[i].smallest.user_key().ToString(false).c_str(),
+                       sst_split_files[i].largest.user_key().ToString(false).c_str());
       }
     }
   } else { // measure overlapping key ranges before putting sst_split_files to children
@@ -1624,8 +1627,8 @@ void ColumnFamilySet::PrepareVersionEditsToSplit(autovector<ColumnFamilyData*>& 
     Slice s_largest; // sst_split_files' largest key
 
     for (size_t s_i = 0; s_i < sst_split_files.size(); s_i ++) {
-      s_smallest = sst_split_files[s_i].metadata->smallest.user_key();
-      s_largest = sst_split_files[s_i].metadata->largest.user_key(); 
+      s_smallest = sst_split_files[s_i].smallest.user_key();
+      s_largest = sst_split_files[s_i].largest.user_key(); 
       ROCKS_LOG_INFO(db_options_->info_log.get(),
                    "PrepareVersionEditsToSplit: sst_split_file [%s, %s]", 
                    s_smallest.ToString().c_str(),

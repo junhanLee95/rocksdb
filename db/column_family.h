@@ -299,11 +299,13 @@ class ColumnFamilyData {
   Slice& GetLargestKey();
 
   void UpdateSmallestKey(Slice smallest) {
-    smallest_user_key_ = smallest;
+    owned_smallest_user_key_.assign(smallest.data(), smallest.size());
+    smallest_user_key_ = Slice(owned_smallest_user_key_);
   }
 
   void UpdateLargestKey(Slice largest) {
-    largest_user_key_ = largest;
+    owned_largest_user_key_.assign(largest.data(), largest.size());
+    largest_user_key_ = Slice(owned_largest_user_key_);
   }
 
   // for partition tree node
@@ -455,6 +457,8 @@ class ColumnFamilyData {
 
   uint32_t id_;
   const std::string name_;
+  std::string owned_smallest_user_key_;
+  std::string owned_largest_user_key_;
   Slice smallest_user_key_; // active if split is enabled
   Slice largest_user_key_;  // active if split is enabled
   PartitionTreeNode* partition_tree_node_;  // active if split is enabled

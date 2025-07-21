@@ -41,8 +41,9 @@ enum Tag : uint32_t {
   kColumnFamilyDrop = 202,
   kMaxColumnFamily = 203,
   kColumnFamilySplit = 204, // new
-  kColumnFamilySmallest = 205,
-  kColumnFamilyLargest = 206,
+  kColumnFamilySmallest = 205, // new
+  kColumnFamilyLargest = 206, // new
+  kColumnFamilyKeyRangeUpdate = 207, // new
 
   kInAtomicGroup = 300,
 };
@@ -233,6 +234,11 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint32(dst, kInAtomicGroup);
     PutVarint32(dst, remaining_entries_);
   }
+
+  if (is_column_family_keyrange_update_) {
+    PutVarint32(dst, kColumnFamilyKeyRangeUpdate);
+  }
+
   return true;
 }
 
@@ -570,6 +576,10 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         is_column_family_drop_ = true;
         break;
 
+      case kColumnFamilyKeyRangeUpdate:
+        is_column_family_keyrange_update_ = true;
+        break;
+
       case kInAtomicGroup:
         is_in_atomic_group_ = true;
         if (!GetVarint32(&input, &remaining_entries_)) {
@@ -663,6 +673,11 @@ std::string VersionEdit::DebugString(bool hex_key) const {
   if (is_column_family_add_) {
     r.append("\n  ColumnFamilyAdd: ");
     r.append(column_family_name_);
+    r.append(" [");
+    r.append(smallest_user_key_.ToString(false));
+    r.append(",");
+    r.append(largest_user_key_.ToString(false));
+    r.append(" ]");
   }
   if (is_column_family_split_) {
     r.append("\n  ColumnFamilySplit: ");
@@ -671,6 +686,11 @@ std::string VersionEdit::DebugString(bool hex_key) const {
   if (is_column_family_keyrange_update_) {
     r.append("\n  ColumnFamilyKeyRangeUpdate: ");
     r.append(column_family_name_);
+    r.append(" [");
+    r.append(smallest_user_key_.ToString(false));
+    r.append(",");
+    r.append(largest_user_key_.ToString(false));
+    r.append(" ]");
   }
   if (is_column_family_drop_) {
     r.append("\n  ColumnFamilyDrop");

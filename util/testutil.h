@@ -37,6 +37,7 @@ extern const uint32_t kLatestFormatVersion;
 
 // This is for split test
 extern Slice RandomStringUserInt(Random* rnd, int len, std::string* dst);
+extern Slice RandomStringUserIntWithPrefix(Random* rnd, int len, std::string* dst, char p);
 // Store in *dst a random string of length "len" and return a Slice that
 // references the generated data.
 extern Slice RandomString(Random* rnd, int len, std::string* dst);

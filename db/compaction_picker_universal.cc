@@ -92,6 +92,7 @@ SmallestKeyHeap create_level_heap(Compaction* c, const Comparator* ucmp) {
 
 #ifndef NDEBUG
 // smallest_seqno and largest_seqno are set iff. `files` is not empty.
+/*
 void GetSmallestLargestSeqno(const std::vector<FileMetaData*>& files,
                              SequenceNumber* smallest_seqno,
                              SequenceNumber* largest_seqno) {
@@ -111,7 +112,7 @@ void GetSmallestLargestSeqno(const std::vector<FileMetaData*>& files,
       }
     }
   }
-}
+}*/
 #endif
 }  // namespace
 
@@ -379,7 +380,8 @@ Compaction* UniversalCompactionPicker::PickCompaction(
         // The number of sorted runs that are not being compacted is greater
         // than the maximum allowed number of sorted runs
         if (num_sr_not_compacted >
-            mutable_cf_options.level0_file_num_compaction_trigger) {
+            10) {
+        //    mutable_cf_options.level0_file_num_compaction_trigger) {
           unsigned int num_files =
               num_sr_not_compacted -
               mutable_cf_options.level0_file_num_compaction_trigger + 1;
@@ -421,10 +423,10 @@ Compaction* UniversalCompactionPicker::PickCompaction(
 
 // validate that all the chosen files of L0 are non overlapping in time
 #ifndef NDEBUG
-  SequenceNumber prev_smallest_seqno = 0U;
+  /*SequenceNumber prev_smallest_seqno = 0U;
   bool is_first = true;
 
-  size_t level_index = 0U;
+  //size_t level_index = 0U;
   if (c->start_level() == 0) {
     for (auto f : *c->inputs(0)) {
       assert(f->fd.smallest_seqno <= f->fd.largest_seqno);
@@ -433,8 +435,9 @@ Compaction* UniversalCompactionPicker::PickCompaction(
       }
       prev_smallest_seqno = f->fd.smallest_seqno;
     }
-    level_index = 1U;
-  }
+    //level_index = 1U;
+  }*/
+  /*JH  fix : largest_seqno is no longer zero.
   for (; level_index < c->num_input_levels(); level_index++) {
     if (c->num_input_files(level_index) != 0) {
       SequenceNumber smallest_seqno = 0U;
@@ -450,11 +453,11 @@ Compaction* UniversalCompactionPicker::PickCompaction(
         // of files in bottommost level can be set to 0 to help
         // compression. As a result, the following assert may not hold
         // if the prev_smallest_seqno is 0.
-        assert(prev_smallest_seqno > largest_seqno);
+        assert(prev_smallest_seqno > largest_seqno); 
       }
       prev_smallest_seqno = smallest_seqno;
     }
-  }
+  }*/
 #endif
   // update statistics
   RecordInHistogram(ioptions_.statistics, NUM_FILES_IN_SINGLE_COMPACTION,
@@ -716,6 +719,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
     VersionStorageInfo* vstorage, VersionStorageInfo* parent_vstorage, double score,
     const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer, CompactionPicker* parent_picker) {
   uint64_t max_bytes = mutable_cf_options.max_bytes_for_level_base; // total size should be less than $max_bytes$
+  int output_level = mutable_cf_options.inter_cf_base_level; // output files at designated base level.
   ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal:PickCompactionToReduceTotalsize max_bytes_for_level_base : %ld\n", cf_name.c_str(), max_bytes);
   ROCKS_LOG_BUFFER(log_buffer, "[%s] Universal:PickCompactionToReduceTotalsize parent picker's style : %ld\n", cf_name.c_str(), parent_picker->GetCompactionStyle());
 
@@ -777,7 +781,10 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
   // size of earliest file
   uint64_t earliest_file_size = sorted_runs.back().size;
 
-  if (candidate_size  < max_bytes) {
+
+  // if inter_cf_base_level is 1, we assume the column family is hot
+  // and compact files if the number of sorted runs >= 4
+  if (/*output_level > 1 && */candidate_size  < max_bytes) {
     ROCKS_LOG_BUFFER(
         log_buffer,
         "[%s] Universal(LCF): size total not needed. newer-files-total-size %" PRIu64
@@ -805,6 +812,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
   std::vector<InterCFCompactionInputFiles> inputs(vstorage->num_levels());
   for (size_t i = 0; i < inputs.size(); ++i) {
     inputs[i].level = start_level + static_cast<int>(i);
+    inputs[i].cf_name = cf_name;
   }
   // We always compact all the files, so always compress.
   for (size_t loop = start_index; loop < sorted_runs.size(); loop++) {
@@ -824,8 +832,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
                      cf_name.c_str(), file_num_buf);
   }
 
-  // output files at designated base level.
-  int output_level = mutable_cf_options.inter_cf_base_level;
+  
   // last level is reserved for the files ingested behind
   if (ioptions_.allow_ingest_behind) {
     assert(output_level > 1);
@@ -844,6 +851,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
 
     InterCFCompactionInputFiles output_level_inputs;
     output_level_inputs.level = output_level;
+    output_level_inputs.cf_name = "default";
 
     parent_vstorage->GetOverlappingInputs(output_level, &smallest, &largest,
                                           &output_level_inputs.files, -1, nullptr);

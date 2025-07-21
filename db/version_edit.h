@@ -135,6 +135,27 @@ struct FileMetaData {
         marked_for_split(false)
         {}
 
+  FileMetaData& operator=(const FileMetaData& other) {
+    if (this != &other) {
+      fd = other.fd;
+      smallest = other.smallest;            // Smallest internal key served by table
+      largest = other.largest;             // Largest internal key served by table
+      table_reader_handle = nullptr;
+      compensated_file_size = other.compensated_file_size;
+      num_entries = other.num_entries; 
+      num_deletions = other.num_deletions;
+      raw_key_size = other.raw_key_size;
+      raw_value_size = other.raw_value_size;
+
+      being_compacted = other.being_compacted;
+      init_stats_from_file = other.init_stats_from_file;
+
+      marked_for_compaction = other.marked_for_compaction;
+      marked_for_split = other.marked_for_split;
+    }
+    return *this;
+  }
+
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
   void UpdateBoundaries(const Slice& key, SequenceNumber seqno) {

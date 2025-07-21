@@ -722,57 +722,88 @@ class Version {
 
   Version(ColumnFamilyData* cfd, VersionSet* vset, const EnvOptions& env_opt,
           MutableCFOptions mutable_cf_options, uint64_t version_number = 0);
+  // for LCF
+  Version(ColumnFamilyData* cfd, VersionSet* vset, const EnvOptions& env_opt,
+          MutableCFOptions mutable_cf_options, uint64_t version_number = 0, std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager = nullptr);
 
   ~Version();
 
   // No copying allowed
   Version(const Version&);
   void operator=(const Version&);
+
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_; // LCF
 };
 
 struct SplitFileInfo {
-  FileMetaData* metadata;
+  std::vector<FileMetaData*> metadatas;
   ColumnFamilyData* cfd;
   int inter_cf_base_level;
   uint64_t inter_cf_max_bytes_for_level_base;
   bool is_split;
+  bool is_file_move;
+  InternalKey smallest;
+  InternalKey largest;
 
-  SplitFileInfo() noexcept : metadata(nullptr), cfd(nullptr) {}
-  SplitFileInfo(FileMetaData* f, ColumnFamilyData* c)
-      : metadata(f), cfd(c), inter_cf_base_level(1),
+  SplitFileInfo() noexcept : cfd(nullptr) {}
+  SplitFileInfo(std::vector<FileMetaData*>& fs, ColumnFamilyData* c)
+      : metadatas(fs), cfd(c), inter_cf_base_level(1),
         inter_cf_max_bytes_for_level_base(0),
-        is_split(true){}
+        is_split(true), is_file_move(false), smallest(InternalKey()), largest(InternalKey()){}
 
-  SplitFileInfo(FileMetaData* f, ColumnFamilyData* c, int base_level, uint64_t level_byte, bool split)
-      : metadata(f), cfd(c), inter_cf_base_level(base_level),
+  SplitFileInfo(std::vector<FileMetaData*>& fs, ColumnFamilyData* c, int base_level, uint64_t level_byte, bool split, bool file_move, InternalKey s, InternalKey l)
+      : metadatas(fs), cfd(c), inter_cf_base_level(base_level),
         inter_cf_max_bytes_for_level_base(level_byte),
-        is_split(split){}
-
+        is_split(split), is_file_move(file_move), smallest(s), largest(l){}
 
   SplitFileInfo(const SplitFileInfo&) = delete;
   SplitFileInfo& operator=(const SplitFileInfo&) = delete;
 
   SplitFileInfo(SplitFileInfo&& rhs) noexcept :
-    SplitFileInfo() {
-      *this = std::move(rhs);
+    metadatas(std::move(rhs.metadatas)),
+    cfd(std::move(rhs.cfd)),
+    inter_cf_base_level(rhs.inter_cf_base_level),
+    inter_cf_max_bytes_for_level_base(rhs.inter_cf_max_bytes_for_level_base),
+    is_split(rhs.is_split),
+    is_file_move(rhs.is_file_move),
+    smallest(std::move(rhs.smallest)),
+    largest(std::move(rhs.largest))
+  {
+    rhs.metadatas.clear();
+    rhs.cfd = nullptr;
+    rhs.inter_cf_base_level = 0;
+    rhs.inter_cf_max_bytes_for_level_base = 0;
+    rhs.is_split = false;
+    rhs.is_file_move = false;
+    rhs.smallest.Clear();
+    rhs.largest.Clear();
   }
 
   SplitFileInfo& operator=(SplitFileInfo&& rhs) noexcept {
-    metadata = std::move(rhs.metadata);
+    metadatas = std::move(rhs.metadatas);
     cfd = std::move(rhs.cfd);
-    rhs.metadata = nullptr;
-    rhs.cfd = nullptr;
     inter_cf_base_level = rhs.inter_cf_base_level;
     inter_cf_max_bytes_for_level_base = rhs.inter_cf_max_bytes_for_level_base;
     is_split = rhs.is_split;
+    is_file_move = rhs.is_file_move;
+    smallest = rhs.smallest;
+    largest = rhs.largest;
+
+    rhs.metadatas.clear();
+    rhs.cfd = nullptr;
+    rhs.inter_cf_base_level = 0;
+    rhs.inter_cf_max_bytes_for_level_base = 0;
+    rhs.is_split = false; // optional
+    rhs.is_file_move = false; // optional
+    rhs.smallest.Clear();
+    rhs.largest.Clear();
 
     return *this;
   }
 
   void DeleteInfo() {
-    delete metadata;
+    metadatas.clear();
     //delete cfd;
-    metadata = nullptr;
     //cfd = nullptr;
   }
 
@@ -780,11 +811,16 @@ struct SplitFileInfo {
     std::string debug_str = "";
     debug_str += std::string("\n- SplitFileInfo -\n");
     debug_str += std::string("cf[") + cfd->GetName() + std::string("]\n");
-    debug_str += std::string("fd#[") + std::to_string(metadata->fd.GetNumber()) + std::string("]\n");
-    debug_str += std::string("range[") + metadata->smallest.user_key().ToString() + std::string(", ") + metadata->largest.user_key().ToString() + std::string("]\n");
+    int i=0;
+    for(auto& metadata: metadatas) {
+      debug_str += std::to_string(i) + std::string("-fd#[") + std::to_string(metadata->fd.GetNumber()) + std::string("]\n");
+      i++;
+    }
+    debug_str += std::string("range[") + smallest.DebugString() + std::string(", ") + largest.DebugString() + std::string("]\n");
     debug_str += std::string("base level : ") + std::to_string(inter_cf_base_level) + std::string("\n");
     debug_str += std::string("base bytes : ") + std::to_string(inter_cf_max_bytes_for_level_base) + std::string("\n");
     debug_str += std::string("is_split  : ") + std::to_string(is_split) + std::string("\n");
+    debug_str += std::string("is_file_move  : ") + std::to_string(is_file_move) + std::string("\n");
     debug_str += std::string("-----------------\n");
 
     return debug_str;
@@ -829,6 +865,12 @@ class VersionSet {
              const EnvOptions& env_options, Cache* table_cache,
              WriteBufferManager* write_buffer_manager,
              WriteController* write_controller);
+  // for LCF
+  VersionSet(const std::string& dbname, const ImmutableDBOptions* db_options,
+      const EnvOptions& env_options, Cache* table_cache,
+      WriteBufferManager* write_buffer_manager,
+      WriteController* write_controller, std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager);
+
   virtual ~VersionSet();
 
   // Apply *edit to the current version to form a new descriptor that
@@ -1179,7 +1221,7 @@ class VersionSet {
 
   // env options for all reads and writes except compactions
   EnvOptions env_options_;
-
+  std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_; // LCF
  private:
   // No copying allowed
   VersionSet(const VersionSet&);

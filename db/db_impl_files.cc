@@ -38,12 +38,14 @@ uint64_t DBImpl::MinObsoleteSstNumberToKeep() {
 }
 
 Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
-                                             std::vector<SplitFileInfo>& sst_split_files) {
+                                             std::vector<SplitFileInfo>& sst_split_files,
+                                             int inter_cf_output_level) {
   assert(!sst_split_files.empty());
   assert(cfd != nullptr);
 
   StopWatchNano timer(env_, true);
 
+  ColumnFamilyData* cfd_default = versions_->GetColumnFamilySet()->GetDefault();
   Status s;
   Status persistent_options_status;
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
@@ -97,62 +99,75 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());*/
 
 
-  // Put parent first
   autovector<VersionEdit*> edits_in;
   {
 	  InstrumentedMutexLock l(&mutex_);
 	  autovector<VersionEdit*> edits_out;
 
-    // Now put children
-    // Before configuring the number of version edit as split_cnt,
-    // we need to compare the key ranges of existing children nodes
-    // with the key ranges of sst_split_files.
-    // For example, the key ranges of sst_split_files ={[5, 18], [19, 30], [40,60], [99, 200]}
-    // and key ranges of existing children nodes = {[1, 15], [20, 100]}
-    // then new intervals must be = {[15, 18], [19, 20], [100, 200]}
-    std::vector<VersionEdit> dummy_edit(1024);
-    for (size_t i = 0; i< sst_split_files.size(); i++) {
-      
-      FileMetaData* f = sst_split_files[i].metadata;
+    std::vector<VersionEdit> split_cf_edit(sst_split_files.size()); 
+    VersionEdit default_cf_edit; // version edit for default column family
+    default_cf_edit.SetColumnFamily(0);
+
+    // 1. put split_cf_edit first
+    for (size_t i = 0; i < sst_split_files.size(); i++) {
       int inter_cf_base_level = sst_split_files[i].inter_cf_base_level;
       uint64_t inter_cf_max_bytes_for_level_base = sst_split_files[i].inter_cf_max_bytes_for_level_base;
 
-      // Update edit_lists
+      // update edit_lists
       std::string cf_name;
       if (i == 0) {
-        dummy_edit[i].SplitColumnFamily(cfd->GetName());
-        dummy_edit[i].SetColumnFamily(cfd->GetID());
-        dummy_edit[i].UpdateKeyRangeColumnFamily(cfd->GetName());
+        split_cf_edit[i].SplitColumnFamily(cfd->GetName());
+        split_cf_edit[i].SetColumnFamily(cfd->GetID());
+        split_cf_edit[i].UpdateKeyRangeColumnFamily(cfd->GetName());
         cf_name = cfd->GetName();
-        dummy_edit[i].SetColumnFamilyKeyRange(f->smallest.user_key(), f->largest.user_key());
+        split_cf_edit[i].SetColumnFamilyKeyRange(sst_split_files[i].smallest.user_key(), sst_split_files[i].largest.user_key());
+        if (sst_split_files[i].is_file_move) {
+          for (const FileMetaData* f: sst_split_files[i].metadatas) {
+            split_cf_edit[i].AddFile(6, *f);
+            default_cf_edit.DeleteFile(inter_cf_output_level, f->fd.GetNumber());
+          }
+        }
+        
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
             "SplitColumnFamilyFromSstFiles[%s] update key range[%s, %s]",
             cf_name.c_str(),
-            f->smallest.user_key().ToString().c_str(),
-            f->largest.user_key().ToString().c_str());
-
+            sst_split_files[i].smallest.DebugString().c_str(),
+            sst_split_files[i].largest.DebugString().c_str());
       }
       else {
         uint32_t next_cf_id = versions_->GetColumnFamilySet()->GetNextColumnFamilyID();
-        dummy_edit[i].SetColumnFamily(next_cf_id);
+        split_cf_edit[i].SetColumnFamily(next_cf_id);
         cf_name = "default" + std::to_string(next_cf_id);
-        dummy_edit[i].AddColumnFamily(cf_name);
-        dummy_edit[i].SetLogNumber(logfile_number_);
-        dummy_edit[i].SetColumnFamilyKeyRange(f->smallest.user_key(), f->largest.user_key());
+        split_cf_edit[i].AddColumnFamily(cf_name);
+        split_cf_edit[i].SetLogNumber(logfile_number_);
+        split_cf_edit[i].SetColumnFamilyKeyRange(sst_split_files[i].smallest.user_key(), sst_split_files[i].largest.user_key());
 
+        if (sst_split_files[i].is_file_move) {
+          for (const FileMetaData* f: sst_split_files[i].metadatas) {
+            split_cf_edit[i].AddFile(6, *f);
+            default_cf_edit.DeleteFile(inter_cf_output_level, f->fd.GetNumber());
+          }
+        }
         // If there are level-0 files to split from the first column family, add them.
         auto level0_files = cfd->current()->storage_info()->LevelFiles(0);
         for (const FileMetaData* file: level0_files) {
-          ROCKS_LOG_INFO(immutable_db_options_.info_log,
-              "SplitColumnFamilyFromSstFiles[%s] level-0 file : %" PRIu64 "",
-              cf_name.c_str(),
-              file->fd.GetNumber());
-          dummy_edit[i].AddFile(0, *file);
+          if (!file->being_compacted) {
+            ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                "SplitColumnFamilyFromSstFiles[%s] add level-0 file : %" PRIu64 "",
+                cf_name.c_str(),
+                file->fd.GetNumber());
+            split_cf_edit[i].AddFile(0, *file);
+          } else {
+            ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                "SplitColumnFamilyFromSstFiles[%s] cannot add level-0 file because it is being_compacted : %" PRIu64 "",
+                cf_name.c_str(),
+                file->fd.GetNumber());
+          }
         }
       }
       cf_name_list.push_back(cf_name);
 
-      edits_out.push_back(&dummy_edit[i]);
+      edits_out.push_back(&split_cf_edit[i]);
       edit_lists.push_back(edits_out);
       edits_out.clear();
 
@@ -162,27 +177,53 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
       options.compression = kNoCompression;
       options.max_bytes_for_level_base = inter_cf_max_bytes_for_level_base;
       options.inter_cf_base_level = inter_cf_base_level;
-      options.target_file_size_base = 1024*1024*64;
+       options.target_file_size_base = 1024*1024*64;
       mutable_cf_options_list.push_back(new MutableCFOptions(options));
     }
-
-    // prepare superversion_contexts 
-    // the first one is for parent
-    // now prepare for children nodes
-    for (size_t i = 0; i < sst_split_files.size(); i++) {
-      superversion_contexts.emplace_back(SuperVersionContext(true));
+    // 2. push default_cf_edit, only if there is file to delete
+    if (!default_cf_edit.GetDeletedFiles().empty()) {
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+          "SplitColumnFamilyFromSstFiles[%s]: default column family moves %ld files",
+          cfd->GetName().c_str(),
+          default_cf_edit.GetDeletedFiles().size());
+      column_family_datas.push_back(cfd_default);
+      edits_out.push_back(&default_cf_edit);
+      edit_lists.push_back(edits_out);
+      edits_out.clear();
+      mutable_cf_options_list.push_back(cfd->GetLatestMutableCFOptions());
+      cf_name_list.push_back("default");
+      // prepare superversion_contexts 
+      // first n is for children nodes,
+      // and the last is for default column family
+      for (size_t i = 0; i < sst_split_files.size()+1; i++) {
+        superversion_contexts.emplace_back(SuperVersionContext(true));
+      }
+      assert(sst_split_files.size()+1 == edit_lists.size() );
+      assert(sst_split_files.size()+1 == mutable_cf_options_list.size() );
+      assert(sst_split_files.size()+1 == cf_name_list.size());
+      assert(sst_split_files.size()+1 == superversion_contexts.size());
+    } else {
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+          "SplitColumnFamilyFromSstFiles[%s]: default column family does not move files",
+          cfd->GetName().c_str()
+      );
+      // prepare superversion_contexts 
+      // for children nodes
+      for (size_t i = 0; i < sst_split_files.size(); i++) {
+        superversion_contexts.emplace_back(SuperVersionContext(true));
+      }
+      assert(sst_split_files.size() == edit_lists.size() );
+      assert(sst_split_files.size() == mutable_cf_options_list.size() );
+      assert(sst_split_files.size() == cf_name_list.size());
+      assert(sst_split_files.size() == superversion_contexts.size());
     }
-    assert(sst_split_files.size() == edit_lists.size() );
-    assert(sst_split_files.size() == mutable_cf_options_list.size() );
-    assert(sst_split_files.size() == cf_name_list.size());
-    assert(sst_split_files.size() == superversion_contexts.size());
-
+   
 	  ROCKS_LOG_INFO(immutable_db_options_.info_log,
 			  "SplitColumnFamilyFromSstFiles[%s]: Create CF Cnt %lu, edit size %lu",
         cfd->GetName().c_str(),
 			  sst_split_files.size(), edit_lists.size());
 
-	  uint32_t num_entries = sst_split_files.size() ;
+	  uint32_t num_entries = edit_lists.size();
 	  for (auto& edits: edit_lists) {
 		  assert(edits.size() == 1);
 		  edits[0]->MarkAtomicGroup(--num_entries);
@@ -208,7 +249,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
           cfd->GetName().c_str(), elapsed_nanos_manifest);
 	  } else {
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
-			  "SplitColumnFamilyFromSstFiles[%s]: skip writing manifest file since children is not cessary to be created",
+			  "SplitColumnFamilyFromSstFiles[%s]: skip writing manifest file since children is not necessary to be created",
         cfd->GetName().c_str());
     }
 
@@ -231,7 +272,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 
 		  single_column_family_mode_ = false;
 
-		  for (size_t i = 0; i < sst_split_files.size(); i++) {
+		  for (size_t i = 0; i < superversion_contexts.size(); i++) {
 			  auto* cfd_out_i = versions_->GetColumnFamilySet()
 				  ->GetColumnFamily(cf_name_list[i]);
 			  assert(cfd_out_i != nullptr);
@@ -245,10 +286,17 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 
 			  cfd_out_i->set_initialized();
 
-			  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-					  "SplitColumnFamilyFromSstFiles: Create column family [%s] (ID %u)",
-					  cfd_out_i->GetName().c_str(),
-					  (unsigned) cfd_out_i->GetID());
+        if (cf_name_list[i] != "default") {
+          ROCKS_LOG_INFO(immutable_db_options_.info_log,
+              "SplitColumnFamilyFromSstFiles: Create column family [%s] (ID %u)",
+              cfd_out_i->GetName().c_str(),
+              (unsigned) cfd_out_i->GetID());       
+        } else {
+          ROCKS_LOG_INFO(immutable_db_options_.info_log,
+              "SplitColumnFamilyFromSstFiles: Moving files of column family [%s] (ID %u)",
+              cfd_out_i->GetName().c_str(),
+              (unsigned) cfd_out_i->GetID());
+        }
 		  }
 	  } else {
 		  ROCKS_LOG_ERROR(immutable_db_options_.info_log,
@@ -256,7 +304,6 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 				  cfd->GetName().c_str(),
 				  (unsigned) cfd->GetID(),
 				  s.ToString().c_str());
-
 	  }
   } // InstrumentedMutexLock l(&mutex_)
   //LogFlush(immutable_db_options_.info_log);
@@ -273,7 +320,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
     }
   }
 
-  PrintLogicalColumnFamily();
+  //PrintLogicalColumnFamily();
 
   uint64_t elapsed_nanos = timer.ElapsedNanos();
   ROCKS_LOG_INFO(immutable_db_options_.info_log, 
@@ -296,8 +343,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
 void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
                                bool no_full_scan) {
   mutex_.AssertHeld();
-	ROCKS_LOG_INFO(immutable_db_options_.info_log,
-			"findobsoletefiles");
+	
   // if deletion is disabled, do nothing
   if (disable_delete_obsolete_files_ > 0) {
     return;
@@ -338,7 +384,8 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
   versions_->GetObsoleteFiles(&job_context->sst_delete_files,
                               &job_context->manifest_delete_files,
                               job_context->min_pending_output);
-
+  //ROCKS_LOG_INFO(immutable_db_options_.info_log,
+  //    "findobsoletefiles sst_delet_files cnt : %ld", job_context->sst_delete_files.size());
   // Mark the elements in job_context->sst_delete_files as grabbedForPurge
   // so that other threads calling FindObsoleteFiles with full_scan=true
   // will not add these files to candidate list for purge.
@@ -515,7 +562,7 @@ void DBImpl::DeleteObsoleteFileImpl(int job_id, const std::string& fname,
   bool is_lcf_shared = false;
   if (type == kTableFile) {
     if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr &&
-        lcf_alive_file_map_manager_->Get(number) > 0) {
+        lcf_alive_file_map_manager_->Decrement(immutable_db_options_.info_log, job_id, number) > 0) {
       // do not delete file.
       is_lcf_shared = true;
       file_deletion_status = Status::OK();
@@ -534,13 +581,13 @@ void DBImpl::DeleteObsoleteFileImpl(int job_id, const std::string& fname,
                            &file_deletion_status);
   
   if (is_lcf_shared) {
-    ROCKS_LOG_DEBUG(immutable_db_options_.info_log,
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JOB %d] File is shared and should not delete %s type=%d #%" PRIu64 " -- %s\n", job_id,
         fname.c_str(), type, number,
         file_deletion_status.ToString().c_str());
   }
   else if (file_deletion_status.ok()) {
-    ROCKS_LOG_DEBUG(immutable_db_options_.info_log,
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
                     "[JOB %d] Delete %s type=%d #%" PRIu64 " -- %s\n", job_id,
                     fname.c_str(), type, number,
                     file_deletion_status.ToString().c_str());
@@ -602,10 +649,10 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
 
     // [JH] release table reader handle if only the file is not shared by multiply LCFs
     uint64_t file_num = file.metadata->fd.packed_number_and_path_id;
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JOB %d] lcf_manager[%" PRIu64 "] = %d\n", state.job_id,
         file_num,
-        lcf_alive_file_map_manager_->Get(file_num));
+        lcf_alive_file_map_manager_->Get(file_num));*/
     if (lcf_alive_file_map_manager_->Get(file_num) == 0 &&
       file.metadata->table_reader_handle) {
       table_cache_->Release(file.metadata->table_reader_handle);

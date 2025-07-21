@@ -1349,24 +1349,29 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       ColumnFamilyHandle* cfh_default = impl->DefaultColumnFamily();
       ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh_default)->cfd();
 
+      uint64_t max_bytes =cfd_default->GetLatestMutableCFOptions()->max_bytes_for_level_base;
+
       std::vector<SplitFileInfo> infos;
+      std::vector<FileMetaData*> metadatas1;
       FileMetaData* f1 = new FileMetaData;
       std::string s1 = "";
       std::string l1 = "";
       f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
       f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
-      infos.push_back(SplitFileInfo(f1, cfd_default, 1, 256*1024*1024/4*3, true));
+      metadatas1.push_back(f1);
+      infos.push_back(SplitFileInfo(metadatas1, cfd_default, 1,max_bytes /* 256*1024*1024/4*3*/, true/*is_split*/,false/*is_file_move*/, InternalKey(Slice(s1), 0, kTypeValue), InternalKey(Slice(l1), 0, kTypeValue)));
 
       FileMetaData* f2 = new FileMetaData;
+      std::vector<FileMetaData*> metadatas2;
       std::string s2 = "";
       std::string l2 = "";
       f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
       f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
-      infos.push_back(SplitFileInfo(f1, cfd_default, 1, 256*1024*1024/4*3, true));
+      metadatas2.push_back(f2);
+      infos.push_back(SplitFileInfo(metadatas2, cfd_default, 1, max_bytes/* 256*1024*1024/4*3*/, true/*is_split*/, false/*is_file_move*/, InternalKey(Slice(s2), 0, kTypeValue), InternalKey(Slice(l2), 0, kTypeValue)));
 
-      // [LCF] init alive file map manage
-      impl->lcf_alive_file_map_manager_ = std::make_shared<LCFAliveFileMapManager>();
-      impl->SplitColumnFamilyFromSstFiles(cfd_default, infos);
+      
+      impl->SplitColumnFamilyFromSstFiles(cfd_default, infos, 0 /* inter_cf_output_level */);
     }
   }
   return s;

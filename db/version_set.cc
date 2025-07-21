@@ -368,6 +368,7 @@ Version::~Version() {
       if (f->refs <= 0) {
         assert(cfd_ != nullptr);
         uint32_t path_id = f->fd.GetPathId();
+        //ROCKS_LOG_INFO(info_log_, "[JH] Version(%s): destructor called and added #%lu to obsolete files", cfd_->GetName().c_str(), f->fd.GetNumber());
         assert(path_id < cfd_->ioptions()->cf_paths.size());
         vset_->obsolete_files_.push_back(
             ObsoleteFileInfo(f, cfd_->ioptions()->cf_paths[path_id].path));
@@ -1191,6 +1192,44 @@ Version::Version(ColumnFamilyData* column_family_data, VersionSet* vset,
       mutable_cf_options_(mutable_cf_options),
       version_number_(version_number) {}
 
+// LCF
+Version::Version(ColumnFamilyData* column_family_data, VersionSet* vset,
+                 const EnvOptions& env_opt,
+                 const MutableCFOptions mutable_cf_options,
+                 uint64_t version_number,
+                 std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager)
+    : env_(vset->env_),
+      cfd_(column_family_data),
+      info_log_((cfd_ == nullptr) ? nullptr : cfd_->ioptions()->info_log),
+      db_statistics_((cfd_ == nullptr) ? nullptr
+                                       : cfd_->ioptions()->statistics),
+      table_cache_((cfd_ == nullptr) ? nullptr : cfd_->table_cache()),
+      merge_operator_((cfd_ == nullptr) ? nullptr
+                                        : cfd_->ioptions()->merge_operator),
+      storage_info_(
+          (cfd_ == nullptr) ? nullptr : &cfd_->internal_comparator(),
+          (cfd_ == nullptr) ? nullptr : cfd_->user_comparator(),
+          cfd_ == nullptr ? 0 : cfd_->NumberLevels(),
+          cfd_ == nullptr ? kCompactionStyleLevel
+                          : cfd_->ioptions()->compaction_style,
+          (cfd_ == nullptr || cfd_->current() == nullptr)
+              ? nullptr
+              : cfd_->current()->storage_info(),
+          cfd_ == nullptr ? false : cfd_->ioptions()->force_consistency_checks),
+      vset_(vset),
+      next_(this),
+      prev_(this),
+      refs_(0),
+      env_options_(env_opt),
+      mutable_cf_options_(mutable_cf_options),
+      version_number_(version_number),
+      lcf_alive_file_map_manager_(lcf_alive_file_map_manager) {
+  // for debugging lcf_alive_file_map_manager_'s address.     
+  /*if (info_log_ != nullptr) {
+    ROCKS_LOG_INFO(info_log_, "[JH] Version constructor (manager: %p)", static_cast<void*>(lcf_alive_file_map_manager_.get()));
+  }*/
+}
+
 void Version::Get(const ReadOptions& read_options, const LookupKey& k,
                   PinnableSlice* value, Status* status,
                   MergeContext* merge_context,
@@ -1507,6 +1546,7 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
     const ImmutableCFOptions& immutable_cf_options,
     const MutableCFOptions& mutable_cf_options) {
   // Only implemented for level-based compaction
+  (void)immutable_cf_options;
   if (compaction_style_ != kCompactionStyleLevel) {
     estimated_compaction_needed_bytes_ = 0;
     return;
@@ -1534,14 +1574,14 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
       level_size >= mutable_cf_options.max_bytes_for_level_base) {
     level0_compact_triggered = true;
     estimated_compaction_needed_bytes_ = level_size;
-    ROCKS_LOG_INFO(immutable_cf_options.info_log,
-        "[JH] compaction pending byte level 0 : %" PRIu64"\n", level_size);
+    //ROCKS_LOG_INFO(immutable_cf_options.info_log,
+    //    "[JH] compaction pending byte level 0 : %" PRIu64"\n", level_size);
 
     bytes_compact_to_next_level = level_size;
   } else {
     estimated_compaction_needed_bytes_ = 0;
-    ROCKS_LOG_INFO(immutable_cf_options.info_log,
-        "[JH] compaction pending byte level 0 : 0\n");
+    //ROCKS_LOG_INFO(immutable_cf_options.info_log,
+    //    "[JH] compaction pending byte level 0 : 0\n");
   }
 
   // Level 1 and up.
@@ -1566,8 +1606,8 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
     if (level == base_level() && level0_compact_triggered) {
       // Add base level size to compaction if level0 compaction triggered.
       estimated_compaction_needed_bytes_ += level_size;
-      ROCKS_LOG_INFO(immutable_cf_options.info_log,
-          "[JH] compaction pending byte level b : %" PRIu64"\n", level_size);
+      //ROCKS_LOG_INFO(immutable_cf_options.info_log,
+      //    "[JH] compaction pending byte level b : %" PRIu64"\n", level_size);
     }
     // Add size added by previous compaction
     level_size += bytes_compact_to_next_level;
@@ -1591,8 +1631,8 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
             (static_cast<double>(bytes_next_level) /
                  static_cast<double>(level_size) +
              1));
-        ROCKS_LOG_INFO(immutable_cf_options.info_log,
-            "[JH] compaction pending byte level %d : %" PRIu64"\n", level,  estimated_compaction_needed_bytes_level);
+        //ROCKS_LOG_INFO(immutable_cf_options.info_log,
+        //    "[JH] compaction pending byte level %d : %" PRIu64"\n", level,  estimated_compaction_needed_bytes_level);
         estimated_compaction_needed_bytes_ +=  estimated_compaction_needed_bytes_level;
       }
     }
@@ -2587,6 +2627,8 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
             MultiplyCheckOverflow(level_max_bytes_[i - 1],
                                   options.max_bytes_for_level_multiplier),
             options.MaxBytesMultiplerAdditional(i - 1));
+        //ROCKS_LOG_WARN(ioptions.info_log,
+        //    "JH 0704 debugging");
       } else {
         level_max_bytes_[i] = options.max_bytes_for_level_base;
         //JH: if average size of Level 0 is less than max_bytes_for_level_base/4,
@@ -2718,6 +2760,18 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
       }
     }
   }
+
+  // JH 0703 debugging.
+  std::string level_max_bytes_string = "";
+  for (int i = 0; i < num_levels_; i++) {
+    level_max_bytes_string += std::to_string(i);
+    level_max_bytes_string += "[";
+    level_max_bytes_string += std::to_string(level_max_bytes_[i]);
+    level_max_bytes_string += "], ";
+    
+  }
+
+  //ROCKS_LOG_INFO(ioptions.info_log, "JH 0703: level_max_bytes: %s", level_max_bytes_string.c_str());
 }
 
 uint64_t VersionStorageInfo::EstimateLiveDataSize() const {
@@ -2872,7 +2926,32 @@ VersionSet::VersionSet(const std::string& dbname,
       prev_log_number_(0),
       current_version_number_(0),
       manifest_file_size_(0),
-      env_options_(storage_options) {}
+      env_options_(storage_options){}
+
+VersionSet::VersionSet(const std::string& dbname,
+                       const ImmutableDBOptions* _db_options,
+                       const EnvOptions& storage_options, Cache* table_cache,
+                       WriteBufferManager* write_buffer_manager,
+                       WriteController* write_controller,
+                       std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager)
+    : column_family_set_(
+          new ColumnFamilySet(dbname, _db_options, storage_options, table_cache,
+                              write_buffer_manager, write_controller)),
+      env_(_db_options->env),
+      dbname_(dbname),
+      db_options_(_db_options),
+      next_file_number_(2),
+      manifest_file_number_(0),  // Filled by Recover()
+      options_file_number_(0),
+      pending_manifest_file_number_(0),
+      last_sequence_(0),
+      last_allocated_sequence_(0),
+      last_published_sequence_(0),
+      prev_log_number_(0),
+      current_version_number_(0),
+      manifest_file_size_(0),
+      env_options_(storage_options),
+      lcf_alive_file_map_manager_(lcf_alive_file_map_manager){}
 
 void CloseTables(void* ptr, size_t) {
   TableReader* table_reader = reinterpret_cast<TableReader*>(ptr);
@@ -2887,12 +2966,16 @@ VersionSet::~VersionSet() {
   column_family_set_.reset();
   int i = 0;
   for (auto& file : obsolete_files_) {
+    //ROCKS_LOG_INFO(db_options_->info_log, "[JH] VersionSet destructor with obsolete file #%" PRIu64 "", file.metadata->fd.GetNumber());
     i ++;
     //printf("delete obsolete file[%d] #%" PRIu64 "\n", i, file.metadata->fd.GetNumber());
     if (file.metadata->table_reader_handle) {
-      table_cache->Release(file.metadata->table_reader_handle);
-      TableCache::Evict(table_cache, file.metadata->fd.GetNumber());
+      if (lcf_alive_file_map_manager_ == nullptr || lcf_alive_file_map_manager_->Get(file.metadata->fd.GetNumber()) == 0) {
+        table_cache->Release(file.metadata->table_reader_handle);
+        TableCache::Evict(table_cache, file.metadata->fd.GetNumber());
+      }
     }
+    
     file.DeleteMetadata();
   }
   obsolete_files_.clear();
@@ -2950,14 +3033,130 @@ Status VersionSet::ProcessManifestWrites(
 
   if (first_writer.edit_list.front()->IsColumnFamilySplit()) {
     // Group commits for ColumnFamilySplit
-    for (auto writer: writers){
-      LogAndApplyCFHelper(writer.edit_list.front());
-      batch_edits.push_back(writer.edit_list.front());
+    for (auto& writer: writers) {
+      if (writer.edit_list.front()->IsColumnFamilySplit() &&
+           !writer.edit_list.front()->GetNewFiles().empty()) {
+        LogAndApplyCFHelper(writer.edit_list.front());
+        // if 1. splitted column family but adding file
+        //    we need versions to apply the sstable changes.
+        //    TODO: Note that we do not care dropped cf during split.
+        Version* version = nullptr;
+        VersionBuilder* builder = nullptr;
+        size_t group_start = std::numeric_limits<size_t>::max();
+
+        //std::string add_yn = writer.edit_list.front()->GetNewFiles().empty()? "y":"n";
+        //std::string del_yn = writer.edit_list.front()->GetDeletedFiles().empty()? "y":"n";
+        //std::cout << "prepare version for cfd[" << writer.cfd->GetName() << "] : add("<< add_yn <<", del("<< del_yn <<std::endl;
+
+        version = new Version(writer.cfd, this, env_options_,
+            writer.mutable_cf_options,
+            current_version_number_++,
+            lcf_alive_file_map_manager_);
+        versions.push_back(version);
+        mutable_cf_options_ptrs.push_back(&writer.mutable_cf_options);
+        builder_guards.emplace_back(
+            new BaseReferencedVersionBuilder(writer.cfd));
+        builder = builder_guards.back()->version_builder();
+        assert(builder != nullptr);  // make checker happy
+
+        for (const auto& e : writer.edit_list) {
+          if (e->is_in_atomic_group_) {
+            if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
+                (batch_edits.back()->is_in_atomic_group_ &&
+                 batch_edits.back()->remaining_entries_ == 0)) {
+              group_start = batch_edits.size();
+            }
+          } else if (group_start != std::numeric_limits<size_t>::max()) {
+            group_start = std::numeric_limits<size_t>::max();
+          }
+          //std::cout << "help\n";
+          //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 Apply %s %s", writer.cfd->GetName().c_str(), e->DebugString(true).c_str());
+          LogAndApplyHelper(writer.cfd, builder, e, mu);
+          //std::cout << "bach edit add[2] " << writer.cfd->GetName()  <<std::endl;
+          batch_edits.push_back(e);
+        }
+        // save to storage info
+        assert(versions.size() == 1);
+        for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
+          builder->SaveTo(versions[i]->storage_info());
+          //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 SaveTo %s", versions[i]->cfd()->GetName().c_str());
+          for (int j=0; j<7; j++) {
+            std::string files_str = std::to_string(j);
+            for(auto& f: versions[i]->storage_info()->LevelFiles(j)){
+              files_str += "(" + std::to_string(f->fd.GetNumber()) + ") ";
+            }
+            files_str += " , ";
+            //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 SaveTo after %s", files_str.c_str());
+          }
+        }
+      }
+      else if (writer.edit_list.front()->IsColumnFamilyManipulation()) {
+        LogAndApplyCFHelper(writer.edit_list.front());
+
+        //std::cout << "bach edit add[1] " <<std::endl;
+        batch_edits.push_back(writer.edit_list.front());
+      }
+      else if(!writer.edit_list.front()->GetDeletedFiles().empty()) {
+        //    2. default column family that delete files
+        //    TODO: Note that we do not care dropped cf during split.
+        assert(writer.cfd->GetID() == 0);
+        Version* version = nullptr;
+        VersionBuilder* builder = nullptr;
+        size_t group_start = std::numeric_limits<size_t>::max();
+
+        //std::string add_yn = writer.edit_list.front()->GetNewFiles().empty()? "y":"n";
+        //std::string del_yn = writer.edit_list.front()->GetDeletedFiles().empty()? "y":"n";
+        //std::cout << "prepare version for cfd[" << writer.cfd->GetName() << "] : add("<< add_yn <<", del("<< del_yn <<std::endl;
+
+        version = new Version(writer.cfd, this, env_options_,
+            writer.mutable_cf_options,
+            current_version_number_++,
+            lcf_alive_file_map_manager_);
+        versions.push_back(version);
+        mutable_cf_options_ptrs.push_back(&writer.mutable_cf_options);
+        builder_guards.emplace_back(
+            new BaseReferencedVersionBuilder(writer.cfd));
+        builder = builder_guards.back()->version_builder();
+        assert(builder != nullptr);  // make checker happy
+
+        for (const auto& e : writer.edit_list) {
+          if (e->is_in_atomic_group_) {
+            if (batch_edits.empty() || !batch_edits.back()->is_in_atomic_group_ ||
+                (batch_edits.back()->is_in_atomic_group_ &&
+                 batch_edits.back()->remaining_entries_ == 0)) {
+              group_start = batch_edits.size();
+            }
+          } else if (group_start != std::numeric_limits<size_t>::max()) {
+            group_start = std::numeric_limits<size_t>::max();
+          }
+          //std::cout << "help\n";
+          //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 Apply(2) %s %s", writer.cfd->GetName().c_str(), e->DebugString(true).c_str());
+          LogAndApplyHelper(writer.cfd, builder, e, mu);
+          //std::cout << "bach edit add[2] " << writer.cfd->GetName()  <<std::endl;
+          batch_edits.push_back(e);
+        }
+        // save to storage info
+        assert(builder_guards.size() == versions.size());
+        builder->SaveTo(version->storage_info());
+        //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 SaveTo(2) %s", version->cfd()->GetName().c_str());
+        for (int j=0; j<7; j++) {
+          std::string files_str = std::to_string(j);
+          for(auto& f: version->storage_info()->LevelFiles(j)){
+            files_str += "(" + std::to_string( f->fd.GetNumber()) + ") ";
+          }
+          files_str += " , ";
+          //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 SaveTo(2) after %s", files_str.c_str());
+        }
+      } else {
+        assert(false);
+      }
     }
   } else if (first_writer.edit_list.front()->IsColumnFamilyManipulation()) {
     // No group commits for column family add or drop, except for ColumnFamilySplit
     LogAndApplyCFHelper(first_writer.edit_list.front());
     batch_edits.push_back(first_writer.edit_list.front());
+    //std::cout << "bach edit add[3] " << first_writer.cfd->GetName()  <<std::endl;
+
   } else {
     auto it = manifest_writers_.cbegin();
     size_t group_start = std::numeric_limits<size_t>::max();
@@ -3020,7 +3219,8 @@ Status VersionSet::ProcessManifestWrites(
       if (version == nullptr) {
         version = new Version(last_writer->cfd, this, env_options_,
                               last_writer->mutable_cf_options,
-                              current_version_number_++);
+                              current_version_number_++,
+                              lcf_alive_file_map_manager_);
         versions.push_back(version);
         mutable_cf_options_ptrs.push_back(&last_writer->mutable_cf_options);
         builder_guards.emplace_back(
@@ -3040,8 +3240,10 @@ Status VersionSet::ProcessManifestWrites(
           group_start = std::numeric_limits<size_t>::max();
         }
         //std::cout << "help\n";
+        //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 Apply(3) %s %s", last_writer->cfd->GetName().c_str(), e->DebugString(true).c_str());
         LogAndApplyHelper(last_writer->cfd, builder, e, mu);
         batch_edits.push_back(e);
+        //std::cout << "bach edit add[4] " <<last_writer->cfd->GetName()  <<std::endl;
       }
     }
     for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
@@ -3049,6 +3251,15 @@ Status VersionSet::ProcessManifestWrites(
              builder_guards.size() == versions.size());
       auto* builder = builder_guards[i]->version_builder();
       builder->SaveTo(versions[i]->storage_info());
+      //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 SaveTo(3) %s", versions[i]->cfd()->GetName().c_str());
+      for (int j=0; j<7; j++) {
+        std::string files_str = std::to_string(j);
+        for(auto& f: versions[i]->storage_info()->LevelFiles(j)){
+          files_str += "(" + std::to_string(f->fd.GetNumber()) + ") ";
+        }
+        files_str += " , ";
+        //ROCKS_LOG_INFO(db_options_->info_log, "JH 0708 SaveTo(3) after %s", files_str.c_str());
+      }
     }
   }
 
@@ -3132,6 +3343,19 @@ Status VersionSet::ProcessManifestWrites(
             mutable_cf_options_ptrs[i]->prefix_extractor.get());
       }
     }
+    else if (first_writer.edit_list.front()->IsColumnFamilySplit() && !versions.empty()) {
+      assert(!mutable_cf_options_ptrs.empty());
+      assert(builder_guards.size() == versions.size());
+
+      for (size_t i = 0; i < versions.size() ;i++) {
+        ColumnFamilyData* cfd = versions[i]->cfd_;
+        builder_guards[i]->version_builder()->LoadTableHandlers(
+            cfd->internal_stats(), cfd->ioptions()->optimize_filters_for_hits,
+            true /* prefetch_index_and_filter_in_cache */,
+            false /* is_initial_load */,
+            mutable_cf_options_ptrs[i]->prefix_extractor.get());
+      }
+    }
     //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(5)");
 
     // This is fine because everything inside of this block is serialized --
@@ -3165,8 +3389,14 @@ Status VersionSet::ProcessManifestWrites(
 
         versions[i]->PrepareApply(*mutable_cf_options_ptrs[i], true);
       }
+    } else if (first_writer.edit_list.front()->IsColumnFamilySplit() &&
+               !writers.back().edit_list.front()->IsColumnFamilyManipulation()){ // is column family split but deleting files at last writer for default column family.
+      assert(versions.size() == mutable_cf_options_ptrs.size());
+      for (size_t i=0 ;i<versions.size() ;i++) {
+        ROCKS_LOG_INFO(db_options_->info_log, "[JH] %s(%d) Prepare Apply for file deletion of default column family in column family split process\n", versions[i]->cfd_->GetName().c_str(), versions[i]->cfd_->GetID());
+        versions[i]->PrepareApply(*mutable_cf_options_ptrs[i], true);
+      }
     }
-    //ROCKS_LOG_INFO(db_options_->info_log, "[JH]ProcessManifestWrites(7)");
 
     // Write new records to MANIFEST log
     if (s.ok()) {
@@ -3266,7 +3496,7 @@ Status VersionSet::ProcessManifestWrites(
       }*/
       assert(new_cf_options != nullptr);
       ColumnFamilyData* cfd = first_writer.cfd;
-      bool create_cf = false; // fisrt writer does not create column family
+      bool create_cf = false; // first writer does not create column family
       std::vector<ColumnFamilyData*> cfd_outs;
       for(auto writer: writers) {
         if (!create_cf) {
@@ -3282,9 +3512,17 @@ Status VersionSet::ProcessManifestWrites(
             if (!largest.empty()) {
               w_cfd->UpdateLargestKey(largest);
             }
+
+            // update base_level and max_bytes also.
+            uint64_t max_bytes = writer.mutable_cf_options.max_bytes_for_level_base;
+            int base_level = writer.mutable_cf_options.inter_cf_base_level;
+            w_cfd->SetOptions({{"max_bytes_for_level_base", std::to_string(max_bytes)},
+                               {"inter_cf_base_level", std::to_string(base_level)}});
           }
+          // JH: if it includes file add,
+          // it should update version by calling AppendVersion
         }
-        else {
+        else if (writer.edit_list.front()->is_column_family_add_) {
           ROCKS_LOG_INFO(db_options_->info_log,
               "Column family(2) create target_file_size_base: %ld",
               new_cf_options->target_file_size_base );
@@ -3297,6 +3535,43 @@ Status VersionSet::ProcessManifestWrites(
               cfd_out->GetLargestKey().ToString().c_str()
               );
           cfd_outs.push_back(cfd_out);
+        }
+        else if (!versions.empty()) { // it must be adding sstables to splitted column family,
+          // or deleting sstables from default column family.
+          // Each version in versions corresponds to a column family.
+          // For each column family, update its log number indicating that logs
+          // with number smaller than this should be ignored.
+          for (const auto version : versions) {
+            uint64_t max_log_number_in_batch = 0;
+            uint32_t cf_id = version->cfd_->GetID();
+            for (const auto& e : batch_edits) {
+              if (e->has_log_number_ && e->column_family_ == cf_id) {
+                max_log_number_in_batch =
+                  std::max(max_log_number_in_batch, e->log_number_);
+              }
+            }
+            if (max_log_number_in_batch != 0) {
+              assert(version->cfd_->GetLogNumber() <= max_log_number_in_batch);
+              version->cfd_->SetLogNumber(max_log_number_in_batch);
+            }
+          }
+
+          uint64_t last_min_log_number_to_keep = 0;
+          for (auto& e : batch_edits) {
+            if (e->has_min_log_number_to_keep_) {
+              last_min_log_number_to_keep =
+                std::max(last_min_log_number_to_keep, e->min_log_number_to_keep_);
+            }
+          }
+
+          if (last_min_log_number_to_keep != 0) {
+            // Should only be set in 2PC mode.
+            MarkMinLogNumberToKeep2PC(last_min_log_number_to_keep);
+          }
+
+          for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
+            AppendVersion(versions[i]->cfd_, versions[i]);
+          } 
         }
       }
 
@@ -3432,13 +3707,20 @@ Status VersionSet::LogAndApply(
     }
 #endif /* ! NDEBUG */
   }
-  /*
-  fprintf(stdout, "split_column_family : %d\n", is_split_column_family);
-  for (const auto& edit_list: edit_lists) {
+  
+  //fprintf(stdout, "split_column_family : %d\n", is_split_column_family);
+  //for (const auto& edit_list: edit_lists) {
+  //  for(const auto& edit : edit_list) {
+  //    fprintf(stdout, "%s\n", edit->DebugString().c_str());
+  //  }
+  // }
+  /*for (const auto& edit_list: edit_lists) {
     for(const auto& edit : edit_list) {
-      fprintf(stdout, "%s\n", edit->DebugString().c_str());
+      ROCKS_LOG_INFO(db_options_->info_log, "LogAndApply: Dump VersionEdit %s",
+          edit->DebugString().c_str());
     }
   }*/
+
 
   int num_cfds = static_cast<int>(column_family_datas.size());
   if (num_cfds == 1 && column_family_datas[0] == nullptr) {
@@ -3447,20 +3729,24 @@ Status VersionSet::LogAndApply(
     assert(new_cf_options != nullptr);
   }
   if (column_family_datas[0] != nullptr && is_split_column_family) {
-    // SplitColumnFamily
-    //fprintf(stdout,"split column family\n");
-    bool first_edit = true;
-    for (const auto& edit_list : edit_lists) {
-      assert(edit_list.size()==1);
-      for (const auto& edit : edit_list) {
-        if (first_edit) {
+    // assertion check for SplitColumnFamilyFromSstFiles
+    int edit_lists_size = edit_lists.size();
+    for (int i=0; i<edit_lists_size; i++) {
+      assert(edit_lists[i].size()==1);
+      for (const auto& edit : edit_lists[i]) {
+        if (i == 0) {
           assert(edit->is_column_family_split_);
-          if(edit->is_column_family_split_ == false) {
+          if (edit->is_column_family_split_ == false) {
             return Status::ShutdownInProgress();
           }
-          first_edit = false;
         }
-        else{
+        else if (column_family_datas.size() == 2 && i == edit_lists_size-1) {
+          // trivial move for default column family
+          assert(!edit->GetDeletedFiles().empty());
+          assert(edit->column_family_ == 0);
+          assert(!edit->is_column_family_add_ && !edit->is_column_family_split_);
+        }
+        else { // split column family
           assert(edit->is_column_family_add_ || edit->is_column_family_keyrange_update_);
         }
       }
@@ -3480,28 +3766,39 @@ Status VersionSet::LogAndApply(
       manifest_writers_.push_back(&writers[i]);
     }
   }
-  else{ // SplitColumnFamily
+  else { // SplitColumnFamily
     writers.emplace_back(mu, column_family_datas[0],
                          *mutable_cf_options_list[0], edit_lists[0]);
-    size_t cfd_idx = 1;
     manifest_writers_.push_back(&writers[0]);
     for (size_t i = 1 ; i < edit_lists.size(); i++) {
       // JH: for update key ranges, put column family datas to writers
       if (edit_lists[i][0]->is_column_family_add_) {
         writers.emplace_back(mu, nullptr,
                            *mutable_cf_options_list[i], edit_lists[i]);
-      } else { // keyrange update
-        writers.emplace_back(mu, column_family_datas[cfd_idx++],
+      } else { // keyrange update, or delete files column family
+        assert(column_family_datas.size() == 2); // make sure column_family_datas has two elements
+        writers.emplace_back(mu, column_family_datas[1],
                            *mutable_cf_options_list[i], edit_lists[i]);
+        assert(column_family_datas[1]->GetID() == 0); // make sure this is default cf
       }
+      //manifest_writers_.push_back(&writers[i]);
     }
   }
   assert(!writers.empty());
   ManifestWriter& first_writer = writers.front();
 
+  /*fprintf(stdout, "first writer wait: before\n");
+  fprintf(stdout, "first writer check[1] : %d\n", first_writer.done );
+  fprintf(stdout, "first writer check[2] : %d\n",(&first_writer != manifest_writers_.front()) );
+  fprintf(stdout, "first writer  : %p\n",&first_writer );
+  fprintf(stdout, "manifest front writer  : %p\n",manifest_writers_.front() );
+  fprintf(stdout, "manifest writer size  : %ld\n",manifest_writers_.size() );*/
   while (!first_writer.done && &first_writer != manifest_writers_.front()) {
+    //fprintf(stdout, "first writer check[3] : %d\n",(&first_writer != manifest_writers_.front()) );
+    //fprintf(stdout, "first writer wait: progress\n");
     first_writer.cv.Wait();
   }
+  //fprintf(stdout, "first writer wait: end\n");
   if (first_writer.done) {
     // All non-CF-manipulation operations can be grouped together and committed
     // to MANIFEST. They should all have finished. The status code is stored in
@@ -3533,7 +3830,7 @@ Status VersionSet::LogAndApply(
     }
     return Status::ShutdownInProgress();
   }
-  if(new_cf_options != nullptr) {
+  if (new_cf_options != nullptr) {
     ROCKS_LOG_INFO(db_options_->info_log, "LogAndApply: target_file_size_base - %ld",
         new_cf_options->target_file_size_base);
   }
@@ -4011,7 +4308,8 @@ Status VersionSet::Recover(
 
       Version* v = new Version(cfd, this, env_options_,
                                *cfd->GetLatestMutableCFOptions(),
-                               current_version_number_++);
+                               current_version_number_++,
+                               lcf_alive_file_map_manager_);
       builder->SaveTo(v->storage_info());
 
       // Install recovered version
@@ -4377,13 +4675,14 @@ Status VersionSet::DumpManifest(Options& options, std::string& dscname,
 
       Version* v = new Version(cfd, this, env_options_,
                                *cfd->GetLatestMutableCFOptions(),
-                               current_version_number_++);
+                               current_version_number_++, lcf_alive_file_map_manager_);
       builder->SaveTo(v->storage_info());
       v->PrepareApply(*cfd->GetLatestMutableCFOptions(), false);
 
       printf("--------------- Column family \"%s\"  (ID %" PRIu32
              ") --------------\n",
              cfd->GetName().c_str(), cfd->GetID());
+      printf("key range: [%s, %s]\n", cfd->GetSmallestKey().ToString().c_str(), cfd->GetLargestKey().ToString().c_str());
       printf("log number: %" PRIu64 "\n", cfd->GetLogNumber());
       auto comparator = comparators.find(cfd->GetID());
       if (comparator != comparators.end()) {
@@ -5029,12 +5328,14 @@ void VersionSet::GetSplitFiles(std::vector<SplitFileInfo>* files) {
   files->reserve(split_files_.size());
   files->insert(files->end(), std::make_move_iterator(split_files_.begin()), std::make_move_iterator(split_files_.end()));
   for (auto& f: *files) {
-    ROCKS_LOG_INFO(db_options_->info_log,
-                     "GetSplitFile cfd[%s], meta[%ld]R[%s, %s]",
-                     f.cfd->GetName().c_str(), f.metadata->fd.GetNumber(),
-                     f.metadata->smallest.user_key().ToString(false).c_str(),
-                     f.metadata->largest.user_key().ToString(false).c_str()
-                     );
+    for (auto& meta: f.metadatas) {
+      ROCKS_LOG_INFO(db_options_->info_log,
+          "GetSplitFile cfd[%s], meta[%ld]R[%s, %s]",
+          f.cfd->GetName().c_str(), meta->fd.GetNumber(),
+          meta->smallest.user_key().ToString(false).c_str(),
+          meta->largest.user_key().ToString(false).c_str()
+          );
+    }
   }
 
   split_files_.clear();
@@ -5052,14 +5353,18 @@ void VersionSet::AddSplitFile(FileMetaData* meta, ColumnFamilyData* cfd) {
   f->fd = meta->fd;
   f->smallest = InternalKey(meta->smallest.user_key(), meta->fd.smallest_seqno, kTypeValue);
   f->largest = InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
+  std::vector<FileMetaData*> fs;
+  fs.push_back(f);
 
-  split_files_.push_back(SplitFileInfo(f, cfd));
-  ROCKS_LOG_INFO(db_options_->info_log,
-                     "AddSplitFile cfd[%s], meta[%ld]R[%s, %s]",
-                     cfd->GetName().c_str(), split_files_.back().metadata->fd.GetNumber(),
-                      split_files_.back().metadata->smallest.user_key().ToString(false).c_str(),
-                      split_files_.back().metadata->largest.user_key().ToString(false).c_str()
-                     );
+  split_files_.push_back(SplitFileInfo(fs, cfd));
+  for (auto& metadata: split_files_.back().metadatas) {
+    ROCKS_LOG_INFO(db_options_->info_log,
+        "AddSplitFile cfd[%s], meta[%ld]R[%s, %s]",
+        cfd->GetName().c_str(), metadata->fd.GetNumber(),
+        metadata->smallest.user_key().ToString(false).c_str(),
+        metadata->largest.user_key().ToString(false).c_str()
+        );
+  }
 }
 
 void VersionSet::GetObsoleteFiles(std::vector<ObsoleteFileInfo>* files,
@@ -5084,7 +5389,7 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
 
   MutableCFOptions dummy_cf_options;
   Version* dummy_versions =
-      new Version(nullptr, this, env_options_, dummy_cf_options);
+      new Version(nullptr, this, env_options_, dummy_cf_options, 0, lcf_alive_file_map_manager_);
   // Ref() dummy version once so that later we can call Unref() to delete it
   // by avoiding calling "delete" explicitly (~Version is private)
   dummy_versions->Ref();
@@ -5102,7 +5407,7 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
 
   Version* v = new Version(new_cfd, this, env_options_,
                            *new_cfd->GetLatestMutableCFOptions(),
-                           current_version_number_++);
+                           current_version_number_++, lcf_alive_file_map_manager_);
 
   // Fill level target base information.
   v->storage_info()->CalculateBaseBytes(*new_cfd->ioptions(),
@@ -5116,9 +5421,14 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
       f->refs = 0;
       v->storage_info()->AddFile(level, f, v->info_log());
       // Update LCF Alive File Map
-      cf_options.lcf_alive_file_map_manager->Increment(f->fd.GetNumber());
+      if (cf_options.lcf_alive_file_map_manager != nullptr) {
+        cf_options.lcf_alive_file_map_manager->Increment(db_options_->info_log, 0/* during creation. */, f->fd.GetNumber());
+      }
       //cf_options.lcf_alive_file_map_manager->PrintAliveFiles("Split job");
     }
+    /*if (cf_options.lcf_alive_file_map_manager != nullptr) {
+      cf_options.lcf_alive_file_map_manager->PrintAliveFiles(db_options_->info_log, 0, "Split job");
+    }*/
     v->PrepareApply(*new_cfd->GetLatestMutableCFOptions(),true);
   }
   //std::cout<<new_cfd->GetName()<<v->DebugString(false,true)<<std::endl;
@@ -5316,7 +5626,7 @@ Status ReactiveVersionSet::Recover(
 
       Version* v = new Version(cfd, this, env_options_,
                                *cfd->GetLatestMutableCFOptions(),
-                               current_version_number_++);
+                               current_version_number_++, lcf_alive_file_map_manager_);
       builder->SaveTo(v->storage_info());
 
       // Install recovered version
@@ -5413,7 +5723,7 @@ Status ReactiveVersionSet::ReadAndApply(
       } else {  // s.ok() == true
         auto version = new Version(cfd, this, env_options_,
                                    *cfd->GetLatestMutableCFOptions(),
-                                   current_version_number_++);
+                                   current_version_number_++, lcf_alive_file_map_manager_);
         builder->SaveTo(version->storage_info());
         version->PrepareApply(*cfd->GetLatestMutableCFOptions(), true);
         AppendVersion(cfd, version);

@@ -154,8 +154,8 @@ Status DBImpl::FlushMemTableToOutputFile(
       lcf_alive_file_map_manager_);  
 
   if (immutable_db_options_.allow_column_family_split) {
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "FlushJob w/ column family split");
+    //ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    //               "FlushJob w/ column family split");
     flush_job.SetTargetNodes();
     //LogFlush(immutable_db_options_.info_log);
   } else {
@@ -211,8 +211,10 @@ Status DBImpl::FlushMemTableToOutputFile(
   if (s.ok()) {
     // JH: install superversion for every target nodes after the flush job completion.
     if (immutable_db_options_.allow_column_family_split) {
-			ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", flush_job.GetTargetNodes().size(), job_context->superversion_contexts.size());
+			//ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", flush_job.GetTargetNodes().size(), job_context->superversion_contexts.size());
       int idx=0;
+
+      //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] Flush %d", job_context->job_id);
       for (PartitionTreeNode* node: flush_job.GetTargetNodes()) {
         InstallSuperVersionAndScheduleWork(node->cfd_, &job_context->superversion_contexts[idx++],
                                            mutable_cf_options);
@@ -2043,8 +2045,8 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
       --unscheduled_flushes_;
     }
   }
-  ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                     "unscheduled_splits_ : %d", unscheduled_splits_);
+  //ROCKS_LOG_INFO(immutable_db_options_.info_log,
+  //                   "unscheduled_splits_ : %d", unscheduled_splits_);
 
   if (immutable_db_options_.allow_column_family_split &&
       bg_flush_scheduled_ == 0 &&
@@ -2179,8 +2181,8 @@ ColumnFamilyData* DBImpl::PopFirstFromL0CompactionQueue() {
   assert(!l0_compaction_queue_.empty());
   auto cfd = *l0_compaction_queue_.begin();
   l0_compaction_queue_.pop_front();
-  assert(cfd->queued_for_compaction());
-  cfd->set_queued_for_compaction(false);
+  assert(cfd->queued_for_l0_compaction());
+  cfd->set_queued_for_l0_compaction(false);
   return cfd;
 }
 
@@ -2214,9 +2216,9 @@ void DBImpl::AddToSplitQueue(const SplitRequest& req) {
                      ", " + meta.second.ToString() +
                      "], ";
   }
-  ROCKS_LOG_INFO(
+  /*ROCKS_LOG_INFO(
       immutable_db_options_.info_log, "AddToSplitQueue: cf [%s] key range [%s]",
-      cfd->GetName().c_str(), meta_info_str.c_str());
+      cfd->GetName().c_str(), meta_info_str.c_str());*/
   //LogFlush(immutable_db_options_.info_log);
 
   split_queue_.push_back(req);
@@ -2239,9 +2241,9 @@ DBImpl::SplitRequest DBImpl::PopFirstFromSplitQueue() {
   //unscheduled_splits_ -= static_cast<int>(split_req.size());
   split_queue_.pop_front();
   assert(cfd->queued_for_split());
-  ROCKS_LOG_INFO(
+  /*ROCKS_LOG_INFO(
       immutable_db_options_.info_log, "PopFirstFromSplitQueue: cf [%s] meta [%s]",
-      cfd->GetName().c_str(), meta_info_str.c_str());
+      cfd->GetName().c_str(), meta_info_str.c_str());*/
   //LogFlush(immutable_db_options_.info_log);
 
   cfd->set_queued_for_split(false);
@@ -2341,7 +2343,7 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   }
   else { // LCF
     if (cfd->GetID() == 0) { // root column family
-      ROCKS_LOG_INFO(
+      /*ROCKS_LOG_INFO(
           immutable_db_options_.info_log,
           "SchedulePendingCompaction cfd[%s] queued %d", cfd->GetName().c_str(), cfd->queued_for_compaction());
       ROCKS_LOG_INFO(
@@ -2349,7 +2351,7 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
           "SchedulePendingCompaction cfd[%s] needs %d", cfd->GetName().c_str(), cfd->NeedsCompaction());
       ROCKS_LOG_INFO(
           immutable_db_options_.info_log,
-          "SchedulePendingCompaction cfd[%s] needs s%d", cfd->GetName().c_str(), cfd->NeedsSplit());
+          "SchedulePendingCompaction cfd[%s] needs s%d", cfd->GetName().c_str(), cfd->NeedsSplit());*/
 
 
 
@@ -2360,6 +2362,7 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
       }
     }
     else { // child column family
+      /*
 ROCKS_LOG_INFO(
     immutable_db_options_.info_log,
     "SchedulePendingCompaction cfd[%s] queued %d", cfd->GetName().c_str(), cfd->queued_for_l0_compaction());
@@ -2368,7 +2371,7 @@ ROCKS_LOG_INFO(
     "SchedulePendingCompaction cfd[%s] needs %d", cfd->GetName().c_str(), cfd->NeedsCompaction());
 ROCKS_LOG_INFO(
     immutable_db_options_.info_log,
-    "SchedulePendingCompaction cfd[%s] needs s%d", cfd->GetName().c_str(), cfd->NeedsSplit());
+    "SchedulePendingCompaction cfd[%s] needs s%d", cfd->GetName().c_str(), cfd->NeedsSplit());*/
 
 
       if (!cfd->queued_for_l0_compaction() && cfd->NeedsCompaction()
@@ -2386,9 +2389,9 @@ void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd, const SplitRequest& spl
   //fprintf(stdout, "split need : %d\n", cfd->NeedsSplit() );
   //fprintf(stdout, "comp queued : %d\n", cfd->queued_for_compaction() );
   if (split_req.empty()) {
-    ROCKS_LOG_INFO(
+    /*ROCKS_LOG_INFO(
           immutable_db_options_.info_log,
-          "SchedulePendingSplit: cfd[%s] split req is empty", cfd->GetName().c_str());
+          "SchedulePendingSplit: cfd[%s] split req is empty", cfd->GetName().c_str());*/
     return;
   }
   else {
@@ -2399,17 +2402,17 @@ void DBImpl::SchedulePendingSplit(ColumnFamilyData* cfd, const SplitRequest& spl
       //GenerateSplitRequest(cfd, cfd->current()->storage_info()->FilesMarkedForSplit(), &split_req);
       //assert(cfd->current()->storage_info()->FilesMarkedForSplit().empty());
       assert(!split_req.empty());
-      ROCKS_LOG_INFO(
+      /*ROCKS_LOG_INFO(
           immutable_db_options_.info_log,
-          "SchedulePendingSplit: cfd[%s] add to split queue", cfd->GetName().c_str());
+          "SchedulePendingSplit: cfd[%s] add to split queue", cfd->GetName().c_str());*/
       AddToSplitQueue(split_req);
       ++unscheduled_splits_;
-    } else {
+    } /*else {
       ROCKS_LOG_INFO(
           immutable_db_options_.info_log,
           "SchedulePendingSplit: cfd[%s] split is not queued for split nor split is needed",
           cfd->GetName().c_str());
-    }
+    }*/
   }
 }
 
@@ -2817,9 +2820,9 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
            (bg_thread_pri == Env::Priority::LOW && bg_compaction_scheduled_));
     Status s = BackgroundCompaction(&made_progress, &job_context, &log_buffer,
                                     prepicked_compaction, bg_thread_pri);
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JH] sst_split_files size(1) : %ld",
-        job_context.sst_split_files.size());
+        job_context.sst_split_files.size());*/
 
     TEST_SYNC_POINT("BackgroundCallCompaction:1");
     if (s.IsBusy()) {
@@ -2851,9 +2854,9 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
     // split column family if necessary, this is done outside the mutex
     if (immutable_db_options_.allow_column_family_split) {
       TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
-      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+      /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
           "[JH] sst_split_files size(2) : %ld",
-          job_context.sst_split_files.size());
+          job_context.sst_split_files.size());*/
 
       if (job_context.HaveSomethingToSplit()) {
        /* fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
@@ -2863,11 +2866,12 @@ void DBImpl::BackgroundCallCompaction(PrepickedCompaction* prepicked_compaction,
         }*/
         mutex_.Unlock();
         assert(job_context.cfd_to_split != nullptr);
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
             "[JH]Have Something to Split [%s]",
-            job_context.cfd_to_split->GetName().c_str());
+            job_context.cfd_to_split->GetName().c_str());*/
         SplitColumnFamilyFromSstFiles(job_context.cfd_to_split,
-                                      job_context.sst_split_files);
+                                      job_context.sst_split_files,
+                                      job_context.inter_cf_output_level);
         mutex_.Lock();
       }
     }
@@ -2949,8 +2953,8 @@ void DBImpl::BackgroundCallL0Compaction(PrepickedCompaction* prepicked_compactio
     assert(bg_thread_pri == Env::Priority::LOW && bg_l0_compaction_scheduled_);
     Status s = BackgroundL0Compaction(&made_progress, &job_context, &log_buffer,
                                     prepicked_compaction, bg_thread_pri);
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
-        "[JH] BackgroundL0Compaction");
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        "[JH] BackgroundL0Compaction");*/
 
     TEST_SYNC_POINT("BackgroundCallCompaction:1");
     if (s.IsBusy()) {
@@ -2982,9 +2986,15 @@ void DBImpl::BackgroundCallL0Compaction(PrepickedCompaction* prepicked_compactio
     // split column family if necessary, this is done outside the mutex
     if (immutable_db_options_.allow_column_family_split) {
       TEST_SYNC_POINT("DBImpl::BackgroundCallCompaction:FoundSplitFiles");
-      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+      /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
           "[JH] sst_split_files size(2) : %ld",
-          job_context.sst_split_files.size());
+          job_context.sst_split_files.size());*/
+
+      /*for(auto& sst_split_file: job_context.sst_split_files) {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+            "[JH] split_file_info : %s",
+            sst_split_file.DebugString().c_str());
+      }*/
 
       if (job_context.HaveSomethingToSplit()) {
         /*fprintf(stdout, "[JH] cfd_to_split : %s\n", job_context.cfd_to_split->GetName().c_str());
@@ -2994,11 +3004,11 @@ void DBImpl::BackgroundCallL0Compaction(PrepickedCompaction* prepicked_compactio
         }*/
         mutex_.Unlock();
         assert(job_context.cfd_to_split != nullptr);
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
             "[JH]Have Something to Split [%s]",
-            job_context.cfd_to_split->GetName().c_str());
+            job_context.cfd_to_split->GetName().c_str());*/
         SplitColumnFamilyFromSstFiles(job_context.cfd_to_split,
-            job_context.sst_split_files);
+            job_context.sst_split_files, job_context.inter_cf_output_level);
         mutex_.Lock();
       }
     }
@@ -3446,10 +3456,17 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
 
   
   if (inter_cf_c) { // [LCF] inter cf compaction
+    // prepare superversion context
+    std::vector<SuperVersionContext>& superversion_contexts = job_context->superversion_contexts;
+    assert(superversion_contexts.size() == 1);
+    superversion_contexts.emplace_back(SuperVersionContext(true));
+    assert(superversion_contexts.size() == 2);
+
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundL0Compaction:BeforeInterCFCompaction",
         inter_cf_c->column_family_data());
     int output_level __attribute__((__unused__));
     output_level = inter_cf_c->output_level();
+    job_context->inter_cf_output_level = output_level;
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundL0Compaction:NonTrivial",
         &output_level);
     std::vector<SequenceNumber> snapshot_seqs;
@@ -3483,14 +3500,45 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
 
     status = inter_cf_compaction_job.Install();
     if (status.ok()) {
+      assert(job_context->superversion_contexts.size() == 2);
+
+      //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] inter-cf L0 Compaction %d", job_context->job_id);
+      // child cf
       InstallSuperVersionAndScheduleWork(inter_cf_c->column_family_data(),
           &job_context->superversion_contexts[0],
           *inter_cf_c->mutable_cf_options());
+      // parent cf
+      InstallSuperVersionAndScheduleWork(inter_cf_c->parent_column_family_data(),
+          &job_context->superversion_contexts[1],
+          *inter_cf_c->parent_column_family_data()->GetLatestMutableCFOptions());
     }
     *made_progress = true;
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundL0Compaction:AfterInterCFCompaction",
         inter_cf_c->column_family_data());
 
+    /*VersionStorageInfo::LevelSummaryStorage tmp;
+    ColumnFamilyData* pcfd = inter_cf_c->parent_column_family_data();
+    ROCKS_LOG_BUFFER(log_buffer, "[%s] Level summary: %s\n",
+        pcfd->GetName().c_str(),
+        pcfd->current()->storage_info()->LevelSummary(&tmp));
+    if (immutable_db_options_.allow_column_family_split) {
+      std::vector<PartitionTreeNode*> children_nodes = pcfd->GetChildrenNodes();
+      std::vector<PartitionTreeNode*> next_nodes;
+      while (!children_nodes.empty()) {
+        for (auto node: children_nodes) {
+          VersionStorageInfo::LevelSummaryStorage tmp_c;
+          ROCKS_LOG_BUFFER(log_buffer, "[%s] children Level summary: %s\n",
+              node->cfd_->GetName().c_str(),
+              node->cfd_->current()->storage_info()->LevelSummary(&tmp_c));  
+          auto tmp_nodes = node->cfd_->GetChildrenNodes();
+          for (auto tmp_node: tmp_nodes) {
+            next_nodes.push_back(tmp_node);
+          }
+        }  
+        children_nodes = next_nodes;
+        next_nodes.clear();
+      }
+    }*/
   }
   else if (!c) {
     // Nothing to do
@@ -3541,6 +3589,8 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
                                     *c->mutable_cf_options(), c->edit(),
                                     &mutex_, directories_.GetDbDir());
     // Use latest MutableCFOptions
+    //
+    //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] trivial L0 Comp %d", job_context->job_id);
     InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                        &job_context->superversion_contexts[0],
                                        *c->mutable_cf_options());
@@ -3585,9 +3635,9 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
      * if allow_column_family_split is true,
      * put job_context files to split as input argument of compaction job.
     */
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JH] BG sst_split_files size(1) : %ld",
-        job_context->sst_split_files.size());
+        job_context->sst_split_files.size());*/
 
     CompactionJob compaction_job(
         job_context->job_id, c.get(), immutable_db_options_,
@@ -3611,12 +3661,13 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
     TEST_SYNC_POINT("DBImpl::BackgroundCompaction:NonTrivial:AfterRun");
     mutex_.Lock();
 
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JH] BG sst_split_files size(2) : %ld",
-        job_context->sst_split_files.size());
+        job_context->sst_split_files.size());*/
 
     status = compaction_job.Install(*c->mutable_cf_options());
     if (status.ok()) {
+      //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] L0 Comp %d", job_context->job_id);
       InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                          &job_context->superversion_contexts[0],
                                          *c->mutable_cf_options());
@@ -3938,6 +3989,8 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
     status = versions_->LogAndApply(c->column_family_data(),
                                     *c->mutable_cf_options(), c->edit(),
                                     &mutex_, directories_.GetDbDir());
+
+    //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] delete Comp %d", job_context->job_id);
     InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                        &job_context->superversion_contexts[0],
                                        *c->mutable_cf_options());
@@ -3992,6 +4045,8 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
                                     *c->mutable_cf_options(), c->edit(),
                                     &mutex_, directories_.GetDbDir());
     // Use latest MutableCFOptions
+    //
+    //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] Trivial Comp %d", job_context->job_id);
     InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                        &job_context->superversion_contexts[0],
                                        *c->mutable_cf_options());
@@ -4058,9 +4113,9 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
      * if allow_column_family_split is true,
      * put job_context files to split as input argument of compaction job.
     */
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JH] BG sst_split_files size(1) : %ld",
-        job_context->sst_split_files.size());
+        job_context->sst_split_files.size());*/
 
     CompactionJob compaction_job(
         job_context->job_id, c.get(), immutable_db_options_,
@@ -4084,12 +4139,14 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
     TEST_SYNC_POINT("DBImpl::BackgroundCompaction:NonTrivial:AfterRun");
     mutex_.Lock();
 
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+    /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JH] BG sst_split_files size(2) : %ld",
-        job_context->sst_split_files.size());
+        job_context->sst_split_files.size());*/
 
     status = compaction_job.Install(*c->mutable_cf_options());
     if (status.ok()) {
+      //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] compaction run %d", job_context->job_id);
+
       InstallSuperVersionAndScheduleWork(c->column_family_data(),
                                          &job_context->superversion_contexts[0],
                                          *c->mutable_cf_options());
@@ -4369,6 +4426,9 @@ void DBImpl::InstallSuperVersionAndScheduleWork(
     ColumnFamilyData* cfd, SuperVersionContext* sv_context,
     const MutableCFOptions& mutable_cf_options) {
   mutex_.AssertHeld();
+  /*if (immutable_db_options_.allow_column_family_split) {
+    PrintLogicalColumnFamily();
+  }*/
 
   // Update max_total_in_memory_state_
   size_t old_memtable_size = 0;

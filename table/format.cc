@@ -267,13 +267,14 @@ Status ReadFooterFromFile(RandomAccessFileReader* file,
   if (!s.ok()) {
     return s;
   }
-  if (enforce_table_magic_number != 0 &&
+  /*if (enforce_table_magic_number != 0 &&
       enforce_table_magic_number != footer->table_magic_number()) {
     return Status::Corruption(
         "Bad table magic number: expected " +
         ToString(enforce_table_magic_number) + ", found " +
         ToString(footer->table_magic_number()) + " in " + file->file_name());
-  }
+  }*/ //JH 250630 temporarily
+  (void)enforce_table_magic_number;
   return Status::OK();
 }
 

@@ -1652,7 +1652,7 @@ Status SplitJob::InstallSplitResults() {
       e_in.AddFile(compaction->output_level(), out.meta);
       e_in.SetSplitMove(true);
       if (lcf_alive_file_map_manager_ != nullptr) {
-        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
+        lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_id_, out.meta.fd.GetNumber());
       }
     }
     for (const auto& out : sub_split.child_outputs) {
@@ -1667,7 +1667,7 @@ Status SplitJob::InstallSplitResults() {
       edit_out[idx].push_back(&e_out[idx]);
 
       if (lcf_alive_file_map_manager_ != nullptr) {
-        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
+        lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_id_, out.meta.fd.GetNumber());
       }
     }
   }

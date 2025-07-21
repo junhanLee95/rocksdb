@@ -553,21 +553,21 @@ Status MemTableList::InstallMemtableSplitThenFlushResults(
   }
 
   Status s;
-  ROCKS_LOG_BUFFER(log_buffer,
+  /*ROCKS_LOG_BUFFER(log_buffer,
       "[%s] Install Memtables Split-then-flush",
-      parent_cfd->GetName().c_str());
+      parent_cfd->GetName().c_str());*/
 
   parent_cfd->SetLogNumber(m.back()->GetNextLogNumber());
 
   for (size_t i = 0; i < cfds.size(); i++) {
-    ROCKS_LOG_BUFFER(log_buffer,
+    /*ROCKS_LOG_BUFFER(log_buffer,
         "[%s] Install Memtables Split-then-flush results : %s",
         cfds[i]->GetName().c_str(),
         edit_lists[i][0]->DebugString().c_str());
 
     ROCKS_LOG_BUFFER(log_buffer,
         "JH241029 [%s] sub_edit log number : %d",
-        cfds[i]->GetName().c_str(), m.back()->GetNextLogNumber());
+        cfds[i]->GetName().c_str(), m.back()->GetNextLogNumber());*/
     cfds[i]->SetLogNumber(m.back()->GetNextLogNumber());
   }
 

@@ -324,10 +324,13 @@ bool InterCFCompaction::IsTrivialMove() const {
   return true;
 }
 
-void InterCFCompaction::AddInputDeletions(VersionEdit* out_edit, VersionEdit* p_out_edit) {
+void InterCFCompaction::AddInputDeletions(const std::shared_ptr<Logger>& log, VersionEdit* out_edit, VersionEdit* p_out_edit) {
+  (void)log;
   for (size_t which = 0; which < num_input_levels(); which++) {
     for (size_t i = 0; i < inputs_[which].size(); i++) {
-      if (level(which) != output_level_) {
+      //if (level(which) != output_level_) {
+      //ROCKS_LOG_INFO(log, "[JH] inter-cf-compaction add input deletion #%" PRIu64 " to %s", inputs_[which][i]->fd.GetNumber(), inputs_[which].cf_name.c_str());
+      if (inputs_[which].cf_name != "default") {
         out_edit->DeleteFile(level(which), inputs_[which][i]->fd.GetNumber());
         out_edit->SetSplitMove(false);
       }

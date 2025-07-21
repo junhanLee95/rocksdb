@@ -418,9 +418,9 @@ CompactionJob::CompactionJob(
   ThreadStatusUtil::SetThreadOperation(ThreadStatus::OP_COMPACTION);
   ReportStartedCompaction(compaction);
 
-  ROCKS_LOG_INFO(db_options_.info_log, "[JH] CompactionJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
+  //ROCKS_LOG_INFO(db_options_.info_log, "[JH] CompactionJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
 
-  //lcf_alive_file_map_manager_->PrintAliveFiles("compaction job init");
+  //lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_id_, "compaction job init");
 }
 
 CompactionJob::~CompactionJob() {
@@ -1024,6 +1024,14 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   }
   const auto& c_iter_stats = c_iter->iter_stats();
 
+  if(cfd->GetID() != 0  || sub_compact->compaction->output_level()==0){
+    ROCKS_LOG_INFO(db_options_.info_log,
+        "[%s] [JOB %d] c_cnt 3", cfd->GetName().c_str(), job_id_);
+  }
+  else{
+    ROCKS_LOG_INFO(db_options_.info_log,
+        "[%s] [JOB %d] c_cnt %d", cfd->GetName().c_str(), job_id_,  sub_compact->compaction->output_level()-1);
+  }
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
     // returns true.
@@ -1084,14 +1092,25 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     c_cnt_arr[3] = ((ui_compaction_cnt & mask4)>>48) + ((ex_compaction_cnt & mask4)>>48);
 
     int output_level = sub_compact->compaction->output_level();
-    if(output_level==0){
+
+    if (cfd->GetID() != 0) {
+      c_cnt_arr[0] ++;
+    }
+    else if(output_level > 3) {
+      c_cnt_arr[3] ++;
+    }
+    else {
+      c_cnt_arr[output_level] ++;
+    }
+    //c_cnt_arr[output_level-1] ++;
+    /*if(cfd->GetID() != 0  || output_level==0){
       c_cnt_arr[3] ++;
     }
     else{
       //JH: 1227 use dynawmic leveled compaction
       //c_cnt_arr[output_level-4] ++;
       c_cnt_arr[output_level-1] ++;
-    }
+    }*/
 
     uint64_t cur_key_compaction_cnt = (c_cnt_arr[0]) | (c_cnt_arr[1] << 16) | (c_cnt_arr[2] << 32) | (c_cnt_arr[3] << 48);
 
@@ -1632,19 +1651,28 @@ Status CompactionJob::InstallCompactionResults(
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] AddInputDeletions");
 
   for (auto& delete_file: compact_->compaction->edit()->GetDeletedFiles()) {
-    ROCKS_LOG_INFO(db_options_.info_log, "[JH] delete file %d %" PRIu64 "", delete_file.first, delete_file.second);
-    lcf_alive_file_map_manager_->Decrement(delete_file.second);
+    ROCKS_LOG_INFO(db_options_.info_log, "[JH] comp[%s] delete file %d %" PRIu64 "", compaction->column_family_data()->GetName().c_str(), delete_file.first, delete_file.second);
+    /*if (lcf_alive_file_map_manager_->Decrement(db_options_.info_log, job_id_, delete_file.second) == true) {
+      ROCKS_LOG_INFO(db_options_.info_log, "[JH] comp[%s] delete file from lcf_alive_file_map_manager_ %d %" PRIu64 "", compaction->column_family_data()->GetName().c_str(), delete_file.first, delete_file.second);
+    }*/
   }
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
-      compaction->edit()->AddFile(compaction->output_level(), out.meta);
+      //compaction->edit()->AddFile(compaction->output_level(), out.meta);
+      compaction->edit()->AddFile(compaction->output_level(), out.meta.fd.GetNumber(),
+          out.meta.fd.GetPathId(), out.meta.fd.GetFileSize(), out.meta.smallest,
+          out.meta.largest, out.meta.fd.smallest_seqno, out.meta.fd.largest_seqno,
+          out.meta.marked_for_compaction);
       if (lcf_alive_file_map_manager_ != nullptr) {
-        lcf_alive_file_map_manager_->Increment(out.meta.fd.GetNumber());
-        //lcf_alive_file_map_manager_->PrintAliveFiles("compaction job");
+        lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_id_, out.meta.fd.GetNumber());
       }
     }
   }
+  /*if(lcf_alive_file_map_manager_ != nullptr) {
+    lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_id_, "compaction job");
+  }*/
+
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] LogAndApply");
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),

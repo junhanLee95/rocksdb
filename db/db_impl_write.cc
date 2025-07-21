@@ -1838,7 +1838,10 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
     // doesn't need that particular log to stay alive, so we just
     // advance the log number. no need to persist this in the manifest
     if (loop_cfd->mem()->GetFirstSequenceNumber() == 0 &&
-        loop_cfd->imm()->NumNotFlushed() == 0) {
+        loop_cfd->imm()->NumNotFlushed() == 0 &&
+        cfd->mem()->GetFirstSequenceNumber() == 0 &&
+        cfd->imm()->NumNotFlushed() == 0 // LCF
+        ) {
       if (creating_new_log) {
         loop_cfd->SetLogNumber(logfile_number_);
       }
@@ -1850,6 +1853,8 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   cfd->imm()->Add(cfd->mem(), &context->memtables_to_free_);
   new_mem->Ref();
   cfd->SetMemtable(new_mem);
+
+  //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] Switch memtable");
   InstallSuperVersionAndScheduleWork(cfd, &context->superversion_context,
                                      mutable_cf_options);
 #ifndef ROCKSDB_LITE

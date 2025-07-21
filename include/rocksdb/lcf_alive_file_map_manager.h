@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 #include "util/mutexlock.h"
+#include "util/logging.h"
 #include "port/port.h"
 
 namespace rocksdb {
@@ -22,36 +23,42 @@ class LCFAliveFileMapManager {
       std::cout << "Init LCFAliveFileMapManager\n";
     };
 
-    void PrintAliveFiles(std::string msg) {
+    void PrintAliveFiles(const std::shared_ptr<Logger>& log, int job_id, std::string msg) {
       ReadLock rl(&lcf_alive_file_mutex_);
-      std::cout <<"[pointer]" << this << std::endl;
-      std::cout <<">>>" << msg << ">>>" <<std::endl;
       for (auto& files: lcf_alive_file_map_) {
-        std::cout << "file["<< files.first <<"] : " << files.second << std::endl;
+        int fnum= (int)files.first;
+        ROCKS_LOG_INFO(log, "JOB[%d] [%s] file#%d : %d", job_id, msg.c_str(), fnum, files.second);
       }
-      std::cout <<"<<<" << msg << "<<<"<< std::endl;
     }
 
-    void Increment(uint64_t file_num) {
+    void Increment(const std::shared_ptr<Logger>& log, int job_id, uint64_t file_num) {
+      (void)log;
+      (void)job_id;
       //std::cout <<"[Increment]" << file_num << std::endl;
       WriteLock wl(&lcf_alive_file_mutex_);
-      ++lcf_alive_file_map_[file_num];
+      int& count = lcf_alive_file_map_[file_num];
+      ++count;
+      //ROCKS_LOG_INFO(log, "JOB[%d] JH Increment file#%lu -> %d (manager: %p)", job_id, file_num, count, static_cast<void*>(this));
     }
 
-    bool Decrement(uint64_t file_num) {
+    // JH: return 0 if only there is a last reference and erase the element.
+    int Decrement(const std::shared_ptr<Logger>& log, int job_id, uint64_t file_num) { 
+      (void)log;
+      (void)job_id;
       //std::cout <<"[Decrement]" << file_num << std::endl;
       WriteLock wl(&lcf_alive_file_mutex_);
       auto it = lcf_alive_file_map_.find(file_num);
       if (it == lcf_alive_file_map_.end()) {
-        return true;
+        return -1;
       }
+      //ROCKS_LOG_INFO(log, "JOB[%d] JH Decrement file#%lu -> %d (manager: %p)", job_id, file_num, it->second-1, static_cast<void*>(this));
       if (it->second == 1) {
         lcf_alive_file_map_.erase(it);
-        return true;
+        return 0;
       }
       else {
         it->second --;
-        return false;
+        return it->second;
       }
     }
 

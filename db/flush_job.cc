@@ -109,6 +109,7 @@ struct FlushJob::SubflushState {
   int sub_flush_id;
   std::vector<Slice> skip_starts;
   std::vector<Slice> skip_ends;
+  uint64_t bytes_written;
 
   SubflushState(FlushState *_flush, Slice _start, 
 		  Slice _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id,
@@ -121,6 +122,7 @@ struct FlushJob::SubflushState {
 	    	sub_meta(_sub_meta), sub_edit(_sub_edit),
         skip_starts(_skip_starts), skip_ends(_skip_ends) { 
 		sub_flush_id = _sub_flush_id;
+    bytes_written = 0;
 	}
 
   SubflushState(SubflushState&& o) { *this = std::move(o); }
@@ -134,6 +136,7 @@ struct FlushJob::SubflushState {
 	sub_edit = std::move(o.sub_edit);
 	sub_flush_id = std::move(o.sub_flush_id);
 	//is_parent = std::move(o.is_parent);
+  bytes_written = o.bytes_written;
     return *this;
   }
 
@@ -230,8 +233,8 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
   // Update the thread status to indicate flush.
   ReportStartedFlush();
   TEST_SYNC_POINT("FlushJob::FlushJob()");
-  ROCKS_LOG_INFO(db_options_.info_log, "[JH] FlushJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
-  //lcf_alive_file_map_manager_->PrintAliveFiles("flush job init");
+  //ROCKS_LOG_INFO(db_options_.info_log, "[JH] FlushJob::LCFAliveFileMapManager use count %ld, %p", lcf_alive_file_map_manager_.use_count(), static_cast<void*>(lcf_alive_file_map_manager_.get()));
+  //lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_context_->job_id, "flush job init");
 }
 
 FlushJob::~FlushJob() {
@@ -292,8 +295,8 @@ void FlushJob::PickMemTable() {
   meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
   // path 0 for level 0 file of children nodes
   if (db_options_.allow_column_family_split) {
-    ROCKS_LOG_BUFFER(log_buffer_, "Prepare target_metas_ for split-then-flush and its capacity is %d",
-                     target_metas_.capacity());
+    //ROCKS_LOG_BUFFER(log_buffer_, "Prepare target_metas_ for split-then-flush and its capacity is %d",
+    //                 target_metas_.capacity());
     for (size_t i = 0; i < target_nodes_.size(); i++) {
       FileMetaData meta;
       TableProperties tp;
@@ -351,8 +354,8 @@ void FlushJob::Prepare() {
 
   //flush_->sub_flush_states.emplace_back(nullptr, nullptr, meta_, nullptr, edit_);
   // path 0 for level 0 file of target nodes
-  ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare target_metas_ for split-then-flush and its capacity is %d", job_context_->job_id,
-             target_metas_.capacity());
+  //ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare target_metas_ for split-then-flush and its capacity is %d", job_context_->job_id,
+  //           target_metas_.capacity());
   //flush_->sub_flush_states.emplace_back(flush_, "", "", meta_, nullptr, 0);
 
   std::vector<SuperVersionContext>& superversion_contexts = 
@@ -366,9 +369,12 @@ void FlushJob::Prepare() {
 		// SetLogNumber(log_num) indicates logs with number smaller than log_num
 		// will no longer be picked up for recovery.
 		sub_edit->SetLogNumber(mems_.back()->GetNextLogNumber());
-    ROCKS_LOG_BUFFER(log_buffer_, "JH241029 [JOB %d] sub_edit log number : %d", job_context_->job_id, mems_.back()->GetNextLogNumber());
+    //ROCKS_LOG_BUFFER(log_buffer_, "JH241029 [JOB %d] sub_edit log number : %d", job_context_->job_id, mems_.back()->GetNextLogNumber());
 
     sub_edit->SetColumnFamily(target_nodes_[idx]->cfd_->GetID());
+
+    // make subflush atomic
+    sub_edit->MarkAtomicGroup(target_num - 1 - idx);
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     Slice start_key = get_lmost_key(target_nodes_[idx]);
@@ -397,7 +403,7 @@ void FlushJob::Prepare() {
         sub_edit, idx,
         skip_starts, skip_ends);
 
-    ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare sub_flush_state for %s(ID : %d) with range [%s, %s], skip_starts : %s",
+    /*ROCKS_LOG_BUFFER(log_buffer_, "[JOB %d] Prepare sub_flush_state for %s(ID : %d) with range [%s, %s], skip_starts : %s",
         job_context_->job_id,
         target_nodes_[idx]->cfd_->GetName().c_str(),
         target_nodes_[idx]->cfd_->GetID(),
@@ -408,7 +414,7 @@ void FlushJob::Prepare() {
         target_nodes_[idx]->cfd_->GetName().c_str(),
         target_nodes_[idx]->cfd_->GetID(),
         start_key.ToString().c_str(), end_key.ToString().c_str(),
-        skip_ends_str.c_str());
+        skip_ends_str.c_str());*/
     // JH: prepare superversion_contexts for child nodes
     superversion_contexts.emplace_back(SuperVersionContext(true));  
   }
@@ -494,6 +500,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 				);
 
 		const uint64_t start_micros = db_options_.env->NowMicros();
+    const uint64_t start_cpu_micros = db_options_.env->NowCPUNanos() / 1000;
 		{
 			db_mutex_->Unlock();
 			const size_t num_threads = flush_->sub_flush_states.size();
@@ -526,9 +533,24 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     base_->Unref();
 	  //std::cout << "FlushJob::Run() Split-then-flush done" << std::endl;
     //s = WriteLevel0Tables();  
-		InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
-		stats.micros = db_options_.env->NowMicros() - start_micros;
-		RecordTimeToHistogram(stats_, FLUSH_TIME, stats.micros);
+    
+    // Note that here we treat flush as level 0 compaction in internal stats
+    InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
+    stats.micros = db_options_.env->NowMicros() - start_micros;
+    stats.cpu_micros = db_options_.env->NowCPUNanos() / 1000 - start_cpu_micros;
+    for (size_t i = 0; i < flush_->sub_flush_states.size(); i++) {
+      // accumulate bytes written for each sub_flush_states
+      ColumnFamilyData *sub_cfd = target_nodes_[i]->cfd_;
+      stats.bytes_written +=  flush_->sub_flush_states[i].bytes_written;
+      sub_cfd->internal_stats()->AddCompactionStats(0 /* level */, thread_pri_, stats);
+      sub_cfd->internal_stats()->AddCFStats(InternalStats::BYTES_FLUSHED,  flush_->sub_flush_states[i].bytes_written);
+    }
+    RecordTimeToHistogram(stats_, FLUSH_TIME, stats.micros);
+    RecordTick(stats_, FLUSH_WRITE_BYTES, stats.bytes_written);
+    ThreadStatusUtil::IncreaseThreadOperationProperty(
+        ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
+    IOSTATS_RESET(bytes_written);
+
   } else {
     status = WriteLevel0Table();  
   }
@@ -623,7 +645,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     *file_meta = meta_;
   }
   //fprintf(stdout, "Inside running flush(2) : %" PRIu64 "\n", file_meta->fd.GetNumber());
-  RecordFlushIOStats();
+  //RecordFlushIOStats();
 
   auto stream = event_logger_->LogToBuffer(log_buffer_);
   if (db_options_.allow_column_family_split) {
@@ -820,8 +842,8 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction);
     if (lcf_alive_file_map_manager_ != nullptr) {
-      lcf_alive_file_map_manager_->Increment(meta_.fd.GetNumber());
-      //lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
+      lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, meta_.fd.GetNumber());
+      //lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_context_->job_id, "flush job");
     }
   }
 
@@ -1001,7 +1023,7 @@ Status FlushJob::WriteLevel0Tables() {
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction);
     if (lcf_alive_file_map_manager_ != nullptr) {
-      lcf_alive_file_map_manager_->Increment(meta_.fd.GetNumber());
+      lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, meta_.fd.GetNumber());
     }
 
   }
@@ -1022,7 +1044,7 @@ Status FlushJob::WriteLevel0Tables() {
                                   target_metas_[i].fd.largest_seqno,
                                   target_metas_[i].marked_for_compaction);
       if (lcf_alive_file_map_manager_ != nullptr) {
-        lcf_alive_file_map_manager_->Increment(target_metas_[i].fd.GetNumber());
+        lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, target_metas_[i].fd.GetNumber());
       }
 
       //fprintf(stdout, "[c]%s\n", children_edits_[i].DebugString().c_str());
@@ -1030,7 +1052,7 @@ Status FlushJob::WriteLevel0Tables() {
   }
 
   /*if(lcf_alive_file_map_manager_ != nullptr) {
-    lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
+    lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_context_->job_id, "flush job");
   }*/
   
 
@@ -1220,15 +1242,17 @@ void FlushJob::ProcessKeyValueFlush(SubflushState* sub_flush) {
         meta->fd.GetFileSize(), meta->smallest, meta->largest,
         meta->fd.smallest_seqno, meta->fd.largest_seqno,
         meta->marked_for_compaction);
+    sub_flush->bytes_written += meta->fd.GetFileSize();
     if (lcf_alive_file_map_manager_ != nullptr) {
-      lcf_alive_file_map_manager_->Increment(meta->fd.GetNumber());
+      lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, meta->fd.GetNumber());
     }
   }
 
   /*if (lcf_alive_file_map_manager_ != nullptr) {
-    lcf_alive_file_map_manager_->PrintAliveFiles("flush job");
+    lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_context_->job_id, "flush job");
   }*/
 
   sub_flush->status = status;
+
 }
 }  // namespace rocksdb
