@@ -1614,7 +1614,7 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
   }
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(), fname,
-      job_id_, output_fd, tp, TableFileCreationReason::kCompaction, s);
+      job_id_, output_fd, tp, TableFileCreationReason::kCompaction, s, meta->lcf_hll_str);
 
 #ifndef ROCKSDB_LITE
   // Report new file to SstFileManagerImpl
@@ -1791,7 +1791,7 @@ Status InterCFCompactionJob::OpenCompactionOutputFile(
     EventHelpers::LogAndNotifyTableFileCreationFinished(
         event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(),
         fname, job_id_, FileDescriptor(), TableProperties(),
-        TableFileCreationReason::kCompaction, s);
+        TableFileCreationReason::kCompaction, s, "");
     return s;
   }
 

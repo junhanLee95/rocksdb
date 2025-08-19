@@ -443,9 +443,6 @@ struct BlockBasedTableBuilder::Rep {
       verify_ctx.reset(new UncompressionContext(UncompressionContext::NoCache(),
                                                 compression_type));
     }
-    hll_sketch s(12);
-    auto bytes = s.serialize_compact();
-    props.lcf_hll_str.assign(reinterpret_cast<const char*>(bytes.data()), bytes.size());
   }
 
   Rep(const Rep&) = delete;
@@ -503,9 +500,13 @@ BlockBasedTableBuilder::~BlockBasedTableBuilder() {
 
 void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
 	//std::cout << "add key : " << key.ToString() << std::endl;
+  
+  
+
   Rep* r = rep_;
   assert(rep_->state != Rep::State::kClosed);
   if (!ok()) return;
+
   ValueType value_type = ExtractValueType(key);
 	//PrefixKeyType prefix_key_type = key.ExtractPrefixKeyType();
   if (IsValueType(value_type)) {

@@ -4,6 +4,11 @@
 //  (found in the LICENSE.Apache file in the root directory).
 
 #include "db/event_helpers.h"
+#ifdef HAVE_DATA_SKETCHES
+#include "hll.hpp"
+using datasketches::hll_sketch;
+using datasketches::hll_union;
+#endif
 
 namespace rocksdb {
 
@@ -71,7 +76,7 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
     const std::string& db_name, const std::string& cf_name,
     const std::string& file_path, int job_id, const FileDescriptor& fd,
     const TableProperties& table_properties, TableFileCreationReason reason,
-    const Status& s) {
+    const Status& s, const std::string& lcf_hll_str) {
   if (s.ok() && event_logger) {
     JSONWriter jwriter;
     AppendCurrentTime(&jwriter);
@@ -82,6 +87,12 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
 
     // table_properties
     {
+      float hll_est = 0.0;
+      if (lcf_hll_str != "") {
+        hll_sketch hll = hll_sketch::deserialize(lcf_hll_str.data(), lcf_hll_str.size());
+        hll_est = hll.get_estimate();
+      }
+
       jwriter << "table_properties";
       jwriter.StartObject();
 
@@ -109,7 +120,9 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
               /* JH: for debugging (collect flush stat) */
               << "filter_policy_name" << table_properties.filter_policy_name
               << "smallest" << table_properties.smallest_user_key
-              << "largest" << table_properties.largest_user_key;
+              << "largest" << table_properties.largest_user_key
+              << "hll_est" << hll_est;
+              /* JH: for debugging (lcf cardinality using HLL) */
 
 			// prefix key properties
 			/*for (unsigned int i=0; i<11; i++) {

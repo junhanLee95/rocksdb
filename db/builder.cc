@@ -37,6 +37,12 @@
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
 
+#ifdef HAVE_DATA_SKETCHES
+#include "hll.hpp"
+using datasketches::hll_sketch;
+using datasketches::hll_union;
+#endif
+
 namespace rocksdb {
 
 class TableFactory;
@@ -122,7 +128,7 @@ Status BuildTable(
       if (!s.ok()) {
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,
-            job_id, meta->fd, tp, reason, s);
+            job_id, meta->fd, tp, reason, s, "");
         return s;
       }
       file->SetIOPriority(io_priority);
@@ -151,7 +157,7 @@ Status BuildTable(
         ShouldReportDetailedTime(env, ioptions.statistics),
         true /* internal key corruption is not ok */, range_del_agg.get());
     c_iter.SeekToFirst();
-
+    hll_sketch hll(14);
     
     //for (; c_iter.Valid(); c_iter.Next()) {
     for (; ;) {
@@ -199,6 +205,7 @@ Status BuildTable(
       ParseInternalKey(updated_key, &uikey);
       //std::cout << "[f]add key(2) : " << uikey.DebugString() << std::endl;
       builder->Add(updated_key, value);
+      hll.update(ExtractUserKey(updated_key).ToString());
       meta->UpdateBoundaries(updated_key, sequence);
 
        
@@ -209,6 +216,12 @@ Status BuildTable(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
     }
+
+    auto hll_bytes = hll.serialize_compact();
+    meta->lcf_hll_str.assign(reinterpret_cast<const char*>(hll_bytes.data()), hll_bytes.size());
+    ROCKS_LOG_INFO(ioptions.info_log, "[%d] FlushJob lcf hll str : %s",
+        job_id, meta->lcf_hll_str.c_str());
+
 
     auto range_del_it = range_del_agg->NewIterator();
     for (range_del_it->SeekToFirst(); range_del_it->Valid();
@@ -295,7 +308,7 @@ Status BuildTable(
   // Output to event logger and fire events.
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger, ioptions.listeners, dbname, column_family_name, fname,
-      job_id, meta->fd, tp, reason, s);
+      job_id, meta->fd, tp, reason, s, meta->lcf_hll_str);
 
   return s;
 }
@@ -376,7 +389,7 @@ Status BuildTables(
       if (!s.ok()) {
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,
-            job_id, meta->fd, tp, reason, s);
+            job_id, meta->fd, tp, reason, s, meta->lcf_hll_str);
         return s;
       }
       file->SetIOPriority(io_priority);
@@ -403,7 +416,7 @@ Status BuildTables(
           EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, children_nodes[i]->cfd_->GetName(),
             children_fnames[i],
-            job_id, children_metas[i].fd, tp, reason, s);
+            job_id, children_metas[i].fd, tp, reason, s, "");
           return s;
         }
         children_files[i]->SetIOPriority(io_priority);
@@ -628,11 +641,11 @@ Status BuildTables(
   // not only parent builder.
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger, ioptions.listeners, dbname, column_family_name, fname,
-      job_id, meta->fd, *table_properties, reason, s);
+      job_id, meta->fd, *table_properties, reason, s, meta->lcf_hll_str);
   for(size_t i=0; i<children_size; i++) {
     EventHelpers::LogAndNotifyTableFileCreationFinished(
         event_logger, ioptions.listeners, dbname, children_nodes[i]->cfd_->GetName(), children_fnames[i],
-        job_id, children_metas[i].fd, children_table_properties[i], reason, s);
+        job_id, children_metas[i].fd, children_table_properties[i], reason, s, children_metas[i].lcf_hll_str);
   }
 
   return s;
@@ -746,7 +759,7 @@ Status BuildParentTable(
       if (!s.ok()) {
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,
-            job_id, meta->fd, tp, reason, s);
+            job_id, meta->fd, tp, reason, s, meta->lcf_hll_str);
         return s;
       }
       file->SetIOPriority(io_priority);
@@ -961,7 +974,7 @@ Status BuildParentTable(
   // not only parent builder.
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger, ioptions.listeners, dbname, column_family_name, fname,
-      job_id, meta->fd, tp, reason, s);
+      job_id, meta->fd, tp, reason, s, meta->lcf_hll_str);
 
   return s;
 }
@@ -1045,7 +1058,7 @@ Status BuildsubTable(
       if (!s.ok()) {
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,
-            job_id, meta->fd, tp, reason, s);
+            job_id, meta->fd, tp, reason, s, "");
         return s;
       }
       file->SetIOPriority(io_priority);
@@ -1213,7 +1226,7 @@ Status BuildsubTable(
   // Output to event logger and fire events.
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger, ioptions.listeners, dbname, column_family_name, fname,
-      job_id, meta->fd, tp, reason, s);
+      job_id, meta->fd, tp, reason, s, meta->lcf_hll_str);
 
   return s;
 }

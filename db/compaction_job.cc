@@ -65,7 +65,11 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
-
+#ifdef HAVE_DATA_SKETCHES
+#include "hll.hpp"
+using datasketches::hll_sketch;
+using datasketches::hll_union;
+#endif
 namespace rocksdb {
 
 const char* GetSplitReasonString(CompactionReason compaction_reason) {
@@ -1036,6 +1040,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     ROCKS_LOG_INFO(db_options_.info_log,
         "[%s] [JOB %d] c_cnt %d", cfd->GetName().c_str(), job_id_,  sub_compact->compaction->output_level()-1);
   }
+
+  hll_sketch hll(14); 
+
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
     // returns true.
@@ -1138,6 +1145,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     ParseInternalKey(updated_key, &uikey);
     //std::cout << "[c]add key(2) : " << uikey.DebugString() << std::endl;
     sub_compact->builder->Add(updated_key, value);
+    hll.update(ExtractUserKey(updated_key).ToString());
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
 
     sub_compact->current_output()->meta.UpdateBoundaries(
@@ -1153,6 +1161,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
     // and 0.6MB instead of 1MB and 0.2MB)
     bool output_file_ended = false;
+    std::string hll_str = "";
     Status input_status;
     if (sub_compact->compaction->output_level() != 0 &&
         sub_compact->current_output_file_size >=
@@ -1161,6 +1170,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       // status before advancing will be given to FinishCompactionOutputFile().
       input_status = input->status();
       output_file_ended = true;
+      auto hll_bytes = hll.serialize_compact();
+      hll_str = std::string(reinterpret_cast<const char*>(hll_bytes.data()), hll_bytes.size());
     }
     // JH]
     
@@ -1174,12 +1185,15 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       // FinishCompactionOutputFile().
       input_status = input->status();
       output_file_ended = true;
+      auto hll_bytes = hll.serialize_compact();
+      hll_str = std::string(reinterpret_cast<const char*>(hll_bytes.data()), hll_bytes.size());
     }
     if (output_file_ended) {
       sub_compact->current_input_records = c_iter_stats.num_input_records -
                                            sub_compact->num_input_records;
       sub_compact->num_input_records = c_iter_stats.num_input_records;
-
+      sub_compact->current_output()->meta.lcf_hll_str.assign(hll_str);
+      hll.reset();
       const Slice* next_key = nullptr;
       if (c_iter->Valid()) {
         next_key = &c_iter->key();
@@ -1237,8 +1251,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // close the output file.
   if (sub_compact->builder != nullptr) {
     CompactionIterationStats range_del_out_stats;
+    auto hll_bytes = hll.serialize_compact();
+    std::string hll_str = std::string(reinterpret_cast<const char*>(hll_bytes.data()), hll_bytes.size());
+    sub_compact->current_output()->meta.lcf_hll_str.assign(hll_str);
+
     Status s = FinishCompactionOutputFile(status, sub_compact, &range_del_agg,
                                           &range_del_out_stats);
+    
     if (status.ok()) {
       status = s;
     }
@@ -1608,7 +1627,7 @@ Status CompactionJob::FinishCompactionOutputFile(
   }
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(), fname,
-      job_id_, output_fd, tp, TableFileCreationReason::kCompaction, s);
+      job_id_, output_fd, tp, TableFileCreationReason::kCompaction, s, meta->lcf_hll_str);
 
 #ifndef ROCKSDB_LITE
   // Report new file to SstFileManagerImpl
@@ -1677,7 +1696,7 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(compaction->output_level(), out.meta.fd.GetNumber(),
           out.meta.fd.GetPathId(), out.meta.fd.GetFileSize(), out.meta.smallest,
           out.meta.largest, out.meta.fd.smallest_seqno, out.meta.fd.largest_seqno,
-          out.meta.marked_for_compaction);
+          out.meta.marked_for_compaction, out.meta.lcf_hll_str);
       if (db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_id_, out.meta.fd.GetNumber());
       }
@@ -1739,7 +1758,7 @@ Status CompactionJob::OpenCompactionOutputFile(
     EventHelpers::LogAndNotifyTableFileCreationFinished(
         event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(),
         fname, job_id_, FileDescriptor(), TableProperties(),
-        TableFileCreationReason::kCompaction, s);
+        TableFileCreationReason::kCompaction, s, "");
     return s;
   }
 
@@ -1943,16 +1962,21 @@ void CompactionJob::LogCompaction() {
            << "compaction_started"
            << "compaction_reason"
            << GetSplitReasonString(compaction->compaction_reason());
+
+    hll_union hll_u(14);
+
     for (size_t i = 0; i < compaction->num_input_levels(); ++i) {
       stream << ("files_L" + ToString(compaction->level(i)));
       stream.StartArray();
       for (auto f : *compaction->inputs(i)) {
         stream << f->fd.GetNumber();
+        hll_sketch hll_f = hll_sketch::deserialize(f->lcf_hll_str.data(), f->lcf_hll_str.size());
+        hll_u.update(hll_f);
       }
       stream.EndArray();
     }
     stream << "score" << compaction->score() << "input_data_size"
-           << compaction->CalculateTotalInputSize();
+           << compaction->CalculateTotalInputSize() << "merge_hll_est" << hll_u.get_estimate();
   }
 }
 

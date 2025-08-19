@@ -1567,7 +1567,7 @@ Status SplitJob::FinishSplitOutputFile(
   }
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(), fname,
-      job_id_, output_fd, tp, TableFileCreationReason::kSplit, s);
+      job_id_, output_fd, tp, TableFileCreationReason::kSplit, s, meta->lcf_hll_str);
 
 #ifndef ROCKSDB_LITE
   // Report new file to SstFileManagerImpl
@@ -1757,7 +1757,7 @@ Status SplitJob::OpenSplitOutputFile(
     EventHelpers::LogAndNotifyTableFileCreationFinished(
         event_logger_, cfd_out->ioptions()->listeners, dbname_, cfd_out->GetName().c_str(),
         fname, job_id_, FileDescriptor(), TableProperties(),
-        TableFileCreationReason::kSplit, s);
+        TableFileCreationReason::kSplit, s, "");
     return s;
   }
 

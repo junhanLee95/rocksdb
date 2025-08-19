@@ -666,6 +666,8 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     //fprintf(stdout, "WriteManifest\n");
     *file_meta = meta_;
   }
+  
+
   //fprintf(stdout, "Inside running flush(2) : %" PRIu64 "\n", file_meta->fd.GetNumber());
   //RecordFlushIOStats();
 
@@ -836,11 +838,12 @@ Status FlushJob::WriteLevel0Table() {
     }
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
-                   " bytes %s"
+                   " bytes %s hll_est %s"
                    "%s",
                    cfd_->GetName().c_str(), job_context_->job_id,
                    meta_.fd.GetNumber(), meta_.fd.GetFileSize(),
                    s.ToString().c_str(),
+                   meta_.lcf_hll_str.c_str(),
                    meta_.marked_for_compaction ? " (needs compaction)" : "");
 
     if (s.ok() && output_file_directory_ != nullptr && sync_output_directory_) {
@@ -862,7 +865,7 @@ Status FlushJob::WriteLevel0Table() {
     edit_->AddFile(0 /* level */, meta_.fd.GetNumber(), meta_.fd.GetPathId(),
                    meta_.fd.GetFileSize(), meta_.smallest, meta_.largest,
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
-                   meta_.marked_for_compaction);
+                   meta_.marked_for_compaction, meta_.lcf_hll_str);
     if (db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
       lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, meta_.fd.GetNumber());
       //lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_context_->job_id, "flush job");

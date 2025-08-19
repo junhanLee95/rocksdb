@@ -272,8 +272,6 @@ struct TableProperties {
   // TableProperties.
   void Add(const TableProperties& tp);
 
-  // LCF 250819
-  std::string lcf_hll_str;
 };
 
 // Extra properties

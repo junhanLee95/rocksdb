@@ -19,6 +19,12 @@
 #include "util/arena.h"
 #include "util/autovector.h"
 
+#ifdef HAVE_DATA_SKETCHES
+#include "hll.hpp"
+using datasketches::hll_sketch;
+using datasketches::hll_union;
+#endif
+
 namespace rocksdb {
 
 class VersionSet;
@@ -119,6 +125,8 @@ struct FileMetaData {
 
   bool marked_for_split;       // True if client asked us nicely to split this
                                // file.
+  
+  std::string lcf_hll_str;     // LCF 250819
 
   FileMetaData()
       : table_reader_handle(nullptr),
@@ -132,7 +140,8 @@ struct FileMetaData {
         //being_splitted(false),
         init_stats_from_file(false),
         marked_for_compaction(false),
-        marked_for_split(false)
+        marked_for_split(false),
+        lcf_hll_str("")
         {}
 
   FileMetaData& operator=(const FileMetaData& other) {
@@ -152,6 +161,8 @@ struct FileMetaData {
 
       marked_for_compaction = other.marked_for_compaction;
       marked_for_split = other.marked_for_split;
+
+      lcf_hll_str = other.lcf_hll_str;
     }
     return *this;
   }
@@ -269,7 +280,7 @@ class VersionEdit {
                uint64_t file_size, const InternalKey& smallest,
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
                const SequenceNumber& largest_seqno,
-               bool marked_for_compaction) {
+               bool marked_for_compaction, std::string lcf_hll_str="") {
     assert(smallest_seqno <= largest_seqno);
     FileMetaData f;
     f.fd = FileDescriptor(file, file_path_id, file_size, smallest_seqno,
@@ -279,6 +290,7 @@ class VersionEdit {
     f.fd.smallest_seqno = smallest_seqno;
     f.fd.largest_seqno = largest_seqno;
     f.marked_for_compaction = marked_for_compaction;
+    f.lcf_hll_str = lcf_hll_str;
     new_files_.emplace_back(level, std::move(f));
   }
 

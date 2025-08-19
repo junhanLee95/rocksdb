@@ -4196,7 +4196,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
         c->edit()->AddFile(c->output_level(), f->fd.GetNumber(),
                            f->fd.GetPathId(), f->fd.GetFileSize(), f->smallest,
                            f->largest, f->fd.smallest_seqno,
-                           f->fd.largest_seqno, f->marked_for_compaction);
+                           f->fd.largest_seqno, f->marked_for_compaction, f->lcf_hll_str);
         if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
           lcf_alive_file_map_manager_->Increment(immutable_db_options_.info_log, job_context->job_id, f->fd.GetNumber());
         }
