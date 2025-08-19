@@ -21,6 +21,12 @@
 #include "util/testutil.h"
 #include "utilities/merge_operators.h"
 
+#ifdef HAVE_DATA_SKETCHES
+#include "hll.hpp"
+using datasketches::hll_sketch;
+using datasketches::hll_union;
+#endif
+
 namespace rocksdb {
 
 
@@ -48,6 +54,37 @@ class LCFSingleLvlLevelTest : public testing::Test {
 };
 
 TEST_F(LCFSingleLvlLevelTest, Basic) {
+  std::cout <<"========================TEST HLL========================\n";
+  hll_sketch s(12);
+
+  for (int i=0; i<500; i++) {
+    s.update(std::to_string(2*i));
+  }
+  // Estimate
+  std::cout << "[S] estimate = " << s.get_estimate() << "\n";
+
+  // Serialize
+  auto bytes = s.serialize_compact();
+  std::cout << "[S] serialized bytes = " << bytes.size() << "\n";
+
+  hll_sketch s2 = hll_sketch::deserialize(bytes.data(), bytes.size());
+  // Estimate 2
+  std::cout << "[S2] estimate = " << s2.get_estimate() << "\n";
+
+  // Union
+  hll_sketch t(12);
+  for(int i=0; i<500; i++) {
+    t.update(std::to_string(4*i));
+  }
+  hll_union u(12);
+  u.update(s2);
+  u.update(t);
+
+  hll_sketch r = u.get_result();
+  std::cout << "[Union(S2, T)] estimate = " << r.get_estimate() << "\n";
+  std::cout <<"========================TEST HLL========================\n";
+
+
   Options options;
   options.create_if_missing = true;
   options.max_background_jobs =32;

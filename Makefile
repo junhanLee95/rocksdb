@@ -133,6 +133,11 @@ OPT += -momit-leaf-frame-pointer
 endif
 endif
 
+DATASKETCHES_DIR := /home/ceph/datasketches-cpp
+lcf_single_lvl_level_test: CXXFLAGS +=  -I$(DATASKETCHES_DIR)/common/include -I$(DATASKETCHES_DIR)/hll/include -DHAVE_DATA_SKETCHES -std=c++17 -Wno-error=shadow -Wno-shadow
+db/lcf_single_lvl_level_test.o: CXXFLAGS += -I$(DATASKETCHES_DIR)/common/include -I$(DATASKETCHES_DIR)/hll/include -DHAVE_DATA_SKETCHES -std=c++17 -Wno-error=shadow -Wno-shadow
+
+
 ifeq (,$(shell $(CXX) -fsyntax-only -maltivec -xc /dev/null 2>&1))
 CXXFLAGS += -DHAS_ALTIVEC
 CFLAGS += -DHAS_ALTIVEC
