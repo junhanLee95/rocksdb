@@ -162,6 +162,12 @@ struct CompactionJob::SubcompactionState {
   uint64_t overlapped_bytes = 0;
   // A flag determine whether the key has been seen in ShouldStopBefore()
   bool seen_key = false;
+  // LCF
+  uint64_t total_flush_cnt_ = 0;
+  uint64_t total_compaction_cnt_l0_ = 0;
+  uint64_t total_compaction_cnt_l1_ = 0;
+  uint64_t total_compaction_cnt_l2_ = 0;
+  uint64_t total_compaction_cnt_l3_above_ = 0;
 
   SubcompactionState(Compaction* c, Slice* _start, Slice* _end,
                      uint64_t size = 0)
@@ -407,8 +413,6 @@ CompactionJob::CompactionJob(
       sst_split_files_(sst_split_files),
       cfd_to_split_(cfd_to_split),
       prev_num_uniq_keys_(0),
-      prev_total_flush_cnt_(0),
-      prev_total_compaction_cnt_(0),
       lcf_alive_file_map_manager_(manager)
 {
   assert(log_buffer_ != nullptr);
@@ -1071,10 +1075,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     c_iter->Next();
     uint64_t extra_key_flush_cnt = c_iter->GetExtraKeyFlushCnt();
     uint64_t extra_key_compaction_cnt = c_iter->GetExtraKeyCompactionCnt();
-    //std::cout << "[c]cur_key_f_cnt: " <<  uikey.f_cnt  << std::endl;
-    //std::cout << "[c]ext_key_f_cnt: " <<  extra_key_flush_cnt <<  std::endl;
-    //std::cout << "[c]cur_key_c_cnt: " <<  uikey.c_cnt  << std::endl;
-    //std::cout << "[c]ext_key_c_cnt: " <<  extra_key_compaction_cnt <<  std::endl;
+    /*std::cout << "[c]cur_key_f_cnt: " <<  uikey.f_cnt  << std::endl;
+    std::cout << "[c]ext_key_f_cnt: " <<  extra_key_flush_cnt <<  std::endl;
+    std::cout << "[c]cur_key_c_cnt: " <<  uikey.c_cnt  << std::endl;
+    std::cout << "[c]ext_key_c_cnt: " <<  extra_key_compaction_cnt <<  std::endl;*/
     
     uint64_t cur_key_flush_cnt = uikey.f_cnt + extra_key_flush_cnt;
     //uint64_t cur_key_compaction_cnt = uikey.c_cnt + extra_key_compaction_cnt+ 1;// 1 : additional w-amp;
@@ -1118,6 +1122,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     UpdateFlushCount(&key_str_copy, cur_key_flush_cnt);
     UpdateCompactionCount(&key_str_copy, cur_key_compaction_cnt);
     const Slice updated_key(key_str_copy);
+
+    // update total key flush / compaction cnt
+    sub_compact->total_flush_cnt_ += cur_key_flush_cnt;
+    sub_compact->total_compaction_cnt_l0_ += c_cnt_arr[0];
+    sub_compact->total_compaction_cnt_l1_ += c_cnt_arr[1];
+    sub_compact->total_compaction_cnt_l2_ += c_cnt_arr[2];
+    sub_compact->total_compaction_cnt_l3_above_ += c_cnt_arr[3];
 
     // [JH: since prev_key_put_cnt can be acquired after c_iter->Next() call,
     // we now Add kv-pair to the builder after c_iter->Next().
@@ -1531,13 +1542,7 @@ Status CompactionJob::FinishCompactionOutputFile(
 
   if (s.ok() && (current_entries > 0 || tp.num_range_deletions > 0)) {
     // JH: print current file's key density
-    uint64_t cur_total_flush_cnt = sub_compact->c_iter->GetTotalFlushCnt();
-    uint64_t cur_total_compaction_cnt = sub_compact->c_iter->GetTotalCompactionCnt();
-    uint64_t file_total_flush_cnt = cur_total_flush_cnt - prev_total_flush_cnt_;
-    uint64_t file_total_compaction_cnt = cur_total_compaction_cnt - prev_total_compaction_cnt_;
-    prev_total_flush_cnt_ = cur_total_flush_cnt;
-    prev_total_compaction_cnt_ = cur_total_compaction_cnt;
-    float density = (float)file_total_flush_cnt/current_entries;
+    float density = (float)sub_compact->total_flush_cnt_/current_entries;
 
     // Output to event logger and fire events.
     float efficiency = (float)current_entries/current_input_entries;
@@ -1545,13 +1550,22 @@ Status CompactionJob::FinishCompactionOutputFile(
         std::make_shared<TableProperties>(tp);
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s, %" PRIu64 " flush_cnt, %" PRIu64 " comp_cnt, %.2f density", cfd->GetName().c_str(), job_id_, output_number,
+                   " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s, %" PRIu64 " flush_cnt, %" PRIu64 " l0_comp_cnt, %" PRIu64 " l1_comp_cnt, %" PRIu64 " l2_comp_cnt, %" PRIu64 " l3_comp_cnt, %.2f density", cfd->GetName().c_str(), job_id_, output_number,
                    current_entries, current_input_entries,
                    efficiency, current_bytes,
                    meta->marked_for_compaction ? " (need compaction)" : "",
-                   file_total_flush_cnt,
-                   file_total_compaction_cnt,
+                   sub_compact->total_flush_cnt_,
+                   sub_compact->total_compaction_cnt_l0_,
+                   sub_compact->total_compaction_cnt_l1_,
+                   sub_compact->total_compaction_cnt_l2_,
+                   sub_compact->total_compaction_cnt_l3_above_,
                    density);
+    // reset total flush/compaction cnt_
+    sub_compact->total_flush_cnt_ = 0;
+    sub_compact->total_compaction_cnt_l0_ = 0;
+    sub_compact->total_compaction_cnt_l1_ = 0;
+    sub_compact->total_compaction_cnt_l2_ = 0;
+    sub_compact->total_compaction_cnt_l3_above_ = 0;
 
     // JH: If db allows column family split,
     // Generate split request if necessary
@@ -1664,7 +1678,7 @@ Status CompactionJob::InstallCompactionResults(
           out.meta.fd.GetPathId(), out.meta.fd.GetFileSize(), out.meta.smallest,
           out.meta.largest, out.meta.fd.smallest_seqno, out.meta.fd.largest_seqno,
           out.meta.marked_for_compaction);
-      if (lcf_alive_file_map_manager_ != nullptr) {
+      if (db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_id_, out.meta.fd.GetNumber());
       }
     }

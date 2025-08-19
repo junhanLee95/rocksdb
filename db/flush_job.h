@@ -56,6 +56,7 @@ class Arena;
 
 class FlushJob {
  public:
+
   // TODO(icanadi) make effort to reduce number of parameters here
   // IMPORTANT: mutable_cf_options needs to be alive while FlushJob is alive
   FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
@@ -91,9 +92,14 @@ class FlushJob {
   void Cancel();
   TableProperties GetTableProperties() const { return table_properties_; }
   const autovector<MemTable*>& GetMemTables() const { return mems_; }
-  const std::vector<PartitionTreeNode*>& GetTargetNodes() const { return target_nodes_; }
+  const PartitionTreeNode* GetTargetNode(size_t id) const { return target_nodes_[id]; }
+  size_t GetTargetNodesSize(void) { return target_nodes_.size(); }
+
+  FileMetaData& GetSubMetaData(size_t id);
+  TableProperties& GetSubTableProperties(size_t id);
 
  private:
+  
   struct SubflushState;
 
   void ReportStartedFlush();

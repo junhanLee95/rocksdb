@@ -320,7 +320,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
     }
   }
 
-  //PrintLogicalColumnFamily();
+  PrintLogicalColumnFamily();
 
   uint64_t elapsed_nanos = timer.ElapsedNanos();
   ROCKS_LOG_INFO(immutable_db_options_.info_log, 
@@ -559,18 +559,19 @@ void DBImpl::DeleteObsoleteFileImpl(int job_id, const std::string& fname,
                                     const std::string& path_to_sync,
                                     FileType type, uint64_t number) {
   Status file_deletion_status;
-  bool is_lcf_shared = false;
+  //bool is_lcf_shared = false;
   if (type == kTableFile) {
-    if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr &&
-        lcf_alive_file_map_manager_->Decrement(immutable_db_options_.info_log, job_id, number) > 0) {
+    /*if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr &&
+        lcf_alive_file_map_manager_->Get(number) > 0) {
+//        lcf_alive_file_map_manager_->Decrement(immutable_db_options_.info_log, job_id, number) > 0) {
       // do not delete file.
       is_lcf_shared = true;
       file_deletion_status = Status::OK();
     }
-    else {
+    else {*/
       file_deletion_status =
         DeleteDBFile(&immutable_db_options_, fname, path_to_sync);
-    }
+    //}
   } else if (type == kLogFile) {
     file_deletion_status =
       DeleteDBFile(&immutable_db_options_, fname, path_to_sync);
@@ -580,13 +581,13 @@ void DBImpl::DeleteObsoleteFileImpl(int job_id, const std::string& fname,
   TEST_SYNC_POINT_CALLBACK("DBImpl::DeleteObsoleteFileImpl:AfterDeletion",
                            &file_deletion_status);
   
-  if (is_lcf_shared) {
+  /*if (is_lcf_shared) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
         "[JOB %d] File is shared and should not delete %s type=%d #%" PRIu64 " -- %s\n", job_id,
         fname.c_str(), type, number,
         file_deletion_status.ToString().c_str());
   }
-  else if (file_deletion_status.ok()) {
+  else */if (file_deletion_status.ok()) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
                     "[JOB %d] Delete %s type=%d #%" PRIu64 " -- %s\n", job_id,
                     fname.c_str(), type, number,
@@ -642,6 +643,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
       state.log_delete_files.size() + state.manifest_delete_files.size());
   // We may ignore the dbname when generating the file names.
   const char* kDumbDbName = "";
+  bool lcf_to_delete = false; // lcf
   for (auto& file : state.sst_delete_files) {
     candidate_files.emplace_back(
         MakeTableFileName(kDumbDbName, file.metadata->fd.GetNumber()),
@@ -653,10 +655,32 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
         "[JOB %d] lcf_manager[%" PRIu64 "] = %d\n", state.job_id,
         file_num,
         lcf_alive_file_map_manager_->Get(file_num));*/
-    if (lcf_alive_file_map_manager_->Get(file_num) == 0 &&
+     
+    if (file.metadata->table_reader_handle) {
+      int dec_val = -1;
+      if (immutable_db_options_.allow_column_family_split ){
+        dec_val = lcf_alive_file_map_manager_->Decrement(immutable_db_options_.info_log, state.job_id, file_num);
+      }
+      if (!immutable_db_options_.allow_column_family_split ||
+          dec_val == 0) {
+      //    lcf_alive_file_map_manager_->Get(file_num) == 0) {
+        lcf_to_delete = true;
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+            "[JOB %d] 0806 table cache release lcf_manager[%" PRIu64 "] = %d\n", state.job_id,
+            file_num,
+            lcf_alive_file_map_manager_->Get(file_num));
+        table_cache_->Release(file.metadata->table_reader_handle);
+      } else {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+            "[JOB %d] 0806 table cache do not release lcf_manager[%" PRIu64 "] = %d\n", state.job_id,
+            file_num,
+            dec_val);
+      }
+    }
+    /*if (lcf_alive_file_map_manager_->Get(file_num) == 0 &&
       file.metadata->table_reader_handle) {
       table_cache_->Release(file.metadata->table_reader_handle);
-    }
+    }*/
 
     file.DeleteMetadata();
   }
@@ -818,7 +842,14 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
       InstrumentedMutexLock guard_lock(&mutex_);
       SchedulePendingPurge(fname, dir_to_sync, type, number, state.job_id);
     } else {
-      DeleteObsoleteFileImpl(state.job_id, fname, dir_to_sync, type, number);
+      if (!immutable_db_options_.allow_column_family_split || type != kTableFile || lcf_to_delete) {
+        DeleteObsoleteFileImpl(state.job_id, fname, dir_to_sync, type, number);
+      } else  { // is shared and type is sstable
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "[JOB %d] File is shared(%d) and should not delete %s type=%d #%" PRIu64 "\n",
+                   state.job_id, lcf_alive_file_map_manager_->Get(number),
+                   fname.c_str(), type, number);
+      }
     }
   }
 

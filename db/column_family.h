@@ -172,6 +172,9 @@ class ColumnFamilyData {
   // thread-safe
   const std::string& GetName() const { return name_; }
 
+  float GetSamp(int lvl) {return avg_samps[lvl];}
+  void SetSamp(int lvl, float f) {avg_samps[lvl] = f;}
+
   // Ref() can only be called from a context where the caller can guarantee
   // that ColumnFamilyData is alive (while holding a non-zero ref already,
   // holding a DB mutex, or as the leader in a write batch group).
@@ -552,6 +555,8 @@ class ColumnFamilyData {
 
   // Directories corresponding to cf_paths.
   std::vector<std::unique_ptr<Directory>> data_dirs_;
+
+  std::vector<float> avg_samps;
 };
 
 // ColumnFamilySet has interesting thread-safety requirements

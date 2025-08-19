@@ -496,6 +496,10 @@ ColumnFamilyData::ColumnFamilyData(
     }
   }
 
+  for(int i=0; i<7; i++){
+    avg_samps.push_back(1.20);
+  }
+
   RecalculateWriteStallConditions(mutable_cf_options_);
 }
 
@@ -590,6 +594,9 @@ ColumnFamilyData::ColumnFamilyData(
     }
   }
 
+  for(int i=0; i<7; i++){
+    avg_samps.push_back(1.20);
+  }
   RecalculateWriteStallConditions(mutable_cf_options_);
 }
 

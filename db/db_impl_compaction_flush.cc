@@ -12,6 +12,7 @@
 #define __STDC_FORMAT_MACROS
 #endif
 #include <fstream>
+#include <iostream>
 #include <inttypes.h>
 #include "db/split_job.h"
 #include "db/builder.h"
@@ -178,8 +179,18 @@ Status DBImpl::FlushMemTableToOutputFile(
 
 #ifndef ROCKSDB_LITE
   // may temporarily unlock and lock the mutex.
-  NotifyOnFlushBegin(cfd, &file_meta, mutable_cf_options, job_context->job_id,
-                     flush_job.GetTableProperties());
+  if (immutable_db_options_.allow_column_family_split) {
+    FileMetaData tmp_file_meta;
+    for (size_t i = 0; i < flush_job.GetTargetNodesSize(); i++) {
+      NotifyOnFlushBegin(flush_job.GetTargetNode(i)->cfd_, &tmp_file_meta,
+          mutable_cf_options, job_context->job_id,
+          flush_job.GetSubTableProperties(i));
+    }
+  } else {
+    NotifyOnFlushBegin(cfd, &file_meta, mutable_cf_options, job_context->job_id,
+        flush_job.GetTableProperties());
+  }
+  
 #endif  // ROCKSDB_LITE
 
   Status s;
@@ -212,12 +223,10 @@ Status DBImpl::FlushMemTableToOutputFile(
     // JH: install superversion for every target nodes after the flush job completion.
     if (immutable_db_options_.allow_column_family_split) {
 			//ROCKS_LOG_BUFFER(log_buffer, "Flush install superversion : child size %ld super context size %ld", flush_job.GetTargetNodes().size(), job_context->superversion_contexts.size());
-      int idx=0;
-
       //ROCKS_LOG_INFO(immutable_db_options_.info_log, "[JH 0702] Flush %d", job_context->job_id);
-      for (PartitionTreeNode* node: flush_job.GetTargetNodes()) {
-        InstallSuperVersionAndScheduleWork(node->cfd_, &job_context->superversion_contexts[idx++],
-                                           mutable_cf_options);
+      for (size_t i = 0; i < flush_job.GetTargetNodesSize(); i++) {
+        InstallSuperVersionAndScheduleWork(flush_job.GetTargetNode(i)->cfd_,
+            &job_context->superversion_contexts[i], mutable_cf_options);
       }
     } else {
       InstallSuperVersionAndScheduleWork(cfd, superversion_context,
@@ -257,8 +266,16 @@ Status DBImpl::FlushMemTableToOutputFile(
   if (s.ok()) {
 #ifndef ROCKSDB_LITE
     // may temporarily unlock and lock the mutex.
-    NotifyOnFlushCompleted(cfd, &file_meta, mutable_cf_options,
-                           job_context->job_id, flush_job.GetTableProperties());
+    if (immutable_db_options_.allow_column_family_split) {
+      for (size_t i = 0; i < flush_job.GetTargetNodesSize(); i++) {
+        NotifyOnFlushCompleted(flush_job.GetTargetNode(i)->cfd_, &flush_job.GetSubMetaData(i),
+            mutable_cf_options, job_context->job_id,
+            flush_job.GetSubTableProperties(i));
+      }
+    } else {
+      NotifyOnFlushCompleted(cfd, &file_meta, mutable_cf_options,
+          job_context->job_id, flush_job.GetTableProperties());
+    }
     auto sfm = static_cast<SstFileManagerImpl*>(
         immutable_db_options_.sst_file_manager.get());
     if (sfm) {
@@ -1202,12 +1219,115 @@ void DBImpl::NotifyOnInterCFCompactionBegin(ColumnFamilyData* cfd, InterCFCompac
                                      const Status& st,
                                      const CompactionJobStats& job_stats,
                                      int job_id) {
+#ifndef ROCKSDB_LITE
+  if (immutable_db_options_.listeners.empty()) {
+    return;
+  }
+  mutex_.AssertHeld();
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    return;
+  }
+  ColumnFamilyData* pcfd = c->parent_column_family_data();
+  Version* pcurrent = pcfd->current();
+  pcurrent->Ref();
+  // release lock while notifying events
+  mutex_.Unlock();
+  {
+    CompactionJobInfo info;
+    info.cf_name = pcfd->GetName();
+    info.status = st;
+    info.thread_id = env_->GetThreadID();
+    info.job_id = job_id;
+    info.base_input_level = c->start_level();
+    info.output_level = c->output_level();
+    info.stats = job_stats;
+    info.table_properties = c->GetOutputTableProperties();
+    info.compaction_reason = c->compaction_reason();
+    info.compression = c->output_compression();
+    for (const auto fmd : *c->inputs()) {
+      if (fmd.cf_name == "default") {
+        for (auto& file: fmd.files) {
+          auto fn = TableFileName(c->immutable_cf_options()->cf_paths,
+              file->fd.GetNumber(), file->fd.GetPathId());
+          info.input_files.push_back(fn);
+          if (info.table_properties.count(fn) == 0) {
+            std::shared_ptr<const TableProperties> tp;
+            auto s = pcurrent->GetTableProperties(&tp, file, &fn);
+            if (s.ok()) {
+              info.table_properties[fn] = tp;
+            }
+          }
+        }
+      }
+    }
+    for (const auto newf : c->pedit()->GetNewFiles()) {
+      info.output_files.push_back(TableFileName(
+            c->immutable_cf_options()->cf_paths, newf.second.fd.GetNumber(),
+            newf.second.fd.GetPathId()));
+    }
+    for (auto listener : immutable_db_options_.listeners) {
+      listener->OnCompactionBegin(this, info);
+    }
+  }
+
+  mutex_.Lock();
+  pcurrent->Unref();
+
+
+  Version* current = cfd->current();
+  current->Ref();
+  // release lock while notifying events
+  mutex_.Unlock();
+  TEST_SYNC_POINT("DBImpl::NotifyOnCompactionBegin::UnlockMutex");
+  {
+    CompactionJobInfo info;
+    info.cf_name = cfd->GetName();
+    info.status = st;
+    info.thread_id = env_->GetThreadID();
+    info.job_id = job_id;
+    info.base_input_level = c->start_level();
+    info.output_level = c->output_level();
+    info.stats = job_stats;
+    info.table_properties = c->GetOutputTableProperties();
+    info.compaction_reason = c->compaction_reason();
+    info.compression = c->output_compression();
+    for (const auto fmd : *c->inputs()) {
+      if (fmd.cf_name != "default") {
+        for (auto& file: fmd.files) {
+          auto fn = TableFileName(c->immutable_cf_options()->cf_paths,
+              file->fd.GetNumber(), file->fd.GetPathId());
+          info.input_files.push_back(fn);
+          if (info.table_properties.count(fn) == 0) {
+            std::shared_ptr<const TableProperties> tp;
+            auto s = current->GetTableProperties(&tp, file, &fn);
+            if (s.ok()) {
+              info.table_properties[fn] = tp;
+            }
+          }
+        }
+      }
+    }
+    
+    for (const auto newf : c->edit()->GetNewFiles()) {
+      info.output_files.push_back(TableFileName(
+          c->immutable_cf_options()->cf_paths, newf.second.fd.GetNumber(),
+          newf.second.fd.GetPathId()));
+    }
+    for (auto listener : immutable_db_options_.listeners) {
+      listener->OnCompactionBegin(this, info);
+    }
+  }
+  mutex_.Lock();
+  current->Unref();
+#else
 
   (void)cfd;
   (void)c;
   (void)st;
   (void)job_stats;
   (void)job_id;
+
+#endif  // ROCKSDB_LITE
 }
 
 void DBImpl::NotifyOnSplitBegin(ColumnFamilyData* cfd, Compaction* c,
@@ -1350,12 +1470,55 @@ void DBImpl::NotifyOnCompactionCompleted(
 void DBImpl::NotifyOnInterCFCompactionCompleted(
     ColumnFamilyData* cfd, InterCFCompaction* c, const Status& st,
     const CompactionJobStats& compaction_job_stats, const int job_id) {
+#ifndef ROCKSDB_LITE
+  if (immutable_db_options_.listeners.size() == 0U) {
+    return;
+  }
+  mutex_.AssertHeld();
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    return;
+  }
 
+  ColumnFamilyData* pcfd = c->parent_column_family_data();
+  Version* pcurrent = pcfd->current();
+  pcurrent->Ref();
+  // release lock while notifying events
+  mutex_.Unlock();
+  {
+    CompactionJobInfo info;
+    BuildInterCFCompactionJobInfo(pcfd, c, st, compaction_job_stats, job_id, pcurrent,
+        &info);
+    for (auto listener : immutable_db_options_.listeners) {
+      listener->OnCompactionCompleted(this, info);
+    }
+  }
+  mutex_.Lock();
+  pcurrent->Unref();
+
+  Version* current = cfd->current();
+  current->Ref();
+  // release lock while notifying events
+  mutex_.Unlock();
+  TEST_SYNC_POINT("DBImpl::NotifyOnCompactionCompleted::UnlockMutex");
+  {
+    CompactionJobInfo info;
+    BuildInterCFCompactionJobInfo(cfd, c, st, compaction_job_stats, job_id, current,
+                           &info);
+    for (auto listener : immutable_db_options_.listeners) {
+      listener->OnCompactionCompleted(this, info);
+    }
+  }
+  mutex_.Lock();
+  current->Unref();
+  // no need to signal bg_cv_ as it will be signaled at the end of the
+  // flush process.
+#else
   (void)cfd;
   (void)c;
   (void)st;
   (void)compaction_job_stats;
   (void)job_id;
+#endif  // ROCKSDB_LITE
 }
 
 // REQUIREMENT: block all background work by calling PauseBackgroundWork()
@@ -2525,7 +2688,6 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
                                LogBuffer* log_buffer, FlushReason* reason,
                                Env::Priority thread_pri) {
   mutex_.AssertHeld();
-
   Status status;
   *reason = FlushReason::kOthers;
   // If BG work is stopped due to an error, but a recovery is in progress,
@@ -3569,11 +3731,15 @@ Status DBImpl::BackgroundL0Compaction(bool* made_progress,
       }
       for (size_t i = 0; i < c->num_input_files(l); i++) {
         FileMetaData* f = c->input(l, i);
+        
         c->edit()->DeleteFile(c->level(l), f->fd.GetNumber());
         c->edit()->AddFile(c->output_level(), f->fd.GetNumber(),
                            f->fd.GetPathId(), f->fd.GetFileSize(), f->smallest,
                            f->largest, f->fd.smallest_seqno,
                            f->fd.largest_seqno, f->marked_for_compaction);
+        if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
+          lcf_alive_file_map_manager_->Increment(immutable_db_options_.info_log, job_context->job_id, f->fd.GetNumber());
+        }
 
         ROCKS_LOG_BUFFER(
             log_buffer,
@@ -4025,11 +4191,15 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
       }
       for (size_t i = 0; i < c->num_input_files(l); i++) {
         FileMetaData* f = c->input(l, i);
+        
         c->edit()->DeleteFile(c->level(l), f->fd.GetNumber());
         c->edit()->AddFile(c->output_level(), f->fd.GetNumber(),
                            f->fd.GetPathId(), f->fd.GetFileSize(), f->smallest,
                            f->largest, f->fd.smallest_seqno,
                            f->fd.largest_seqno, f->marked_for_compaction);
+        if (immutable_db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
+          lcf_alive_file_map_manager_->Increment(immutable_db_options_.info_log, job_context->job_id, f->fd.GetNumber());
+        }
 
         ROCKS_LOG_BUFFER(
             log_buffer,
@@ -4335,6 +4505,49 @@ bool DBImpl::MCOverlap(ManualCompactionState* m, ManualCompactionState* m1) {
 }
 
 #ifndef ROCKSDB_LITE
+void DBImpl::BuildInterCFCompactionJobInfo(
+    const ColumnFamilyData* cfd, InterCFCompaction* c, const Status& st,
+    const CompactionJobStats& compaction_job_stats, const int job_id,
+    const Version* current, CompactionJobInfo* compaction_job_info) const {
+  assert(compaction_job_info != nullptr);
+  compaction_job_info->cf_id = cfd->GetID();
+  compaction_job_info->cf_name = cfd->GetName();
+  compaction_job_info->status = st;
+  compaction_job_info->thread_id = env_->GetThreadID();
+  compaction_job_info->job_id = job_id;
+  compaction_job_info->base_input_level = c->start_level();
+  compaction_job_info->output_level = c->output_level();
+  compaction_job_info->stats = compaction_job_stats;
+  
+  compaction_job_info->table_properties = c->GetOutputTableProperties();
+  compaction_job_info->compaction_reason = c->compaction_reason();
+  compaction_job_info->compression = c->output_compression();
+  for (const auto fmd : *c->inputs()) {
+    if (fmd.cf_name == cfd->GetName()) {
+      for (auto& file: fmd.files) {
+        auto fn = TableFileName(c->immutable_cf_options()->cf_paths,
+            file->fd.GetNumber(), file->fd.GetPathId());
+        compaction_job_info->input_files.push_back(fn);
+        if (compaction_job_info->table_properties.count(fn) == 0) {
+          std::shared_ptr<const TableProperties> tp;
+          auto s = current->GetTableProperties(&tp, file, &fn);
+          if (s.ok()) {
+            compaction_job_info->table_properties[fn] = tp;
+          }
+        }
+      }
+    }
+  }
+
+  if (cfd->GetName() != "default") {
+    for (const auto& newf : c->edit()->GetNewFiles()) {
+      compaction_job_info->output_files.push_back(
+          TableFileName(c->immutable_cf_options()->cf_paths,
+            newf.second.fd.GetNumber(), newf.second.fd.GetPathId()));
+    }
+  }
+}
+
 void DBImpl::BuildCompactionJobInfo(
     const ColumnFamilyData* cfd, Compaction* c, const Status& st,
     const CompactionJobStats& compaction_job_stats, const int job_id,

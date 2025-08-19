@@ -73,6 +73,14 @@ class InterCFCompaction {
   // Returns the number of input levels in this compaction.
   size_t num_input_levels() const { return inputs_.size(); }
 
+  // Return the object that holds the edits to the descriptor done
+  // by this compaction (child cfd)
+  VersionEdit* edit() { return &edit_; }
+
+  // Return the object that holds the edits to the descriptor done
+  // by this compaction (parent cfd)
+  VersionEdit* pedit() { return &pedit_; }
+
   // Returns the number of input files associated to the specified
   // compaction input level.
   // The function will return 0 if when "compaction_input_level" < 0
@@ -313,6 +321,8 @@ class InterCFCompaction {
   const MutableCFOptions mutable_cf_options_;
   Version* input_version_;
   Version* parent_input_version_;
+  VersionEdit edit_;
+  VersionEdit pedit_;
   const int number_levels_;
   ColumnFamilyData* cfd_;
   ColumnFamilyData* parent_cfd_; // cfd where output goes to 

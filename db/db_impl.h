@@ -1762,6 +1762,11 @@ class DBImpl : public DB {
   bool HaveManualCompaction(ColumnFamilyData* cfd);
   bool MCOverlap(ManualCompactionState* m, ManualCompactionState* m1);
 #ifndef ROCKSDB_LITE
+  void BuildInterCFCompactionJobInfo(const ColumnFamilyData* cfd, InterCFCompaction* c,
+                              const Status& st,
+                              const CompactionJobStats& compaction_job_stats,
+                              const int job_id, const Version* current,
+                              CompactionJobInfo* compaction_job_info) const;
   void BuildCompactionJobInfo(const ColumnFamilyData* cfd, Compaction* c,
                               const Status& st,
                               const CompactionJobStats& compaction_job_stats,

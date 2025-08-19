@@ -199,8 +199,6 @@ class CompactionJob {
   std::vector<SplitFileInfo>& sst_split_files_;
   ColumnFamilyData** cfd_to_split_;
   uint64_t prev_num_uniq_keys_;
-  uint64_t prev_total_flush_cnt_;
-  uint64_t prev_total_compaction_cnt_;
 
   std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
 };

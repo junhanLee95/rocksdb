@@ -3385,7 +3385,7 @@ Status VersionSet::ProcessManifestWrites(
 
     if (!first_writer.edit_list.front()->IsColumnFamilyManipulation()) {
       for (int i = 0; i < static_cast<int>(versions.size()); ++i) {
-        ROCKS_LOG_INFO(db_options_->info_log, "[JH] %s(%d) Prepare Apply\n", versions[i]->cfd_->GetName().c_str(), versions[i]->cfd_->GetID());
+        //ROCKS_LOG_INFO(db_options_->info_log, "[JH] %s(%d) Prepare Apply\n", versions[i]->cfd_->GetName().c_str(), versions[i]->cfd_->GetID());
 
         versions[i]->PrepareApply(*mutable_cf_options_ptrs[i], true);
       }
@@ -3393,7 +3393,7 @@ Status VersionSet::ProcessManifestWrites(
                !writers.back().edit_list.front()->IsColumnFamilyManipulation()){ // is column family split but deleting files at last writer for default column family.
       assert(versions.size() == mutable_cf_options_ptrs.size());
       for (size_t i=0 ;i<versions.size() ;i++) {
-        ROCKS_LOG_INFO(db_options_->info_log, "[JH] %s(%d) Prepare Apply for file deletion of default column family in column family split process\n", versions[i]->cfd_->GetName().c_str(), versions[i]->cfd_->GetID());
+        //ROCKS_LOG_INFO(db_options_->info_log, "[JH] %s(%d) Prepare Apply for file deletion of default column family in column family split process\n", versions[i]->cfd_->GetName().c_str(), versions[i]->cfd_->GetID());
         versions[i]->PrepareApply(*mutable_cf_options_ptrs[i], true);
       }
     }
@@ -5421,9 +5421,9 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
       f->refs = 0;
       v->storage_info()->AddFile(level, f, v->info_log());
       // Update LCF Alive File Map
-      if (cf_options.lcf_alive_file_map_manager != nullptr) {
+      if (new_cfd->ioptions()->allow_column_family_split && cf_options.lcf_alive_file_map_manager != nullptr) {
         cf_options.lcf_alive_file_map_manager->Increment(db_options_->info_log, 0/* during creation. */, f->fd.GetNumber());
-      }
+      } 
       //cf_options.lcf_alive_file_map_manager->PrintAliveFiles("Split job");
     }
     /*if (cf_options.lcf_alive_file_map_manager != nullptr) {

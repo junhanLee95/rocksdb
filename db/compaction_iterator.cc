@@ -80,9 +80,7 @@ CompactionIterator::CompactionIterator(
       current_key_committed_(false),
       extra_key_flush_cnt_(0),
       extra_key_compaction_cnt_(0),
-      num_uniq_keys_(0),
-      total_flush_cnt_(0),
-      total_compaction_cnt_(0)
+      num_uniq_keys_(0)
 	{
 
   //std::cout << "=======construct c_ter============\n";
@@ -329,15 +327,17 @@ void CompactionIterator::NextFromInput() {
       current_key_committed_ = KeyCommitted(ikey_.sequence);
 
       num_uniq_keys_ ++;
-      uint64_t flush_cnt = ikey_.f_cnt;
+      //uint64_t flush_cnt = ikey_.f_cnt;
       /*extra_key_flush_cnt_ += flush_cnt;
       total_flush_cnt_ += flush_cnt;*/
-      uint64_t compaction_cnt = ikey_.c_cnt+1;
+      //uint64_t compaction_cnt = ikey_.c_cnt;
       /*extra_key_compaction_cnt_ += compaction_cnt;
       total_compaction_cnt_ += compaction_cnt;*/
 
-      user_key_flush_cnts_[current_user_key_.ToString()] += flush_cnt;
-      user_key_compaction_cnts_[current_user_key_.ToString()] += compaction_cnt;
+      //user_key_flush_cnts_[current_user_key_.ToString()] += flush_cnt;
+      //user_key_compaction_cnts_[current_user_key_.ToString()] += compaction_cnt;
+      //std::cout << "NextFromInput() new \t" << current_user_key_.ToString() << "f_cnt : " << flush_cnt <<std::endl;
+      //std::cout << "NextFromInput() new \t" << current_user_key_.ToString() << "c_cnt : " << compaction_cnt <<std::endl;
 
       // Apply the compaction filter to the first committed version of the user
       // key.
@@ -358,15 +358,13 @@ void CompactionIterator::NextFromInput() {
 
       uint64_t flush_cnt = ikey_.f_cnt;
       extra_key_flush_cnt_ += flush_cnt;
-      total_flush_cnt_ += flush_cnt;
       uint64_t compaction_cnt = ikey_.c_cnt;
       extra_key_compaction_cnt_ += compaction_cnt;
-      total_compaction_cnt_ += compaction_cnt;
 
-      //std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "f_cnt : " << user_key_flush_cnts_[current_user_key_.ToString()] <<std::endl;
-      //std::cout << "NextFromInput()\t" << current_user_key_.ToString() << "c_cnt : " << user_key_compaction_cnts_[current_user_key_.ToString()] <<std::endl;
-      user_key_flush_cnts_[current_user_key_.ToString()] += flush_cnt;
-      user_key_compaction_cnts_[current_user_key_.ToString()] += compaction_cnt;
+      //std::cout << "NextFromInput() same\t" << current_user_key_.ToString() << "f_cnt : " << flush_cnt <<std::endl;
+      //std::cout << "NextFromInput() same\t" << current_user_key_.ToString() << "c_cnt : " << compaction_cnt <<std::endl;
+      //user_key_flush_cnts_[current_user_key_.ToString()] += flush_cnt;
+      //user_key_compaction_cnts_[current_user_key_.ToString()] += compaction_cnt;
 			//std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "f_cnt : " << user_key_flush_cnts_[current_user_key_.ToString()] <<std::endl;
 			//std::cout << "NextFromInput()(2)\t" << current_user_key_.ToString() << "c_cnt : " << user_key_compaction_cnts_[current_user_key_.ToString()] <<std::endl;
 

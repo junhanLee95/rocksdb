@@ -132,14 +132,14 @@ class CompactionIterator {
   uint64_t GetNumUniqKeys(void) { 
     return num_uniq_keys_;
   }
-
+  /*
   uint64_t GetTotalFlushCnt(void) {
     return total_flush_cnt_;
   }
 
   uint64_t GetTotalCompactionCnt(void) {
     return total_compaction_cnt_;
-  }
+  }*/
 
  private:
 
@@ -264,8 +264,8 @@ class CompactionIterator {
   uint64_t extra_key_flush_cnt_; // JH: put_cnt of the current key, except for the first key appearance.
   uint64_t extra_key_compaction_cnt_; // JH: put_cnt of the current key, except for the first key appearance.
   uint64_t num_uniq_keys_;
-  uint64_t total_flush_cnt_;
-  uint64_t total_compaction_cnt_;
+  //uint64_t total_flush_cnt_;
+  //uint64_t total_compaction_cnt_;
 
   bool IsShuttingDown() {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.

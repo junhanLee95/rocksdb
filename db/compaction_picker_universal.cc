@@ -350,6 +350,7 @@ Compaction* UniversalCompactionPicker::PickCompaction(
     } else {
       // Size amplification is within limits. Try reducing read
       // amplification while maintaining file size ratios.
+      
       unsigned int ratio =
           mutable_cf_options.compaction_options_universal.size_ratio;
 
@@ -361,6 +362,7 @@ Compaction* UniversalCompactionPicker::PickCompaction(
                          cf_name.c_str());
         assert(!c->is_lcf_trivial_move());
       } else {
+      
         // Size amplification and file size ratios are within configured limits.
         // If max read amplification is exceeding configured limits, then force
         // compaction without looking at filesize ratios and try to reduce
@@ -784,7 +786,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
 
   // if inter_cf_base_level is 1, we assume the column family is hot
   // and compact files if the number of sorted runs >= 4
-  if (/*output_level > 1 && */candidate_size  < max_bytes) {
+  if (output_level > 1 && candidate_size  < max_bytes) {
     ROCKS_LOG_BUFFER(
         log_buffer,
         "[%s] Universal(LCF): size total not needed. newer-files-total-size %" PRIu64
@@ -865,8 +867,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
 
       return new InterCFCompaction(
           vstorage, ioptions_, mutable_cf_options, std::move(inputs), output_level,
-          MaxFileSizeForLevel(mutable_cf_options, output_level,
-            kCompactionStyleLevel),
+          64*1024*1024,
           /* max_grandparent_overlap_bytes */ LLONG_MAX, path_id,
           GetCompressionType(ioptions_, vstorage, mutable_cf_options, output_level,
             1),

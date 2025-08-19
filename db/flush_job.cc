@@ -88,8 +88,6 @@ const char* GetFlushReasonString (FlushReason flush_reason) {
       return "Invalid";
   }
 }
-
-// Maintains state for each sub-compaction
 struct FlushJob::SubflushState {
   // The boundaries of the key-range this flush is interested in. No two
   // subflushs may have overlapping key-ranges.
@@ -97,7 +95,7 @@ struct FlushJob::SubflushState {
   //
   FlushState *flush_state;
   Slice start;
-  Slice end;
+  Slice end; 
 
   // The return status of this subflush
   Status status;
@@ -105,38 +103,35 @@ struct FlushJob::SubflushState {
   FileMetaData sub_meta;
   VersionEdit* sub_edit;
   TableProperties sub_table_properties;
-
   int sub_flush_id;
   std::vector<Slice> skip_starts;
   std::vector<Slice> skip_ends;
-  uint64_t bytes_written;
+  uint64_t bytes_written = 0;
 
-  SubflushState(FlushState *_flush, Slice _start, 
-		  Slice _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id,
+  SubflushState(FlushState *_flush, Slice _start,
+      Slice _end, FileMetaData _sub_meta, VersionEdit* _sub_edit, int _sub_flush_id,
       std::vector<Slice> _skip_starts,
       std::vector<Slice> _skip_ends
       )
       : flush_state(_flush),
-	    	start(_start),
+        start(_start),
         end(_end),
-	    	sub_meta(_sub_meta), sub_edit(_sub_edit),
-        skip_starts(_skip_starts), skip_ends(_skip_ends) { 
-		sub_flush_id = _sub_flush_id;
-    bytes_written = 0;
-	}
+        sub_meta(_sub_meta), sub_edit(_sub_edit),
+        skip_starts(_skip_starts), skip_ends(_skip_ends) {
+    sub_flush_id = _sub_flush_id;
+  }
 
   SubflushState(SubflushState&& o) { *this = std::move(o); }
 
   SubflushState& operator=(SubflushState&& o) {
-	flush_state = std::move(o.flush_state);
+  flush_state = std::move(o.flush_state);
     start = std::move(o.start);
     end = std::move(o.end);
     status = std::move(o.status);
     sub_meta = std::move(o.sub_meta);
-	sub_edit = std::move(o.sub_edit);
-	sub_flush_id = std::move(o.sub_flush_id);
-	//is_parent = std::move(o.is_parent);
-  bytes_written = o.bytes_written;
+  sub_edit = std::move(o.sub_edit);
+  sub_flush_id = std::move(o.sub_flush_id);
+  //is_parent = std::move(o.is_parent);
     return *this;
   }
 
@@ -147,7 +142,6 @@ struct FlushJob::SubflushState {
 
 };
 
-// Maintains state for the entire flush
 struct FlushJob::FlushState {
   // REQUIRED: subflush states are stored in order of increasing
   // key-range
@@ -161,25 +155,25 @@ struct FlushJob::FlushState {
   uint64_t num_output_records;
 
   explicit FlushState()
-      : total_bytes(0),
-        num_input_records(0),
-        num_output_records(0) {}
+    : total_bytes(0),
+    num_input_records(0),
+    num_output_records(0) {}
 
-	std::vector<Slice>  GetSubflushStarts() {
-		std::vector<Slice> starts;
-		for (size_t i = 1; i < sub_flush_states.size(); i++) {
-			starts.push_back(sub_flush_states[i].start);
-		}
-		return starts;
-	}
+  std::vector<Slice>  GetSubflushStarts() {
+    std::vector<Slice> starts;
+    for (size_t i = 1; i < sub_flush_states.size(); i++) {
+      starts.push_back(sub_flush_states[i].start);
+    }
+    return starts;
+  }
 
-	std::vector<Slice>  GetSubflushEnds() {
-		std::vector<Slice> ends;
-		for (size_t i = 1; i < sub_flush_states.size(); i++) {
-			ends.push_back(sub_flush_states[i].end);
-		}
-		return ends;
-	}
+  std::vector<Slice>  GetSubflushEnds() {
+    std::vector<Slice> ends;
+    for (size_t i = 1; i < sub_flush_states.size(); i++) {
+      ends.push_back(sub_flush_states[i].end);
+    }
+    return ends;
+  }
 
 };
 
@@ -240,6 +234,15 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
 FlushJob::~FlushJob() {
   ThreadStatusUtil::ResetThreadStatus();
 }
+
+FileMetaData& FlushJob::GetSubMetaData(size_t id) {
+  return flush_->sub_flush_states[id].sub_meta;
+}
+
+TableProperties& FlushJob::GetSubTableProperties(size_t id) {
+  return flush_->sub_flush_states[id].sub_table_properties;
+}
+
 
 void FlushJob::ReportStartedFlush() {
   ThreadStatusUtil::SetColumnFamily(cfd_, cfd_->ioptions()->env,
@@ -372,9 +375,6 @@ void FlushJob::Prepare() {
     //ROCKS_LOG_BUFFER(log_buffer_, "JH241029 [JOB %d] sub_edit log number : %d", job_context_->job_id, mems_.back()->GetNextLogNumber());
 
     sub_edit->SetColumnFamily(target_nodes_[idx]->cfd_->GetID());
-
-    // make subflush atomic
-    sub_edit->MarkAtomicGroup(target_num - 1 - idx);
 
     sub_meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
     Slice start_key = get_lmost_key(target_nodes_[idx]);
@@ -610,6 +610,10 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
           //std::cout << "FlushJob::Run() version edit  " << sub_flush->sub_edit->DebugString() << std::endl;
           mutable_cf_options_list.emplace_back(&mutable_cf_options_);
           //std::cout << "FlushJob::Run() loop 4" << std::endl;
+
+          // make subflush atomic
+          sub_flush->sub_edit->MarkAtomicGroup(num_entries - 1 - edit_idx);
+
           tmp_file_meta.emplace_back(&sub_flush->sub_meta);
           //std::cout << "FlushJob::Run() loop 5" << std::endl;
           //autovector<VersionEdit*> edits;
@@ -617,6 +621,24 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
           edit_lists.emplace_back(edit_list[edit_idx]);
           //std::cout << "FlushJob::Run() sub table_properties" << std::endl;
           edit_idx ++;
+
+
+          // update max_bytes_for_level_base
+          int inter_cf_base_level = sub_cfd->GetLatestMutableCFOptions()->inter_cf_base_level ;
+          if (inter_cf_base_level >= 1) {
+            uint64_t mult = 1;
+            for (int j=0; j<inter_cf_base_level-1; j++) {
+              mult *= 10;
+            }
+            uint64_t sub_file_size = sub_flush->sub_meta.fd.GetFileSize();
+            float alpha = 0.5;
+            uint64_t ema_file_size_cur = sub_cfd->GetLatestMutableCFOptions()->max_bytes_for_level_base;
+            uint64_t ema_file_size_next = uint64_t(mult * sub_file_size * 4 * alpha + ema_file_size_cur * (1 - alpha));
+            
+            sub_cfd->SetOptions({{"max_bytes_for_level_base", std::to_string(ema_file_size_next)}});
+            ROCKS_LOG_INFO(
+                db_options_.info_log,"[JH 0721] %s cur file size %" PRIu64 ", prev level base %" PRIu64 ", new level base %" PRIu64 " -> %" PRIu64 " ", sub_cfd->GetName().c_str(), sub_file_size, ema_file_size_cur, ema_file_size_next, sub_cfd->GetLatestMutableCFOptions()->max_bytes_for_level_base);
+          }
         } 
       }
 
@@ -841,7 +863,7 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.fd.GetFileSize(), meta_.smallest, meta_.largest,
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction);
-    if (lcf_alive_file_map_manager_ != nullptr) {
+    if (db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
       lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, meta_.fd.GetNumber());
       //lcf_alive_file_map_manager_->PrintAliveFiles(db_options_.info_log, job_context_->job_id, "flush job");
     }
@@ -1022,7 +1044,7 @@ Status FlushJob::WriteLevel0Tables() {
                    meta_.fd.GetFileSize(), meta_.smallest, meta_.largest,
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction);
-    if (lcf_alive_file_map_manager_ != nullptr) {
+    if (db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
       lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, meta_.fd.GetNumber());
     }
 
@@ -1043,7 +1065,7 @@ Status FlushJob::WriteLevel0Tables() {
                                   target_metas_[i].fd.smallest_seqno,
                                   target_metas_[i].fd.largest_seqno,
                                   target_metas_[i].marked_for_compaction);
-      if (lcf_alive_file_map_manager_ != nullptr) {
+      if (db_options_.allow_column_family_split && lcf_alive_file_map_manager_ != nullptr) {
         lcf_alive_file_map_manager_->Increment(db_options_.info_log, job_context_->job_id, target_metas_[i].fd.GetNumber());
       }
 
