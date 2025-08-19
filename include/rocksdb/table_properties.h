@@ -9,6 +9,12 @@
 #include "rocksdb/status.h"
 #include "rocksdb/types.h"
 
+#ifdef HAVE_DATA_SKETCHES
+#include "hll.hpp"
+using datasketches::hll_sketch;
+using datasketches::hll_union;
+#endif
+
 namespace rocksdb {
 
 // -- Table Properties
@@ -265,6 +271,9 @@ struct TableProperties {
   // Aggregate the numerical member variables of the specified
   // TableProperties.
   void Add(const TableProperties& tp);
+
+  // LCF 250819
+  std::string lcf_hll_str;
 };
 
 // Extra properties

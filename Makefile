@@ -715,6 +715,7 @@ all: $(LIBRARY) $(BENCHMARKS) tools tools_lib test_libs $(TESTS)
 all_but_some_tests: $(LIBRARY) $(BENCHMARKS) tools tools_lib test_libs $(SUBSET)
 
 static_lib: $(LIBRARY)
+static_lib: CXXFLAGS +=  -I$(DATASKETCHES_DIR)/common/include -I$(DATASKETCHES_DIR)/hll/include -DHAVE_DATA_SKETCHES -std=c++17 -Wno-error=shadow -Wno-shadow
 
 shared_lib: $(SHARED)
 

@@ -56,6 +56,9 @@ class LCFSingleLvlLevelTest : public testing::Test {
 TEST_F(LCFSingleLvlLevelTest, Basic) {
   std::cout <<"========================TEST HLL========================\n";
   hll_sketch s(12);
+  auto b = s.serialize_compact();
+  std::cout <<"empty serialized str: " << b.size() << std::endl;
+
 
   for (int i=0; i<500; i++) {
     s.update(std::to_string(2*i));

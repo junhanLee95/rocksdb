@@ -50,6 +50,14 @@
 #include "table/index_builder.h"
 #include "table/partitioned_filter_block.h"
 
+#ifdef HAVE_DATA_SKETCHES
+#include "hll.hpp"
+using datasketches::hll_sketch;
+using datasketches::hll_union;
+#endif
+
+
+
 namespace rocksdb {
 
 extern const std::string kHashIndexPrefixesBlock;
@@ -312,6 +320,7 @@ struct BlockBasedTableBuilder::Rep {
 
   TableProperties props;
 
+
   // States of the builder.
   //
   // - `kBuffered`: This is the initial state where zero or more data blocks are
@@ -434,6 +443,9 @@ struct BlockBasedTableBuilder::Rep {
       verify_ctx.reset(new UncompressionContext(UncompressionContext::NoCache(),
                                                 compression_type));
     }
+    hll_sketch s(12);
+    auto bytes = s.serialize_compact();
+    props.lcf_hll_str.assign(reinterpret_cast<const char*>(bytes.data()), bytes.size());
   }
 
   Rep(const Rep&) = delete;
