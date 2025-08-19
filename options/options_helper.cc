@@ -219,7 +219,7 @@ std::map<CompactionStyle, std::string>
         {kCompactionStyleLevel, "kCompactionStyleLevel"},
         {kCompactionStyleUniversal, "kCompactionStyleUniversal"},
         {kCompactionStyleFIFO, "kCompactionStyleFIFO"},
-        /*{kCompactionStyleSplit,"kCompactionStyleSplit"},*/
+        {kCompactionStyleLCF,"kCompactionStyleLCF"},
         {kCompactionStyleNone, "kCompactionStyleNone"}};
 
 std::map<CompactionPri, std::string> OptionsHelper::compaction_pri_to_string = {
@@ -1666,6 +1666,7 @@ std::unordered_map<std::string, CompactionStyle>
         {"kCompactionStyleLevel", kCompactionStyleLevel},
         {"kCompactionStyleUniversal", kCompactionStyleUniversal},
         {"kCompactionStyleFIFO", kCompactionStyleFIFO},
+        {"kCompactionStyleLCF", kCompactionStyleLCF},
         {"kCompactionStyleNone", kCompactionStyleNone}};
 
 std::unordered_map<std::string, CompactionPri>

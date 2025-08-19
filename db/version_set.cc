@@ -1702,9 +1702,9 @@ void VersionStorageInfo::ComputeCompactionScore(
           }
         }
       }
-      /*
-      if (compaction_style_ == kCompactionStyleSplit) {
-        // For split compaction, we use level0 score to indicate
+      
+      if (compaction_style_ == kCompactionStyleLCF) {
+        // For lcf compaction, we use level0 score to indicate
         // compaction score for the whole DB. Adding other levels as if
         // they are L0 files.
         for (int i = 1; i < num_levels(); i++) {
@@ -1712,7 +1712,7 @@ void VersionStorageInfo::ComputeCompactionScore(
             num_sorted_runs++;
           }
         }
-      } */
+      }
 
       if (compaction_style_ == kCompactionStyleFIFO) {
         score = static_cast<double>(total_size) /
@@ -1999,8 +1999,8 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
     CompactionPri compaction_pri) {
   if (compaction_style_ == kCompactionStyleNone ||
       compaction_style_ == kCompactionStyleFIFO ||
-      compaction_style_ == kCompactionStyleUniversal 
-      /*compaction_style_ == kCompactionStyleSplit*/) {
+      compaction_style_ == kCompactionStyleUniversal||
+      compaction_style_ == kCompactionStyleLCF) {
     // don't need this
     return;
   }

@@ -33,10 +33,10 @@ enum CompactionStyle : char {
   kCompactionStyleFIFO = 0x2,
   // Disable background compaction. Compaction jobs are submitted
   // via CompactFiles().
-  /*kCompactionStyleSplit = 0x3,*/
+  kCompactionStyleLCF = 0x3,
   // Split based compaction style
   // Not supported in ROCKSDB_LITE
-  kCompactionStyleNone = 0x3,
+  kCompactionStyleNone = 0x4,
 };
 
 // In Level-based compaction, it Determines which file from a level to be

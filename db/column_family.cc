@@ -22,6 +22,7 @@
 
 #include "db/compaction_picker.h"
 #include "db/split_picker.h"
+#include "db/compaction_picker_lcf.h"
 #include "db/compaction_picker_fifo.h"
 #include "db/compaction_picker_universal.h"
 #include "db/db_impl.h"
@@ -464,10 +465,10 @@ ColumnFamilyData::ColumnFamilyData(
     } else if (ioptions_.compaction_style == kCompactionStyleFIFO) {
       compaction_picker_.reset(
           new FIFOCompactionPicker(ioptions_, &internal_comparator_));
-    }/* else if (ioptions_.compaction_style == kCompactionStyleSplit) {
+    } else if (ioptions_.compaction_style == kCompactionStyleLCF) {
       compaction_picker_.reset(
-          new SplitCompactionPicker(ioptions_, &internal_comparator_));
-    }*/ else if (ioptions_.compaction_style == kCompactionStyleNone) {
+          new LCFCompactionPicker(ioptions_, &internal_comparator_));
+    } else if (ioptions_.compaction_style == kCompactionStyleNone) {
       compaction_picker_.reset(new NullCompactionPicker(
           ioptions_, &internal_comparator_));
       ROCKS_LOG_WARN(ioptions_.info_log,
@@ -562,10 +563,10 @@ ColumnFamilyData::ColumnFamilyData(
     } else if (ioptions_.compaction_style == kCompactionStyleFIFO) {
       compaction_picker_.reset(
           new FIFOCompactionPicker(ioptions_, &internal_comparator_));
-    }/* else if (ioptions_.compaction_style == kCompactionStyleSplit) {
+    } else if (ioptions_.compaction_style == kCompactionStyleLCF) {
       compaction_picker_.reset(
-          new SplitCompactionPicker(ioptions_, &internal_comparator_));
-    }*/ else if (ioptions_.compaction_style == kCompactionStyleNone) {
+          new LCFCompactionPicker(ioptions_, &internal_comparator_));
+    } else if (ioptions_.compaction_style == kCompactionStyleNone) {
       compaction_picker_.reset(new NullCompactionPicker(
           ioptions_, &internal_comparator_));
       ROCKS_LOG_WARN(ioptions_.info_log,

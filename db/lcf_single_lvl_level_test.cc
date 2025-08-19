@@ -95,8 +95,10 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   options.max_bytes_for_level_base = 200000;
   options.target_file_size_base = 1024*1024*64;
   options.compression = kNoCompression;
-  options.allow_column_family_split = true;
+  options.allow_column_family_split = false;
   options.column_family_min_key_range = 0; // set no limit of splitting
+  options.compaction_style = kCompactionStyleLCF;
+
   static class std::shared_ptr<rocksdb::Statistics> dbstats;
   dbstats = rocksdb::CreateDBStatistics();
   dbstats->set_stats_level(static_cast<StatsLevel>(rocksdb::StatsLevel::kExceptDetailedTimers));
@@ -109,7 +111,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
 
   ColumnFamilyHandle* cfh = dbfull(db)->DefaultColumnFamily();
   ColumnFamilyData* cfd_default = static_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
-  ColumnFamilyData* cfd_default1= cfd_default->GetChildrenNodes()[0]->cfd_;
+  //ColumnFamilyData* cfd_default1= cfd_default->GetChildrenNodes()[0]->cfd_;
 
   const auto opt = cfd_default->GetLatestCFOptions();
   for (auto& cf_path: opt.cf_paths) {
@@ -123,7 +125,7 @@ TEST_F(LCFSingleLvlLevelTest, Basic) {
   //int kCnt = 40000;
 
   //ColumnFamilyHandle* cfdh = dbfull(db)->GetColumnFamilyHandle(cfd_default->GetID());
-  std::cout <<"cfd name : " << cfd_default1->GetName()<< std::endl;
+  //std::cout <<"cfd name : " << cfd_default1->GetName()<< std::endl;
 
   for (int t=0; t<4; t++) {
     for (int num = 0; num < 4; num ++) {
