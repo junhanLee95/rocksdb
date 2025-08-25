@@ -51,7 +51,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
   ColumnFamilyOptions cf_options = cfd->GetLatestCFOptions();
   cf_options.compaction_style = kCompactionStyleUniversal;
   //cf_options.compaction_style = kCompactionStyleLevel;
-  cf_options.target_file_size_base = 64*1024*1024;
+  cf_options.target_file_size_base = 16*1024*1024;
   cf_options.lcf_alive_file_map_manager = lcf_alive_file_map_manager_;
   size_t split_cnt = sst_split_files.size();
 
@@ -177,7 +177,7 @@ Status DBImpl::SplitColumnFamilyFromSstFiles(ColumnFamilyData* cfd,
       options.compression = kNoCompression;
       options.max_bytes_for_level_base = inter_cf_max_bytes_for_level_base;
       options.inter_cf_base_level = inter_cf_base_level;
-       options.target_file_size_base = 1024*1024*64;
+       options.target_file_size_base = 1024*1024*16;
       mutable_cf_options_list.push_back(new MutableCFOptions(options));
     }
     // 2. push default_cf_edit, only if there is file to delete

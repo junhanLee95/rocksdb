@@ -516,6 +516,7 @@ Compaction* UniversalCompactionPicker::PickCompactionToReduceSortedRuns(
     VersionStorageInfo* vstorage, double score, unsigned int ratio,
     unsigned int max_number_of_files_to_compact,
     const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer) {
+  
   unsigned int min_merge_width =
       mutable_cf_options.compaction_options_universal.min_merge_width;
   unsigned int max_merge_width =
@@ -786,7 +787,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
 
   // if inter_cf_base_level is 1, we assume the column family is hot
   // and compact files if the number of sorted runs >= 4
-  if (output_level > 1 && candidate_size  < max_bytes) {
+  if (output_level > 1 && (candidate_size  < max_bytes && candidate_count < 12) ) {
     ROCKS_LOG_BUFFER(
         log_buffer,
         "[%s] Universal(LCF): size total not needed. newer-files-total-size %" PRIu64
@@ -796,9 +797,9 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
   } else {
     ROCKS_LOG_BUFFER(
         log_buffer,
-        "[%s] Universal(LCF): size total needed. newer-files-total-size %" PRIu64
+        "[%s] Universal(LCF): size total needed. candidate count %ld newer-files-total-size %" PRIu64
         " earliest-file-size %" PRIu64,
-        cf_name.c_str(), candidate_size, earliest_file_size);
+        cf_name.c_str(), candidate_count, candidate_size, earliest_file_size);
   }
   assert(start_index < sorted_runs.size() - 1);
 
@@ -867,7 +868,7 @@ InterCFCompaction* UniversalCompactionPicker::PickInterCFCompactionToReduceTotal
 
       return new InterCFCompaction(
           vstorage, ioptions_, mutable_cf_options, std::move(inputs), output_level,
-          64*1024*1024,
+          mutable_cf_options.target_file_size_base,
           /* max_grandparent_overlap_bytes */ LLONG_MAX, path_id,
           GetCompressionType(ioptions_, vstorage, mutable_cf_options, output_level,
             1),

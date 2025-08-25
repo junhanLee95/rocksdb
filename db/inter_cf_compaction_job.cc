@@ -1646,7 +1646,7 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   auto* compaction = compact_->inter_cf_compaction;
 
   // clear sst split file if there is no key range to split
-  if (db_options_.allow_column_family_split && (num_key_range_to_split_ == 0 || versions_->GetColumnFamilySet()->GetDefault()->GetChildrenNodes().size() >= 16 /*4*/)) {
+  if (db_options_.allow_column_family_split && (num_key_range_to_split_ == 0 || versions_->GetColumnFamilySet()->GetDefault()->GetChildrenNodes().size() >= 160 /*4*/)) {
     sst_split_files_.clear();
   }
 
