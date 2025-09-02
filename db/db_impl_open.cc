@@ -1359,7 +1359,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       f1->smallest = InternalKey(Slice(s1), 0, kTypeValue);
       f1->largest = InternalKey(Slice(l1), 0, kTypeValue);
       metadatas1.push_back(f1);
-      infos.push_back(SplitFileInfo(metadatas1, cfd_default, 1,max_bytes /* 256*1024*1024/4*3*/, true/*is_split*/,false/*is_file_move*/, InternalKey(Slice(s1), 0, kTypeValue), InternalKey(Slice(l1), 0, kTypeValue)));
+      infos.push_back(SplitFileInfo(metadatas1, cfd_default, 6,max_bytes /* 256*1024*1024/4*3*/, true/*is_split*/,false/*is_file_move*/, InternalKey(Slice(s1), 0, kTypeValue), InternalKey(Slice(l1), 0, kTypeValue)));
 
       FileMetaData* f2 = new FileMetaData;
       std::vector<FileMetaData*> metadatas2;
@@ -1368,7 +1368,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       f2->smallest = InternalKey(Slice(s2), 0, kTypeValue);
       f2->largest = InternalKey(Slice(l2), 0, kTypeValue);
       metadatas2.push_back(f2);
-      infos.push_back(SplitFileInfo(metadatas2, cfd_default, 1, max_bytes/* 256*1024*1024/4*3*/, true/*is_split*/, false/*is_file_move*/, InternalKey(Slice(s2), 0, kTypeValue), InternalKey(Slice(l2), 0, kTypeValue)));
+      infos.push_back(SplitFileInfo(metadatas2, cfd_default, 6, max_bytes/* 256*1024*1024/4*3*/, true/*is_split*/, false/*is_file_move*/, InternalKey(Slice(s2), 0, kTypeValue), InternalKey(Slice(l2), 0, kTypeValue)));
 
       
       impl->SplitColumnFamilyFromSstFiles(cfd_default, infos, 0 /* inter_cf_output_level */);

@@ -1,0 +1,18 @@
+* Split when large L_base
+1. unsplitted_bytes on struct SubCompactionState
+2. increment unsplitted_bytes for every FinishedCompactionOutputFiles()
+3. if unsplitted_bytes >= max_compaction_bytes; split without file move, without level change.
+
+* LCF v1.5
+1. dynamic leveled compaction 의 Rule을 따른다.
+2. 초기에는 L0 와 Lb가 있고 b(base level)은 max_level - 1 (6)으로 설정한다.
+3-1. Lb 크기에 따른 분할 (Multi-Partitioning)
+  3-1-1. Lb 크기가 max_compaciton_bytes를 초과한 경우, LCF를 반으로 쪼갠다.
+  3-1-2. Lb는 변경하지 않고, max_bytes 또한 각각 기존 max_bytes에서 반으로 설정한다.
+3-2. Hot/Cold Key Range 감지에 따른 분할 (Multi-Leveling)
+  3-2-1. Q. 어느 키 영역을 Multi-Level로 잡을 것인가.
+  3-2-2. space compaction degree가 너무 낮다면, record를 더 쌓아야됨.
+  3-2-3-1. record를 더 쌓는 방법 A: max_bytes를 키워 inter_cf_compaction을 지연(L0 개수 늘리기)
+  3-2-3-2. record를 더 쌓는 방법 B: base_level을 낮춰 max_level에 도달 했을 때 더 많은 레코드가 입력되도록 함.
+4. RocksDB와의 비교. RocksDB는 base level 크기가 256MB 이상이 되면 base level을 1 감소. 즉 Multi-Level로 잡음. 이렇게 하는 이유는 (1) L0 to Lb 컴팩션 input byte를 제어하고 (2) Write Amplification을 줄일 수 있기 때문. LCF는 (1) 컴팩션 input byte를 제어하기 위해 base level 크기가 커지면 둘로 나누고 (2) Write Amplification을 줄이기 위해 Cold Key Range에서는 L0 개수를 늘리고 Hot Key Range에서는 Multi-Level로 구성함. Cold Key Range에서 L0 개수를 늘려도 되는 이유는 L0 파일의 키 영역이 중첩되지만 실제로 키가 중첩되는 빈도가 적어 Space Amplification이 느리게 증가함. 반면 Hot Key Range는 L0 개수를 늘리면 안됨(Space Amplification이 증가하기 때문). 대신 Multi-Level로 구성하면 0->6로 한번에 컴팩션될 레코드를 0->5->6으로 "서서히" 컴팩션하여 Write Amplification을 줄일 수 있음. 게다가 각 레벨 간 크기 비율을 10으로 제어하기 때문에 전체 시스템에서의 Space Amplification을 10\%로 제어할 수 있음 (Cold Key Range도 마찬가지지만, Cold Key Range는 L0 개수를 늘림으로써 해결 가능).
+5. 

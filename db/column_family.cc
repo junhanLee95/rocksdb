@@ -496,8 +496,14 @@ ColumnFamilyData::ColumnFamilyData(
     }
   }
 
-  for(int i=0; i<7; i++){
+  /*for(int i=0; i<7; i++){
     avg_samps.push_back(1.20);
+  }*/
+  avg_samps.resize(7);
+  float samp_th = 1.1;
+  for(int i=6; i>=0; i--){
+    samp_th *= 1.1;
+    avg_samps[i] = samp_th;
   }
 
   RecalculateWriteStallConditions(mutable_cf_options_);
@@ -594,9 +600,17 @@ ColumnFamilyData::ColumnFamilyData(
     }
   }
 
-  for(int i=0; i<7; i++){
+  /*for(int i=0; i<7; i++){
     avg_samps.push_back(1.20);
+  }*/
+  avg_samps.resize(7);
+  float samp_th = 1.1;
+  for(int i=6; i>=0; i--){
+    samp_th *= 1.1;
+    avg_samps[i] = samp_th;
   }
+
+
   RecalculateWriteStallConditions(mutable_cf_options_);
 }
 

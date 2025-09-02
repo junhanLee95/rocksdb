@@ -624,6 +624,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
 
 
           // update max_bytes_for_level_base
+          /* deactivate for dynamic leveled compaction.
           int inter_cf_base_level = sub_cfd->GetLatestMutableCFOptions()->inter_cf_base_level ;
           if (inter_cf_base_level >= 1) {
             uint64_t mult = 1;
@@ -638,7 +639,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
             sub_cfd->SetOptions({{"max_bytes_for_level_base", std::to_string(ema_file_size_next)}});
             ROCKS_LOG_INFO(
                 db_options_.info_log,"[JH 0721] %s cur file size %" PRIu64 ", prev level base %" PRIu64 ", new level base %" PRIu64 " -> %" PRIu64 " ", sub_cfd->GetName().c_str(), sub_file_size, ema_file_size_cur, ema_file_size_next, sub_cfd->GetLatestMutableCFOptions()->max_bytes_for_level_base);
-          }
+          }*/
         } 
       }
 

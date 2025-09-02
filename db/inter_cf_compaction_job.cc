@@ -1477,7 +1477,7 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
 
     int base_level = compact_->inter_cf_compaction->mutable_cf_options()->inter_cf_base_level;
     float avg = pcfd->GetSamp(base_level);
-    pcfd->SetSamp(base_level, 0.95*avg + 0.05*s_amp);
+    //pcfd->SetSamp(base_level, 0.95*avg + 0.05*s_amp);
     ROCKS_LOG_INFO(db_options_.info_log,
                    "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
                    " keys, %" PRIu64 " input_keys, %.2f efficiency, %" PRIu64 " bytes%s, %" PRIu64 " flush_cnt, %" PRIu64 " l0_comp_cnt, %" PRIu64 " l1_comp_cnt, %" PRIu64 " l2_comp_cnt, %" PRIu64 " l3_comp_cnt, %.2f density, %.4f avg_samp", cfd->GetName().c_str(), job_id_, output_number,
@@ -1499,13 +1499,14 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
     sub_compact->total_compaction_cnt_l2_ = 0;
     sub_compact->total_compaction_cnt_l3_above_ = 0;
 
+    uint64_t file_size = meta->fd.GetFileSize();
     if (db_options_.allow_column_family_split) {
       bool is_split = false;
       bool is_file_move = false;
       int input_num = 0;
 
 
-      if (base_level < 6 && s_amp <  avg) {
+      //if (base_level > 2 && s_amp >  avg) {
         // create new column family
         /*for(size_t i=0; i<sub_compact->compaction->num_input_levels(); i++) {
           input_num += int(sub_compact->compaction->num_input_files(i));
@@ -1519,21 +1520,26 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
           is_split = true;
           
         }*/
-        is_split=true;
-      }
+        //is_split=true;
+      //}
 
-      uint64_t level_byte = meta->fd.GetFileSize();
+      uint64_t level_byte = file_size;
       if (is_split) { // cold key range for increased base_level and level_base
-        base_level ++;
-        level_byte *= 10;
+        base_level --;
+        level_byte /= 10;
+        /*base_level ++;
+          level_byte *= 10;*/
       }
 
-      if (!sst_split_files_.empty() && sst_split_files_.back().is_split == is_split) {
+      if (!sst_split_files_.empty() && sst_split_files_.back().is_split == is_split &&
+          (is_split || sst_split_files_.back().inter_cf_max_bytes_for_level_base + level_byte <= 4*64*1024*1024)) {
         // overlapping ranges, merge it.
+        // if unsplitted_files_size_ is larger than max_compaction_bytes, we rather create new SplitFileInfo
+        //
         assert(!sst_split_files_.back().metadatas.empty());
         /*ROCKS_LOG_INFO(db_options_.info_log, "[%d] it has to be merged #%" PRIu64 " with #%" PRIu64 "\n",
-            job_id_,  meta->fd.packed_number_and_path_id,
-            sst_split_files_.back().metadatas.back()->fd.packed_number_and_path_id);*/
+          job_id_,  meta->fd.packed_number_and_path_id,
+          sst_split_files_.back().metadatas.back()->fd.packed_number_and_path_id);*/
 
         FileMetaData* f = new FileMetaData;
         f->fd = meta->fd;
@@ -1545,17 +1551,40 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
         sst_split_files_.back().metadatas.push_back(f);
         // update last entry's largest
         if (next_table_min_key != nullptr) {
-          sst_split_files_.back().largest = InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
+          sst_split_files_.back().largest =
+            InternalKey(meta->largest.user_key(), meta->fd.largest_seqno, kTypeValue);
         }
         else { // last table
-          sst_split_files_.back().largest = InternalKey(cfd->GetLargestKey(), meta->fd.largest_seqno, kTypeValue);
+          sst_split_files_.back().largest =
+            InternalKey(cfd->GetLargestKey(), meta->fd.largest_seqno, kTypeValue);
         }
+
+        // update inter_cf_max_bytes_for_level_base
+        sst_split_files_.back().inter_cf_max_bytes_for_level_base += level_byte;
+        ROCKS_LOG_INFO(db_options_.info_log,
+            "[%s] [JOB %d] Merge[%d] table #%" PRIu64 ": (s_amp %f) %d input, level_base %" PRIu64 ", max compaction bytes %d",
+            cfd->GetName().c_str(), job_id_, is_split, output_number,
+            s_amp, input_num,
+            sst_split_files_.back().inter_cf_max_bytes_for_level_base,
+            4*64*1024*1024
+            );
+
       }
       else {
         // create new SplitFileInfo and push to the sst_split_files_
         if(is_split) {
           num_key_range_to_split_ ++;
-          is_file_move = true;
+          //is_file_move = true;
+        } else {
+          if (!sst_split_files_.empty() &&
+              !sst_split_files_.back().is_split &&
+              sst_split_files_.back().inter_cf_max_bytes_for_level_base + level_byte > 4*64*1024*1024) {
+            ROCKS_LOG_INFO(db_options_.info_log, "[%d] 250828 LCF split due to unsplitted file size %" PRIu64 " exceeds max compaction bytes: %d",
+                job_id_,
+                sst_split_files_.back().inter_cf_max_bytes_for_level_base + level_byte,
+                4*64*1024*1024);
+            num_key_range_to_split_ ++;
+          }
         }
 
         std::vector<FileMetaData*> fs;
@@ -1589,16 +1618,19 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
         fs.push_back(f);
 
         sst_split_files_.push_back(SplitFileInfo(fs, cfd, base_level, level_byte, is_split, is_file_move,
-                                                 std::move(smallest), std::move(largest)));
+              std::move(smallest), std::move(largest)));
+        ROCKS_LOG_INFO(db_options_.info_log,
+            "[%s] [JOB %d] Split[%d] table #%" PRIu64 ": (s_amp %f) %d input, level_base %" PRIu64 ", max compaction bytes  %d",
+            cfd->GetName().c_str(), job_id_, is_split, output_number,
+            s_amp, input_num,
+            sst_split_files_.back().inter_cf_max_bytes_for_level_base,
+            4*64*1024*1024);
       }
 
       *cfd_to_split_ = cfd;
       last_table_creation_number_to_split_ = table_creation_number_;
 
-      ROCKS_LOG_INFO(db_options_.info_log,
-          "[%s] [JOB %d] Split[%d] table #%" PRIu64 ": (s_amp %f) %d input",
-          cfd->GetName().c_str(), job_id_, is_split, output_number,
-          s_amp, input_num);
+      
     }
     table_creation_number_++;
   }
@@ -1646,6 +1678,9 @@ Status InterCFCompactionJob::InstallCompactionResults(void) {
   auto* compaction = compact_->inter_cf_compaction;
 
   // clear sst split file if there is no key range to split
+  ROCKS_LOG_ERROR(db_options_.info_log, "[%s] [JOB %d] Finish InterCFCompaction: num_key_range_to_split_ : %d",
+      compaction->column_family_data()->GetName().c_str(),
+      job_id_, num_key_range_to_split_);
   if (db_options_.allow_column_family_split && (num_key_range_to_split_ == 0 || versions_->GetColumnFamilySet()->GetDefault()->GetChildrenNodes().size() >= 160 /*4*/)) {
     sst_split_files_.clear();
   }
