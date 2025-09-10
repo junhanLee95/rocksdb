@@ -665,17 +665,17 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
           dec_val == 0) {
       //    lcf_alive_file_map_manager_->Get(file_num) == 0) {
         lcf_to_delete = true;
-        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+        /*ROCKS_LOG_INFO(immutable_db_options_.info_log,
             "[JOB %d] 0806 table cache release lcf_manager[%" PRIu64 "] = %d\n", state.job_id,
             file_num,
-            lcf_alive_file_map_manager_->Get(file_num));
+            lcf_alive_file_map_manager_->Get(file_num));*/
         table_cache_->Release(file.metadata->table_reader_handle);
-      } else {
+      }/* else {
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
             "[JOB %d] 0806 table cache do not release lcf_manager[%" PRIu64 "] = %d\n", state.job_id,
             file_num,
             dec_val);
-      }
+      } */
     }
     /*if (lcf_alive_file_map_manager_->Get(file_num) == 0 &&
       file.metadata->table_reader_handle) {

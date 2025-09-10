@@ -38,7 +38,7 @@ class LCFAliveFileMapManager {
       WriteLock wl(&lcf_alive_file_mutex_);
       int& count = lcf_alive_file_map_[file_num];
       ++count;
-      ROCKS_LOG_INFO(log, "JOB[%d] JH Increment file#%lu -> %d (manager: %p)", job_id, file_num, count, static_cast<void*>(this));
+      //ROCKS_LOG_INFO(log, "JOB[%d] JH Increment file#%lu -> %d (manager: %p)", job_id, file_num, count, static_cast<void*>(this));
     }
 
     // JH: return 0 if only there is a last reference and erase the element.
@@ -51,7 +51,7 @@ class LCFAliveFileMapManager {
       if (it == lcf_alive_file_map_.end()) {
         return -1;
       }
-      ROCKS_LOG_INFO(log, "JOB[%d] JH Decrement file#%lu -> %d (manager: %p)", job_id, file_num, it->second-1, static_cast<void*>(this));
+      //ROCKS_LOG_INFO(log, "JOB[%d] JH Decrement file#%lu -> %d (manager: %p)", job_id, file_num, it->second-1, static_cast<void*>(this));
       if (it->second == 1) {
         lcf_alive_file_map_.erase(it);
         return 0;

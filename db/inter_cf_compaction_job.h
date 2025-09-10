@@ -200,6 +200,9 @@ class InterCFCompactionJob {
   std::vector<SplitFileInfo>& sst_split_files_;
   ColumnFamilyData** cfd_to_split_;
   uint64_t prev_num_uniq_keys_;
+  // JH: [LCF] Stores the Slices that designate the boundaries for each LCF
+  std::vector<Slice> lcf_boundaries_;
+  size_t lcf_idx_; // lcf_boundaries_ index that current user key points to 
 
   std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
   int table_creation_number_;

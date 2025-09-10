@@ -199,6 +199,10 @@ class CompactionJob {
   std::vector<SplitFileInfo>& sst_split_files_;
   ColumnFamilyData** cfd_to_split_;
   uint64_t prev_num_uniq_keys_;
+  // JH: [LCF] stores the slices that designate the boundareis for each LCF
+  std::vector<Slice> lcf_boundaries_;
+  // JH: [LCF] lcf_boundaries_ index that current user key points to 
+  size_t lcf_idx_;
 
   std::shared_ptr<LCFAliveFileMapManager> lcf_alive_file_map_manager_;
 };

@@ -491,6 +491,18 @@ void CompactionJob::Prepare() {
   // Is this compaction producing files at the bottommost level?
   bottommost_level_ = c->bottommost_level();
 
+  // JH: [LCF] prepare lcf_boundaries. only for default cf
+  if (c->column_family_data()->GetID() == 0) {
+    for (auto& node: c->column_family_data()->GetChildrenNodes()) {
+      //ROCKS_LOG_INFO(db_options_.info_log, "[JOB %d] 0902 push smallest key %s to lcf_boundaries", job_id_, node->cfd_->GetSmallestKey().ToString().c_str());
+      lcf_boundaries_.emplace_back(node->cfd_->GetSmallestKey());
+    }
+    // update lcf_idx_
+    lcf_idx_ = 0;
+    
+    //ROCKS_LOG_INFO(db_options_.info_log, "[JOB %d] 0902 lcf_boundaries size : %zu", job_id_, lcf_boundaries_.size());
+  }
+
   if (c->ShouldFormSubcompactions()) {
     {
       StopWatch sw(env_, stats_, SUBCOMPACTION_SETUP_TIME);
@@ -935,6 +947,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   uint64_t prev_cpu_micros = env_->NowCPUNanos() / 1000;
 
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
+  const Comparator* ucmp = cfd->user_comparator();
 
   // Create compaction filter and fail the compaction if
   // IgnoreSnapshots() = false because it is not supported anymore
@@ -1009,6 +1022,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       start==nullptr? "": start->ToString().c_str(),
       end==nullptr? "": end->ToString().c_str());
 
+  
+
 
   Status status;
   sub_compact->c_iter.reset(new CompactionIterator(
@@ -1026,16 +1041,33 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     sub_compact->ShouldStopBefore(c_iter->key(),
                                   sub_compact->current_output_file_size);
   }
+
+  // set lcf_idx_
+  if (cfd->GetID() == 0) {
+    while (lcf_idx_ < lcf_boundaries_.size()-1) {
+      if ((lcf_boundaries_[lcf_idx_].empty() || ucmp->Compare(lcf_boundaries_[lcf_idx_], c_iter->user_key()) <= 0) && (lcf_boundaries_[lcf_idx_+1].empty() || ucmp->Compare(lcf_boundaries_[lcf_idx_+1], c_iter->user_key()) > 0)) {
+        break;
+      }
+      lcf_idx_ ++;
+    }
+
+    ROCKS_LOG_INFO(db_options_.info_log, "[%d] inter_cf_compaction_job lcf_idx : %zu, range [%s, %s], key : %s",
+        job_id_, lcf_idx_, lcf_boundaries_[lcf_idx_].ToString().c_str(),
+        lcf_idx_+1 == lcf_boundaries_.size() ? "": lcf_boundaries_[lcf_idx_+1].ToString().c_str(),
+        c_iter->user_key().ToString().c_str());
+  }
+
+
   const auto& c_iter_stats = c_iter->iter_stats();
 
-  if(cfd->GetID() != 0  || sub_compact->compaction->output_level()==0){
+  /*if(cfd->GetID() != 0  || sub_compact->compaction->output_level()==0){
     ROCKS_LOG_INFO(db_options_.info_log,
         "[%s] [JOB %d] c_cnt 3", cfd->GetName().c_str(), job_id_);
   }
   else{
     ROCKS_LOG_INFO(db_options_.info_log,
         "[%s] [JOB %d] c_cnt %d", cfd->GetName().c_str(), job_id_,  sub_compact->compaction->output_level()-1);
-  }
+  }*/
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
     // returns true.
@@ -1048,7 +1080,17 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     //std::cout << "[c]add value : " << value.ToString() << std::endl;
     std::string key_str_copy = key.ToString();
 		//std::cout << "[c]key : " << uikey.DebugString() << std::endl;
-
+    // [JH] lcf_boundaries assertion check
+    if (cfd->GetID()  == 0) {
+      if (lcf_boundaries_.size() > 1 && lcf_idx_ < lcf_boundaries_.size() -1) {
+        if (!lcf_boundaries_[lcf_idx_].empty()) {
+          assert(ucmp->Compare(uikey.user_key, lcf_boundaries_[lcf_idx_]) >= 0);
+        }
+        if (!lcf_boundaries_[lcf_idx_+1].empty()) {
+          assert(ucmp->Compare(uikey.user_key, lcf_boundaries_[lcf_idx_+1]) < 0);
+        }
+      }
+    }
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
     // JH: if end key is empty, keep scanning until the end of the file.
@@ -1098,14 +1140,20 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     int output_level = sub_compact->compaction->output_level();
 
     if (cfd->GetID() != 0) {
-      c_cnt_arr[0] ++;
+      c_cnt_arr[3] ++;
     }
+    else {
+      c_cnt_arr[output_level-4] ++;
+    }
+    
+
+    /*
     else if(output_level > 3) {
       c_cnt_arr[3] ++;
     }
     else {
       c_cnt_arr[output_level] ++;
-    }
+    }*/
     //c_cnt_arr[output_level-1] ++;
     /*if(cfd->GetID() != 0  || output_level==0){
       c_cnt_arr[3] ++;
@@ -1137,6 +1185,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // c_iter->Next(), except for prev_key_put_cnt we got.
     ParseInternalKey(updated_key, &uikey);
     //std::cout << "[c]add key(2) : " << uikey.DebugString() << std::endl;
+    //
+    
     sub_compact->builder->Add(updated_key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
 
@@ -1161,6 +1211,26 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       // status before advancing will be given to FinishCompactionOutputFile().
       input_status = input->status();
       output_file_ended = true;
+    }
+    else if(cfd->GetID()  == 0 && lcf_idx_ < lcf_boundaries_.size()-1 && ucmp->Compare(c_iter->user_key(), lcf_boundaries_[lcf_idx_+1]) >= 0) {
+      input_status = input->status();
+      output_file_ended = true;
+
+      // update lcf_idx_
+      while (lcf_idx_ < lcf_boundaries_.size()) {
+        if (lcf_idx_ == lcf_boundaries_.size()-1) {
+          break;
+        }
+        else if(ucmp->Compare(c_iter->user_key(), lcf_boundaries_[lcf_idx_+1]) < 0) {
+          break;
+        }
+        lcf_idx_ ++;
+      }
+
+      ROCKS_LOG_INFO(db_options_.info_log, "[%d] compaction_job lcf_idx : %zu, range : [%s, %s], key : %s",
+          job_id_, lcf_idx_, lcf_boundaries_[lcf_idx_].ToString().c_str(),
+          lcf_idx_+1 == lcf_boundaries_.size() ? "": lcf_boundaries_[lcf_idx_+1].ToString().c_str(),
+          c_iter->user_key().ToString().c_str());
     }
     // JH]
     
@@ -1663,13 +1733,13 @@ Status CompactionJob::InstallCompactionResults(
   // Add compaction inputs
   compaction->AddInputDeletions(compact_->compaction->edit());
   //ROCKS_LOG_INFO(db_options_.info_log, "[JH] AddInputDeletions");
-
+  /*
   for (auto& delete_file: compact_->compaction->edit()->GetDeletedFiles()) {
     ROCKS_LOG_INFO(db_options_.info_log, "[JH] comp[%s] delete file %d %" PRIu64 "", compaction->column_family_data()->GetName().c_str(), delete_file.first, delete_file.second);
-    /*if (lcf_alive_file_map_manager_->Decrement(db_options_.info_log, job_id_, delete_file.second) == true) {
-      ROCKS_LOG_INFO(db_options_.info_log, "[JH] comp[%s] delete file from lcf_alive_file_map_manager_ %d %" PRIu64 "", compaction->column_family_data()->GetName().c_str(), delete_file.first, delete_file.second);
-    }*/
-  }
+    //if (lcf_alive_file_map_manager_->Decrement(db_options_.info_log, job_id_, delete_file.second) == true) {
+    //  ROCKS_LOG_INFO(db_options_.info_log, "[JH] comp[%s] delete file from lcf_alive_file_map_manager_ %d %" PRIu64 "", compaction->column_family_data()->GetName().c_str(), delete_file.first, delete_file.second);
+    //}
+  } */
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {

@@ -2648,7 +2648,7 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
         }*/
       }
     }
-  } else {
+  } else if (!db_options_->allow_column_family_split) { // original dynamic leveled compaction code
     uint64_t max_level_size = 0;
 
     int first_non_empty_level = -1;
@@ -2759,17 +2759,19 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
         level_max_bytes_[i] = std::max(level_size, base_bytes_max);
       }
     }
+  } else { // LCF, dynamic leveled compaction
+  
   }
 
   // JH 0703 debugging.
-  std::string level_max_bytes_string = "";
+  /*std::string level_max_bytes_string = "";
   for (int i = 0; i < num_levels_; i++) {
     level_max_bytes_string += std::to_string(i);
     level_max_bytes_string += "[";
     level_max_bytes_string += std::to_string(level_max_bytes_[i]);
     level_max_bytes_string += "], ";
     
-  }
+  }*/
 
   //ROCKS_LOG_INFO(ioptions.info_log, "JH 0703: level_max_bytes: %s", level_max_bytes_string.c_str());
 }

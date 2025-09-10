@@ -454,6 +454,17 @@ void InterCFCompactionJob::Prepare() {
       c->column_family_data()->CalculateSSTWriteHint(c->output_level());
   // Is this compaction producing files at the bottommost level?
   bottommost_level_ = c->bottommost_level();
+
+  // JH: [LCF] prepare lcf_boundaries
+  for (auto& node: versions_->GetColumnFamilySet()->GetDefault()->GetChildrenNodes()) {
+    // ROCKS_LOG_INFO(db_options_.info_log, "[JOB %d] 0902 push smallest key %s to lcf_boundaries", job_id_, node->cfd_->GetSmallestKey().ToString().c_str());
+    lcf_boundaries_.emplace_back(node->cfd_->GetSmallestKey());
+  }
+  // update lcf_idx_
+  lcf_idx_ = 0;
+  
+  // ROCKS_LOG_INFO(db_options_.info_log, "[JOB %d] 0902 lcf_boundaries size : %zu", job_id_, lcf_boundaries_.size());
+
   /*
   if (c->ShouldFormSubcompactions()) {
     {
@@ -877,6 +888,7 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
   uint64_t prev_cpu_micros = env_->NowCPUNanos() / 1000;
 
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
+  const Comparator* ucmp = cfd->user_comparator();
 
   // Create compaction filter and fail the compaction if
   // IgnoreSnapshots() = false because it is not supported anymore
@@ -955,6 +967,9 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
       shutting_down_, preserve_deletes_seqnum_));
   auto c_iter = sub_compact->c_iter.get();
   c_iter->SeekToFirst();
+
+  
+
   if (c_iter->Valid() && sub_compact->compaction->output_level() != 0) {
     // ShouldStopBefore() maintains state based on keys processed so far. The
     // compaction loop always calls it on the "next" key, thus won't tell it the
@@ -962,6 +977,19 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
     sub_compact->ShouldStopBefore(c_iter->key(),
                                   sub_compact->current_output_file_size);
   }
+
+  // set lcf_idx_
+  while (lcf_idx_ < lcf_boundaries_.size()-1) {
+    if ((lcf_boundaries_[lcf_idx_].empty() || ucmp->Compare(lcf_boundaries_[lcf_idx_], c_iter->user_key()) <= 0) && (lcf_boundaries_[lcf_idx_+1].empty() || ucmp->Compare(lcf_boundaries_[lcf_idx_+1], c_iter->user_key()) > 0)) {
+      break;
+    }
+    lcf_idx_ ++;
+  }
+  ROCKS_LOG_INFO(db_options_.info_log, "[%d] inter_cf_compaction_job lcf_idx : %zu, range : [%s, %s], key : %s",
+      job_id_, lcf_idx_, lcf_boundaries_[lcf_idx_].ToString().c_str(),
+      lcf_idx_+1 == lcf_boundaries_.size() ? "": lcf_boundaries_[lcf_idx_+1].ToString().c_str(),
+      c_iter->user_key().ToString().c_str());
+
   const auto& c_iter_stats = c_iter->iter_stats();
 
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
@@ -977,7 +1005,16 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
     //std::cout << "[c]add value : " << value.ToString() << std::endl;
     std::string key_str_copy = key.ToString();
 		//std::cout << "[c]key : " << uikey.DebugString() << std::endl;
-
+    //
+    // [JH] lcf_boundaries assertion check
+    if (lcf_boundaries_.size() > 1 && lcf_idx_ < lcf_boundaries_.size() - 1 ) {
+      if (!lcf_boundaries_[lcf_idx_].empty()) {
+        assert(ucmp->Compare(uikey.user_key, lcf_boundaries_[lcf_idx_]) >= 0);
+      }
+      if (!lcf_boundaries_[lcf_idx_+1].empty()) {
+        assert(ucmp->Compare(uikey.user_key, lcf_boundaries_[lcf_idx_+1]) < 0);
+      }
+    }
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
     if (end != nullptr &&
@@ -1023,22 +1060,23 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
     c_cnt_arr[3] = ((ui_compaction_cnt & mask4)>>48) + ((ex_compaction_cnt & mask4)>>48);
 
     int output_level = sub_compact->compaction->output_level();
-
+    /*
     if(output_level > 3) {
       c_cnt_arr[3] ++;
     }
+    
     else {
       c_cnt_arr[output_level] ++;
-    }
-    /*
+    }*/
+    
     if(output_level==0){
       c_cnt_arr[3] ++;
     }
     else{
       //JH: 1227 use dynawmic leveled compaction
       //c_cnt_arr[output_level-4] ++;
-      c_cnt_arr[output_level-1] ++;
-    }*/
+      c_cnt_arr[output_level-4] ++;
+    }
 
     uint64_t cur_key_compaction_cnt = (c_cnt_arr[0]) | (c_cnt_arr[1] << 16) | (c_cnt_arr[2] << 32) | (c_cnt_arr[3] << 48);
 
@@ -1061,6 +1099,8 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
     // c_iter->Next(), except for prev_key_put_cnt we got.
     ParseInternalKey(updated_key, &uikey);
     //std::cout << "[c]add key(2) : " << uikey.DebugString() << std::endl;
+
+    
     sub_compact->builder->Add(updated_key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
 
@@ -1086,7 +1126,36 @@ void InterCFCompactionJob::ProcessKeyValueCompaction(SubInterCFcompactionState* 
       input_status = input->status();
       output_file_ended = true;
     }
-    // JH]
+    if (lcf_idx_ < lcf_boundaries_.size()-1 && ucmp->Compare(c_iter->user_key(), lcf_boundaries_[lcf_idx_+1]) >= 0) {
+      // [JH] Close the file if c_iter points to a key beyond the current LCF boundary
+      // cur_lcf: c_iter->key를 포함하는 키 범위를 가진 lcf
+      // next_lcf: c_iter->key보다 큰 키 범위를 가진 lcf
+      // cur_lcf->smallest <= c_iter->key < next_lcf->smallest
+      // 만약 c_iter->key가 next_lcf->smallest 보다 같거나 크면, file close하고 next_lcf를 cur_lcf로 세팅한다.
+      // Sync 문제: inter cf compaction job이 실행되고 lcf가 업데이트 된 경우
+      // cur_lcf와 next_lcf 정보가 바뀌어 있음. 
+      // 해결책 1. inter cf compaction job 생성 시점 기준으로 sstable 생성한다.
+      // 해결책 2. cur_lcf, next_lcf에 대한 최신 정보를 불러온다.
+      // 해결책 1이 더 구현하기 쉬우므로 1으로 진행.
+      input_status = input->status();
+      output_file_ended = true;
+
+      // update lcf_idx_
+      while (lcf_idx_ < lcf_boundaries_.size()) {
+        if(lcf_idx_ == lcf_boundaries_.size()-1) {
+          break;
+        }
+        else if(ucmp->Compare(c_iter->user_key(), lcf_boundaries_[lcf_idx_+1]) < 0){
+          break;
+        }
+        lcf_idx_ ++;
+      }
+      ROCKS_LOG_INFO(db_options_.info_log, "[%d] inter_cf_compaction_job lcf_idx(2) : %zu, range : [%s, %s], key : %s",
+          job_id_, lcf_idx_, lcf_boundaries_[lcf_idx_].ToString().c_str(),
+          lcf_idx_+1 == lcf_boundaries_.size() ? "": lcf_boundaries_[lcf_idx_+1].ToString().c_str(),
+          c_iter->user_key().ToString().c_str());
+    }
+    
     /*
     if (!output_file_ended && c_iter->Valid() &&
         sub_compact->compaction->output_level() != 0 &&
@@ -1506,7 +1575,7 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
       int input_num = 0;
 
 
-      //if (base_level > 2 && s_amp >  avg) {
+      if (base_level > 2 && s_amp >  avg) {
         // create new column family
         /*for(size_t i=0; i<sub_compact->compaction->num_input_levels(); i++) {
           input_num += int(sub_compact->compaction->num_input_files(i));
@@ -1520,8 +1589,8 @@ Status InterCFCompactionJob::FinishCompactionOutputFile(
           is_split = true;
           
         }*/
-        //is_split=true;
-      //}
+        is_split=true;
+      }
 
       uint64_t level_byte = file_size;
       if (is_split) { // cold key range for increased base_level and level_base
